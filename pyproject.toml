@@ -1,0 +1,91 @@
+[tool.poetry]
+name = "omni-localizer"
+version = "0.1.0"
+description = "AI-native localization pipeline with automated quality control"
+authors = ["1StepMore"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/1StepMore/Omni_Localizer"
+homepage = "https://github.com/1StepMore/Omni_Localizer"
+
+packages = [
+    { include = "ol_core", from = "src" },
+    { include = "ol_md", from = "src" },
+    { include = "ol_xliff", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+# LLM routing + Failover
+litellm = "^1.84.0"
+agentfuse-runtime = "^0.2.2"
+
+# LLM evaluation (Scorer→Judge two-layer)
+openevalkit = "^0.1.7"
+
+# Translation quality assessment
+COMET = "^2.2.7"
+
+# Translation memory
+hypomnema = "^0.8"
+
+# Word alignment
+span-aligner = "^0.3.2"
+vectoralign = "^0.2.2"
+
+# Semantic similarity
+sentence-transformers = "^3.0.0"
+
+# Configuration
+pydantic = "^2.0"
+pyyaml = "^6.0"
+
+# MD parsing
+markdown-it-py = "^0.8"
+lxml = "^5.0"
+
+# XLIFF processing
+translate-toolkit = "^3.0"
+
+# CLI
+typer = "^0.12"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+pytest-cov = "^4.0"
+pip-audit = "^2.7"
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+ol = "ol_core.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
