@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.1">
+  <file source-language="en" target-language="zh" original="sample-xliff12">
+    <body>
+      <trans-unit id="tu1">
+        <source>Press <ph id="p1">Enter</ph> to continue</source>
+        <target state="new">按<ph id="p1">Enter</ph>继续</target>
+      </trans-unit>
+      <trans-unit id="tu2">
+        <source>Hello <mrk id="m1" type="comment">world</mrk> text</source>
+        <target state="new">你好<mrk id="m1" type="comment">世界</mrk>文本</target>
+      </trans-unit>
+      <trans-unit id="tu3">
+        <source><em id="e1">emphasized</em> word</source>
+        <target state="new"><em id="e1">强调</em>单词</target>
+      </trans-unit>
+      <trans-unit id="tu4">
+        <source>Use <x id="x1"/> and <bx id="bx1"/>bold<ex id="bx1"/> text</source>
+        <target state="new">使用<x id="x1"/>和<bx id="bx1"/>粗体<ex id="bx1"/>文本</target>
+      </trans-unit>
+      <trans-unit id="tu5">
+        <source><alayout id="a1" type="heading">Heading text</alayout> normal</source>
+        <target state="new"><alayout id="a1" type="heading">标题文本</alayout>普通</target>
+      </trans-unit>
+      <trans-unit id="tu6">
+        <source>Plain text without inline elements</source>
+        <target state="new">没有内联元素的纯文本</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="en" target-language="zh" original="sample">
+    <body>
+      <trans-unit id="1">
+        <source>Hello <x id="1" type="bold"/> world</source>
+        <target state="new">你好<bx id="1"/>世界</target>
+      </trans-unit>
+      <trans-unit id="2">
+        <source>This is a test</source>
+        <target state="new">这是一个测试</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

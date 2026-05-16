@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni-Localizer Report - {{ report.job_id }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1, h2, h3 { color: #2c3e50; margin-bottom: 15px; }
+        h1 { font-size: 2em; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { font-size: 1.5em; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; margin-top: 30px; }
+        .header { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .meta { color: #7f8c8d; font-size: 0.9em; }
+        .section { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ecf0f1; }
+        th { background: #3498db; color: #fff; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .severity-high { color: #e74c3c; font-weight: bold; }
+        .severity-medium { color: #f39c12; font-weight: bold; }
+        .severity-low { color: #27ae60; font-weight: bold; }
+        .cost-card { display: inline-block; background: #3498db; color: #fff; padding: 15px 25px; border-radius: 8px; margin: 10px; text-align: center; min-width: 150px; }
+        .cost-card .value { font-size: 1.8em; font-weight: bold; }
+        .cost-card .label { font-size: 0.9em; opacity: 0.9; }
+        .summary-cards { display: flex; flex-wrap: wrap; gap: 15px; margin: 15px 0; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
+        .badge-high { background: #e74c3c; color: #fff; }
+        .badge-medium { background: #f39c12; color: #fff; }
+        .badge-low { background: #27ae60; color: #fff; }
+        .no-data { color: #95a5a6; font-style: italic; padding: 20px; text-align: center; }
+        .source-target { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px; }
+        .source-target > div { background: #f8f9fa; padding: 10px; border-radius: 4px; }
+        .source-target .label { font-weight: 600; color: #7f8c8d; font-size: 0.85em; margin-bottom: 5px; }
+        .reference { font-family: monospace; background: #ecf0f1; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Omni-Localizer Report</h1>
+            <p class="meta">Job ID: {{ report.job_id }} | Generated: {{ report.generated_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        </div>
+
+        <div class="section">
+            <h2>Model Cost Summary</h2>
+            <div class="summary-cards">
+                {% if report.model_costs %}
+                    {% for model_name, cost_entry in report.model_costs.items() %}
+                    <div class="cost-card">
+                        <div class="value">{{ "$%.4f"|format(cost_entry.total_cost) }}</div>
+                        <div class="label">{{ model_name }}</div>
+                        <div style="font-size:0.8em;margin-top:5px;">{{ cost_entry.total_tokens }} tokens</div>
+                    </div>
+                    {% endfor %}
+                    <div class="cost-card" style="background:#2c3e50;">
+                        <div class="value">{{ "$%.4f"|format(report.total_cost) }}</div>
+                        <div class="label">Total Cost</div>
+                    </div>
+                    <div class="cost-card" style="background:#27ae60;">
+                        <div class="value">{{ report.total_tokens }}</div>
+                        <div class="label">Total Tokens</div>
+                    </div>
+                {% else %}
+                    <p class="no-data">No model cost data available</p>
+                {% endif %}
+            </div>
+
+            {% if report.model_costs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Prompt Tokens</th>
+                        <th>Completion Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Cost/1K Tokens</th>
+                        <th>Total Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for model_name, cost_entry in report.model_costs.items() %}
+                    <tr>
+                        <td>{{ model_name }}</td>
+                        <td>{{ cost_entry.prompt_tokens }}</td>
+                        <td>{{ cost_entry.completion_tokens }}</td>
+                        <td>{{ cost_entry.total_tokens }}</td>
+                        <td>{{ "$%.4f"|format(cost_entry.cost_per_1k_tokens) }}</td>
+                        <td>{{ "$%.4f"|format(cost_entry.total_cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>OL_WARN Summary</h2>
+            <div class="summary-cards">
+                <div class="cost-card" style="background:#e74c3c;">
+                    <div class="value">{{ report.severity_breakdown.get('high', 0) }}</div>
+                    <div class="label">High Severity</div>
+                </div>
+                <div class="cost-card" style="background:#f39c12;">
+                    <div class="value">{{ report.severity_breakdown.get('medium', 0) }}</div>
+                    <div class="label">Medium Severity</div>
+                </div>
+                <div class="cost-card" style="background:#27ae60;">
+                    <div class="value">{{ report.severity_breakdown.get('low', 0) }}</div>
+                    <div class="label">Low Severity</div>
+                </div>
+                <div class="cost-card" style="background:#2c3e50;">
+                    <div class="value">{{ report.total_warnings }}</div>
+                    <div class="label">Total Warnings</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Warning Details</h2>
+            {% if report.warnings %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Line</th>
+                        <th>Reference</th>
+                        <th>Warning Type</th>
+                        <th>Severity</th>
+                        <th>Model</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for warning in report.warnings %}
+                    <tr>
+                        <td>{{ warning.file_path }}</td>
+                        <td>{{ warning.line_number }}</td>
+                        <td><span class="reference">{{ warning.reference or '-' }}</span></td>
+                        <td>{{ warning.warning_type }}</td>
+                        <td><span class="badge badge-{{ warning.severity.lower() }}">{{ warning.severity.upper() }}</span></td>
+                        <td>{{ warning.model }}</td>
+                        <td>{{ "$%.4f"|format(warning.cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <h3 style="margin-top:30px;">Bidirectional Traceability</h3>
+            {% for warning in report.warnings %}
+            <div style="margin-bottom:20px;padding:15px;background:#f8f9fa;border-radius:8px;">
+                <div style="display:flex;gap:10px;margin-bottom:10px;">
+                    <span class="badge badge-{{ warning.severity.lower() }}">{{ warning.severity.upper() }}</span>
+                    <strong>{{ warning.file_path }}:{{ warning.line_number }}</strong>
+                    {% if warning.reference %}
+                    <span class="reference">{{ warning.reference }}</span>
+                    {% endif %}
+                </div>
+                <div class="source-target">
+                    <div>
+                        <div class="label">Source ({{ warning.warning_type }})</div>
+                        <div>{{ warning.source_text or 'N/A' }}</div>
+                    </div>
+                    <div>
+                        <div class="label">Target</div>
+                        <div>{{ warning.target_text or 'N/A' }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="no-data">No warnings found in this report</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

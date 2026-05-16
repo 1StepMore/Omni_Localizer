@@ -1,0 +1,23 @@
+<?xml version="2.0" encoding="utf-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="zh">
+  <file id="review_sample">
+    <unit id="1">
+      <source>Hello world</source>
+      <target>你好世界</target>
+      <note where="pre">OL: Warning: Tag auto-appended at end</note>
+    </unit>
+    <unit id="2">
+      <source>This is a test paragraph</source>
+      <target>这是一个测试段落</target>
+    </unit>
+    <unit id="3">
+      <source>Important term</source>
+      <target>重要术语</target>
+      <note where="pre">OL: Warning: Term_miss</note>
+    </unit>
+    <unit id="4">
+      <source>Final text</source>
+      <target>最终文本</target>
+    </unit>
+  </file>
+</xliff>

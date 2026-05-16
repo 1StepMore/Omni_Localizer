@@ -1,0 +1,4 @@
+file,line,warning_type,severity,model,cost,source_text,target_text,reference
+{% for warning in report.warnings %}
+{{ warning.file_path | e }},{{ warning.line_number }},{{ warning.warning_type | e }},{{ warning.severity | e }},{{ warning.model | e }},{{ warning.cost }},{{ warning.source_text | e }},{{ warning.target_text | e }},{{ warning.reference | e }}
+{% endfor %}
