@@ -25,3 +25,14 @@ llm_pool:
       priority: 2
       role: "judging"
       api_key: null
+  restoration:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      role: "restoration"
+      api_key: null
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 2
+      role: "restoration"
+      api_key: null

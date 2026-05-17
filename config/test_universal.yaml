@@ -9,16 +9,16 @@ glossary_path: null
 
 llm_pool:
   translation:
-    - provider: "openai"
-      model: "gpt-4o-mini"
+    - provider: "minimax"
+      model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
-    - provider: "openai"
-      model: "gpt-4o"
+      api_key: "${sk-cp-CAPjdmwYi7mVzEjlbnCpHfGAi2h07_EUM3vb7mPj84WqG5urhqFzPfbMBbY5T5eQGn7JDU5ThPr7wzc799yN3TsIkF2l0vN-STeXi0YDxrH8mMnvu-Jrpbw}"
+    - provider: "baidu"
+      model: "ernie-4.5-turbo-32k"
       priority: 2
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
+      api_key: "${bce-v3/ALTAK-TxQXA9aqHZYbcg9FDXsNa/491ea5eaa48b124f595501b88736fb9db2a8c606}"
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"
