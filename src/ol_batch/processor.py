@@ -7,6 +7,7 @@ from typing import Optional
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_concurrency.scheduler import ConcurrencyLimiter
+from ol_logging import get_logger
 from ol_pool.router import ModelPool
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_md.pipeline import MDRepairPipeline
@@ -25,12 +26,14 @@ class BatchProcessor:
         self._config = config
         self._pool = model_pool
         self._limiter = limiter
+        self._logger = get_logger("batch.processor")
 
     async def process_batch(
         self,
         files: list[Path],
         output_dir: Path,
     ) -> BatchResult:
+        self._logger.info(f"Batch processing started: {len(files)} files")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         succeeded: list[Path] = []
@@ -46,6 +49,7 @@ class BatchProcessor:
 
             for file, result in zip(files, results):
                 if isinstance(result, Exception):
+                    self._logger.error(f"File failed: {file.name} - {result}")
                     failed.append((file, str(result)))
                 elif result is not None:
                     succeeded.append(result)
@@ -56,17 +60,20 @@ class BatchProcessor:
         except Exception:
             raise
 
-        return BatchResult(
+        result = BatchResult(
             succeeded=succeeded,
             failed=failed,
             total=len(files),
         )
+        self._logger.info(f"Batch complete: {result.success_rate:.1f}% success rate")
+        return result
 
     async def _process_single_file(
         self,
         input_path: Path,
         output_dir: Path,
     ) -> Optional[Path]:
+        self._logger.debug(f"Processing file: {input_path.name}")
         try:
             async with self._limiter.translation(timeout=self._config.timeout):
                 return await self._translate_file(input_path, output_dir)
