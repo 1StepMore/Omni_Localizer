@@ -1,24 +1,20 @@
-# Universal test config - LLM pool only, language pair set via CLI
+# Universal test config - LLM pool only, no language pair
+# language pair set via CLI: -s en -t zh or -s zh -t en
 # Usage: ol translate-md input.md -c config/test_universal.yaml -s en -t zh
 # Or use the .bat files: test_en_to_zh.bat input.md
 
-project_id: "test-universal"
-source_lang: "en"
-target_lang: "zh"
-glossary_path: null
-
 llm_pool:
   translation:
-    - provider: "minimax"
-      model: "MiniMax-M2.7"
+    - provider: "openai"
+      model: "gpt-4o-mini"
       priority: 1
       role: "translation"
-      api_key: "${MINIMAX_API_KEY}"
-    - provider: "baidu"
-      model: "ernie-4.5-turbo-32k"
+      api_key: "${OPENAI_API_KEY}"
+    - provider: "openai"
+      model: "gpt-4o"
       priority: 2
       role: "translation"
-      api_key: "${BAIDU_API_KEY}"
+      api_key: "${OPENAI_API_KEY}"
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"

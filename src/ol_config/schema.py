@@ -28,11 +28,14 @@ class LLMModelConfig(BaseModel):
     model: str = Field(..., description="Model name: gpt-4, claude-3-sonnet, etc.")
     priority: int = Field(1, ge=1, description="Priority (1=highest). Lower number = higher priority.")
     api_key: Optional[str] = Field(None, description="API key. Can also use env var ${VAR} syntax.")
+    base_url: Optional[str] = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
 
     @model_validator(mode='after')
     def check_api_key_env_vars(self) -> 'LLMModelConfig':
         _check_env_vars(self.api_key)
+        if self.base_url:
+            _check_env_vars(self.base_url)
         return self
 
 class LLMPoolConfig(BaseModel):
@@ -54,8 +57,8 @@ class LLMPoolConfig(BaseModel):
 
 class ProjectConfig(BaseModel):
     """Main project configuration."""
-    project_id: str = Field(..., description="Unique project identifier")
-    source_lang: str = Field(..., description="Source language code: en, zh, ja, etc.")
-    target_lang: str = Field(..., description="Target language code: zh, en, ja, etc.")
+    project_id: str = Field("default-project", description="Unique project identifier")
+    source_lang: str = Field("en", description="Source language code: en, zh, ja, etc.")
+    target_lang: str = Field("zh", description="Target language code: zh, en, ja, etc.")
     glossary_path: Optional[str] = Field(None, description="Path to glossary file (CSV/TBX)")
     llm_pool: LLMPoolConfig = Field(..., description="LLM model pool configuration")
