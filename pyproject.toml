@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AI-native localization pipeline with automated quality control"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 authors = [{name = "Your Name", email = "you@example.com"}]
 
 dependencies = [
@@ -50,14 +50,14 @@ python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "D", "UP", "YTT", "ANN", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T", "TID", "ARG", "P", "PL", "TRY", "NPY", "RUF", "SIM"]
 ignore = ["D100", "D104", "ANN101", "ANN102", "PLR0913", "TRY003"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

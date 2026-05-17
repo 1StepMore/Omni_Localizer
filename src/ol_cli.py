@@ -1,4 +1,5 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
+import signal
 import sys
 import asyncio
 from pathlib import Path
@@ -12,6 +13,16 @@ from ol_xliff.pipeline import XLIFFRepairPipeline
 
 __version__ = "0.1.0"
 
+# Global interrupt flag for graceful shutdown
+_interrupted = False
+
+
+def _sigint_handler(signum, frame):
+    global _interrupted
+    _interrupted = True
+    typer.echo("\nReceived Ctrl+C - finishing in-flight files, no new starts...")
+
+
 app = typer.Typer(
     name="ol",
     help="Omni-Localizer: AI-native localization pipeline with automated quality control.",
@@ -23,6 +34,15 @@ class ExitCode:
     SUCCESS = 0
     PIPELINE_ERROR = 1
     CLI_USAGE_ERROR = 2
+    INTERRUPTED = 3
+
+
+def _setup_signal_handler():
+    signal.signal(signal.SIGINT, _sigint_handler)
+
+
+def is_interrupted() -> bool:
+    return _interrupted
 
 
 def validate_input_file(path: str) -> Path:
@@ -118,6 +138,111 @@ def translate_md(
         )
 
         typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+        raise typer.Exit(code=ExitCode.SUCCESS)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Pipeline error: {e}", err=True)
+        raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
+
+async def _translate_batch_async(
+    directory: Path,
+    output_dir: Path,
+    config_path: Optional[str],
+    src_lang: str,
+    tgt_lang: str,
+    max_concurrent: int,
+) -> tuple[int, int]:
+    import time
+    from ol_batch.config import BatchConfig
+    from ol_batch.discovery import discover_files, validate_directory
+    from ol_batch.processor import BatchProcessor
+    from ol_batch.progress import ProgressContext
+    from ol_batch.summary import print_summary
+    from ol_concurrency.scheduler import ConcurrencyLimiter
+    from ol_pool.router import ModelPool
+
+    if not validate_directory(directory):
+        raise ValueError(f"Directory not found or is not a directory: {directory}")
+
+    file_patterns = ["*.md", "*.xliff", "*.xlf"]
+    files = discover_files(directory, file_patterns)
+
+    if not files:
+        typer.echo(f"No files found in {directory} matching {file_patterns}")
+        return (0, 0)
+
+    typer.echo(f"Found {len(files)} files to process")
+
+    batch_config = BatchConfig(max_concurrent=max_concurrent)
+    pool = ModelPool(config_path) if config_path else None
+    if not pool:
+        raise RuntimeError("ModelPool initialization failed - check API credentials")
+
+    limiter = ConcurrencyLimiter(max_translation=max_concurrent)
+    processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter)
+
+    start_time = time.time()
+    async with ProgressContext() as progress:
+        result = await processor.process_batch(files, output_dir)
+
+    duration = time.time() - start_time
+    print_summary(result, duration)
+
+    return (len(result.succeeded), len(result.failed))
+
+
+@app.command()
+def translate_batch(
+    directory: str = typer.Argument(..., help="Input directory path"),
+    output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="Output directory"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    concurrency: int = typer.Option(5, "--concurrency", "-j", help="Max concurrent translations"),
+) -> int:
+    try:
+        input_path = Path(directory)
+        if not input_path.exists():
+            raise typer.BadParameter(f"Directory not found: {directory}")
+        if not input_path.is_dir():
+            raise typer.BadParameter(f"Input is not a directory: {directory}")
+    except typer.BadParameter as e:
+        typer.echo(f"Error: {e.message}", err=True)
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    if not output_dir:
+        typer.echo("Error: --output-dir is required", err=True)
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    try:
+        output_path = ensure_output_dir(output_dir)
+    except Exception as e:
+        typer.echo(f"Error: Cannot create output directory: {e}", err=True)
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    try:
+        src = source_lang or "en"
+        tgt = target_lang or "zh"
+
+        if config:
+            from ol_config.loader import load_config
+            cfg = load_config(config)
+            src = src or cfg.source_lang
+            tgt = tgt or cfg.target_lang
+            typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
+        else:
+            src = src or "en"
+            tgt = tgt or "zh"
+
+        succeeded, failed = asyncio.run(
+            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency)
+        )
+
+        if failed > 0:
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
