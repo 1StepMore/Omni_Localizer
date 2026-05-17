@@ -9,16 +9,16 @@ glossary_path: null
 
 llm_pool:
   translation:
-    - provider: "openai"
-      model: "gpt-4o-mini"
+    - provider: "minimax"
+      model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
-    - provider: "openai"
-      model: "gpt-4o"
+      api_key: "${MINIMAX_API_KEY}"
+    - provider: "baidu"
+      model: "ernie-4.5-turbo-32k"
       priority: 2
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
+      api_key: "${BAIDU_API_KEY}"
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"

@@ -37,6 +37,20 @@ class TestModelPool:
                     role=LLMModelRole.JUDGING,
                 ),
             ],
+            restoration=[
+                LLMModelConfig(
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    priority=1,
+                    role=LLMModelRole.RESTORATION,
+                ),
+                LLMModelConfig(
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    priority=2,
+                    role=LLMModelRole.RESTORATION,
+                ),
+            ],
         )
         return MagicMock(llm_pool=pool)
 
