@@ -20,8 +20,8 @@ class ModelPool:
         self._router = Router(
             model_list=self._build_model_list(config.llm_pool),
             routing_strategy="simple-shuffle",
-            num_retries=1,
-            timeout=3,
+            num_retries=2,
+            timeout=30,
         )
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
