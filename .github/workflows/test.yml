@@ -21,13 +21,13 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Type check
-        run: pip run mypy src/
+        run: python -m mypy src/
         continue-on-error: true
       - name: Lint
-        run: pip run ruff check src/
+        run: python -m ruff check src/
         continue-on-error: true
       - name: Run tests
-        run: pip run pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short
 
   security:
     runs-on: ubuntu-latest
