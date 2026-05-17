@@ -45,6 +45,8 @@ def translate_md(
     input: str = typer.Argument(..., help="Input markdown file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
 ) -> int:
     """Translate markdown file through MD repair pipeline."""
     try:
@@ -64,6 +66,19 @@ def translate_md(
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     try:
+        # Load config if provided
+        src_lang = source_lang
+        tgt_lang = target_lang
+        if config:
+            from ol_config.loader import load_config
+            cfg = load_config(config)
+            src_lang = src_lang or cfg.source_lang
+            tgt_lang = tgt_lang or cfg.target_lang
+            typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
+        else:
+            src_lang = src_lang or "en"
+            tgt_lang = tgt_lang or "zh"
+
         # Read input file
         original_text = input_path.read_text(encoding="utf-8")
 
@@ -77,7 +92,7 @@ def translate_md(
         output_file = output_path / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 
-        typer.echo(f"Translated: {input_path.name} -> {output_file}")
+        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
@@ -92,6 +107,8 @@ def translate_xliff(
     input: str = typer.Argument(..., help="Input XLIFF file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
 ) -> int:
     """Translate XLIFF file through XLIFF repair pipeline."""
     try:
@@ -111,6 +128,19 @@ def translate_xliff(
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     try:
+        # Load config if provided
+        src_lang = source_lang
+        tgt_lang = target_lang
+        if config:
+            from ol_config.loader import load_config
+            cfg = load_config(config)
+            src_lang = src_lang or cfg.source_lang
+            tgt_lang = tgt_lang or cfg.target_lang
+            typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
+        else:
+            src_lang = src_lang or "en"
+            tgt_lang = tgt_lang or "zh"
+
         # Read input file
         original_text = input_path.read_text(encoding="utf-8")
 
@@ -124,7 +154,7 @@ def translate_xliff(
         output_file = output_path / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 
-        typer.echo(f"Translated: {input_path.name} -> {output_file}")
+        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:

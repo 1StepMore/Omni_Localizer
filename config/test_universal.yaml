@@ -1,0 +1,43 @@
+# Universal test config - LLM pool only, language pair set via CLI
+# Usage: ol translate-md input.md -c config/test_universal.yaml -s en -t zh
+# Or use the .bat files: test_en_to_zh.bat input.md
+
+project_id: "test-universal"
+source_lang: "en"
+target_lang: "zh"
+glossary_path: null
+
+llm_pool:
+  translation:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      role: "translation"
+      api_key: "${OPENAI_API_KEY}"
+    - provider: "openai"
+      model: "gpt-4o"
+      priority: 2
+      role: "translation"
+      api_key: "${OPENAI_API_KEY}"
+  judging:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      role: "judging"
+      api_key: "${OPENAI_API_KEY}"
+    - provider: "anthropic"
+      model: "claude-3-haiku-20240307"
+      priority: 2
+      role: "judging"
+      api_key: "${ANTHROPIC_API_KEY}"
+  restoration:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      role: "restoration"
+      api_key: "${OPENAI_API_KEY}"
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 2
+      role: "restoration"
+      api_key: "${OPENAI_API_KEY}"
