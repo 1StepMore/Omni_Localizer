@@ -1,11 +1,13 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
 import sys
+import asyncio
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 from ol_md.pipeline import MDRepairPipeline
+from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 __version__ = "0.1.0"
@@ -24,7 +26,6 @@ class ExitCode:
 
 
 def validate_input_file(path: str) -> Path:
-    """Validate that input file exists."""
     file_path = Path(path)
     if not file_path.exists():
         raise typer.BadParameter(f"Input file not found: {path}")
@@ -34,10 +35,44 @@ def validate_input_file(path: str) -> Path:
 
 
 def ensure_output_dir(path: str) -> Path:
-    """Ensure output directory exists, create if missing."""
     output_path = Path(path)
     output_path.mkdir(parents=True, exist_ok=True)
     return output_path
+
+
+async def _translate_md_async(
+    input_path: Path,
+    output_path: Path,
+    config_path: Optional[str],
+    src_lang: str,
+    tgt_lang: str,
+) -> str:
+    from ol_pool.router import ModelPool
+
+    pool = ModelPool(config_path) if config_path else None
+    original_text = input_path.read_text(encoding="utf-8")
+
+    shielded, shield_map = shield_markdown(original_text)
+
+    if pool:
+        translated = await pool.translate(shielded, src_lang, tgt_lang)
+    else:
+        from ol_config.loader import load_config
+        cfg = load_config(config_path)
+        src_lang = src_lang or cfg.source_lang
+        tgt_lang = tgt_lang or cfg.target_lang
+        pool = ModelPool(config_path)
+        translated = await pool.translate(shielded, src_lang, tgt_lang)
+
+    if shield_map:
+        translated = unshield_markdown(translated, shield_map)
+
+    repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
+
+    output_file = output_path / input_path.name
+    output_file.write_text(repaired, encoding="utf-8")
+
+    return str(output_file)
 
 
 @app.command()
@@ -48,7 +83,6 @@ def translate_md(
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
 ) -> int:
-    """Translate markdown file through MD repair pipeline."""
     try:
         input_path = validate_input_file(input)
     except typer.BadParameter as e:
@@ -66,33 +100,24 @@ def translate_md(
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     try:
-        # Load config if provided
-        src_lang = source_lang
-        tgt_lang = target_lang
+        src = source_lang or "en"
+        tgt = target_lang or "zh"
+
         if config:
             from ol_config.loader import load_config
             cfg = load_config(config)
-            src_lang = src_lang or cfg.source_lang
-            tgt_lang = tgt_lang or cfg.target_lang
-            typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
+            src = src or cfg.source_lang
+            tgt = tgt or cfg.target_lang
+            typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
         else:
-            src_lang = src_lang or "en"
-            tgt_lang = tgt_lang or "zh"
+            src = src or "en"
+            tgt = tgt or "zh"
 
-        # Read input file
-        original_text = input_path.read_text(encoding="utf-8")
+        output_file = asyncio.run(
+            _translate_md_async(input_path, output_path, config, src, tgt)
+        )
 
-        # Initialize pipeline
-        pipeline = MDRepairPipeline()
-
-        # Run repair pipeline (pass-through since CLI doesn't do actual translation)
-        repaired = pipeline.repair(original_text, original_text, {})
-
-        # Write output
-        output_file = output_path / input_path.name
-        output_file.write_text(repaired, encoding="utf-8")
-
-        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
+        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
@@ -110,7 +135,6 @@ def translate_xliff(
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
 ) -> int:
-    """Translate XLIFF file through XLIFF repair pipeline."""
     try:
         input_path = validate_input_file(input)
     except typer.BadParameter as e:
@@ -128,7 +152,6 @@ def translate_xliff(
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     try:
-        # Load config if provided
         src_lang = source_lang
         tgt_lang = target_lang
         if config:
@@ -141,16 +164,10 @@ def translate_xliff(
             src_lang = src_lang or "en"
             tgt_lang = tgt_lang or "zh"
 
-        # Read input file
         original_text = input_path.read_text(encoding="utf-8")
-
-        # Initialize pipeline
         pipeline = XLIFFRepairPipeline()
-
-        # Run repair pipeline (pass-through since CLI doesn't do actual translation)
         repaired = pipeline.repair(original_text, original_text, {})
 
-        # Write output
         output_file = output_path / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 
@@ -169,7 +186,6 @@ def extract_warnings(
     input: str = typer.Argument(..., help="Input file path (MD or XLIFF)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> int:
-    """Extract OL_WARN warnings from input file into review file."""
     try:
         input_path = validate_input_file(input)
     except typer.BadParameter as e:
@@ -178,23 +194,17 @@ def extract_warnings(
 
     try:
         content = input_path.read_text(encoding="utf-8")
-
-        # Extract warnings based on patterns
         warnings = []
-
-        # MD pattern: <!-- OL_WARN: ... -->
         import re
 
         md_warn_pattern = re.compile(r'<!--\s*OL_WARN:\s*([^>]+)\s*-->')
         for match in md_warn_pattern.finditer(content):
             warnings.append(f"MD: {match.group(0)}")
 
-        # XLIFF pattern: <note from="OL">...</note>
         xliff_warn_pattern = re.compile(r'<note\s+from="OL"[^>]*>([^<]+)</note>')
         for match in xliff_warn_pattern.finditer(content):
             warnings.append(f"XLIFF: {match.group(0)}")
 
-        # Plain pattern: OL_WARN:
         plain_warn_pattern = re.compile(r'OL_WARN:\s*(\w+)')
         for match in plain_warn_pattern.finditer(content):
             warnings.append(f"Plain: OL_WARN: {match.group(1)}")
@@ -225,14 +235,12 @@ def extract_warnings(
 def main(
     version: Optional[bool] = typer.Option(None, "--version", is_eager=True, help="Show version"),
 ) -> None:
-    """Omni-Localizer CLI - Batch-mode localization pipeline."""
     if version:
         typer.echo(f"ol version {__version__}")
         raise typer.Exit()
 
 
 def main_entry() -> int:
-    """Entry point for the CLI."""
     app()
     return ExitCode.SUCCESS
 

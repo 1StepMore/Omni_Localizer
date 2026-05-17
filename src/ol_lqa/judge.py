@@ -12,8 +12,9 @@ class JudgeService:
         "format_preservation": 0.15,
     }
 
-    def __init__(self, pass_threshold: float = 7.0) -> None:
+    def __init__(self, pass_threshold: float = 7.0, model_pool=None) -> None:
         self._pass_threshold = pass_threshold
+        self._model_pool = model_pool
 
     async def judge(
         self,
@@ -23,6 +24,28 @@ class JudgeService:
         source_lang: str = "en",
         target_lang: str = "en",
     ) -> EvaluationResult:
+        if self._model_pool:
+            result = await self._model_pool.judge(source, target, source_lang, target_lang)
+            judge_scores = {
+                "adequacy": result.get("adequacy", 50),
+                "fluency": result.get("fluency", 50),
+                "terminology_consistency": result.get("terminology_consistency", 50),
+                "format_preservation": result.get("format_preservation", 50),
+            }
+            score = result.get("score", 50)
+            reason = result.get("reason", "")
+            warnings = []
+            if score < self._pass_threshold * 10:
+                warnings.append(f"Judge score {score/10:.1f} below threshold {self._pass_threshold}")
+            return EvaluationResult(
+                unit_id=unit_id,
+                scorer_scores={},
+                judge_scores=judge_scores,
+                format_preserved=True,
+                format_errors=[],
+                warnings=warnings,
+            )
+
         loop = asyncio.get_event_loop()
         scores = await loop.run_in_executor(
             None,
@@ -97,7 +120,7 @@ class JudgeService:
 
 
 class EnsembleJudge:
-    def __init__(self, judges: List[JudgeService], pass_threshold: float = 7.0) -> None:
+    def __init__(self, judges: List["JudgeService"], pass_threshold: float = 7.0) -> None:
         self._judges = judges
         self._pass_threshold = pass_threshold
 
