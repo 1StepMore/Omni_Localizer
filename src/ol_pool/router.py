@@ -1,7 +1,17 @@
 from litellm import Router
+import os
+import re
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMPoolConfig, LLMModelConfig
+
+
+def _resolve_env_vars(value: str) -> str:
+    if value is None:
+        return None
+    def replacer(m):
+        return os.environ.get(m.group(1), value)
+    return re.sub(r'\$\{([^}]+)\}', replacer, value)
 
 
 class ModelPool:
@@ -22,9 +32,9 @@ class ModelPool:
                     "model": f"{model.provider}/{model.model}",
                 }
                 if model.api_key:
-                    litellm_params["api_key"] = model.api_key
+                    litellm_params["api_key"] = _resolve_env_vars(model.api_key)
                 if model.base_url:
-                    litellm_params["base_url"] = model.base_url
+                    litellm_params["base_url"] = _resolve_env_vars(model.base_url)
                 model_list.append(
                     {
                         "model_name": role,

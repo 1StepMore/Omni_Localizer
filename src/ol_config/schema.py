@@ -23,20 +23,12 @@ def _check_env_vars(api_key: Optional[str]) -> None:
 
 
 class LLMModelConfig(BaseModel):
-    """Single LLM model configuration."""
     provider: str = Field(..., description="LLM provider: openai, anthropic, deepseek, etc.")
     model: str = Field(..., description="Model name: gpt-4, claude-3-sonnet, etc.")
     priority: int = Field(1, ge=1, description="Priority (1=highest). Lower number = higher priority.")
     api_key: Optional[str] = Field(None, description="API key. Can also use env var ${VAR} syntax.")
     base_url: Optional[str] = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
-
-    @model_validator(mode='after')
-    def check_api_key_env_vars(self) -> 'LLMModelConfig':
-        _check_env_vars(self.api_key)
-        if self.base_url:
-            _check_env_vars(self.base_url)
-        return self
 
 class LLMPoolConfig(BaseModel):
     """LLM model pool configuration."""
