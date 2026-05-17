@@ -6,17 +6,17 @@
 llm_pool:
   translation:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null  # or "${CUSTOM_ENDPOINT}" for proxies
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
     - provider: "openai"
-      model: "gpt-4o"
+      model: "ernie-4.5-turbo-32k"
       priority: 2
       role: "translation"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"
