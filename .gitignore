@@ -43,3 +43,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local scripts with secrets (API keys)
+*.bat
+*.sh
+*.ps1
