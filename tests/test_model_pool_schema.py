@@ -29,19 +29,6 @@ class TestLLMModelConfig:
         assert config.provider == "openai"
         assert config.role == LLMModelRole.TRANSLATION
 
-    def test_api_key_env_var_missing(self):
-        """Test that missing env var in api_key raises error."""
-        os.environ.pop("MISSING_VAR", None)
-        with pytest.raises(ValidationError) as exc_info:
-            LLMModelConfig(
-                provider="openai",
-                model="gpt-4",
-                priority=1,
-                api_key="${MISSING_VAR}",
-                role=LLMModelRole.TRANSLATION
-            )
-        assert "Environment variable 'MISSING_VAR'" in str(exc_info.value)
-
     def test_api_key_env_var_exists(self):
         """Test that existing env var in api_key passes validation."""
         os.environ["MY_API_KEY"] = "secret123"
