@@ -1,99 +1,107 @@
 # Omni-Localizer (OL)
 
-AI-native localization pipeline with automated quality control.
+AI-native localization pipeline that translates documents through intelligent LLM routing with built-in quality control.
+
+## What It Does
+
+- **Translate documents** (Markdown, XLIFF) using MiniMax/Baidu ERNIE APIs
+- **Automatic failover** — switches to backup model if primary fails
+- **Quality preservation** — shields code blocks, links, images during translation
+- **LLM-based judging** — evaluates translation accuracy and fluency
+- **Restoration layer** — uses LLM to restore placeholders after translation
 
 ## Quick Start
 
-### 1. Setup Environment
+### 1. Install
 
 ```bash
-# Install dependencies (Windows)
-.venv\Scripts\pip install torch sentence-transformers
-
-# Or via poetry
-poetry install
+pip install -e .
 ```
 
 ### 2. Configure API Keys
 
-Create `.bat` files with your API keys (gitignored):
+Create a `.bat` file (gitignored):
 
 ```bat
-# test_en_to_zh.bat
+@echo off
 set MINIMAX_API_KEY=your_minimax_key
 set MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 set BAIDU_API_KEY=your_baidu_key
 set BAIDU_BASE_URL=https://qianfan.baidubce.com/v2
-python -m ol_cli translate-md input.md -c config/test_universal.yaml -s en -t zh
+set PYTHONPATH=src
+python -m ol_cli translate-md %* -c config/test_universal.yaml -s en -t zh
 ```
 
-```bat
-# test_zh_to_en.bat
-set MINIMAX_API_KEY=your_minimax_key
-set MINIMAX_BASE_URL=https://api.minimaxi.com/v1
-set BAIDU_API_KEY=your_baidu_key
-set BAIDU_BASE_URL=https://qianfan.baidubce.com/v2
-python -m ol_cli translate-md input.md -c config/test_universal.yaml -s zh -t en
-```
-
-### 3. Run Translation
+### 3. Run
 
 ```cmd
-test_en_to_zh.bat your_file.md
+test_en_to_zh.bat your_document.md -o output/
 ```
 
 ## Configuration
 
-`config/test_universal.yaml` - Universal LLM pool config (no language pair hardcoded)
+`config/test_universal.yaml` — LLM pool with MiniMax (primary) + Baidu ERNIE (backup):
 
-Uses MiniMax (priority 1) + Baidu ERNIE (priority 2) for translation, with OpenAI/Anthropic for judging and restoration roles.
-
-API keys use `${VAR}` syntax - set actual values in `.bat` files before running.
-
-## Architecture
-
-- **MD Channel**: Token Stream reconstruction + 4-layer semantic repair
-- **XLIFF Channel**: translate-toolkit based
-- **LQA**: openevalkit (Scorer→Judge two-layer) + COMET
-- **LLM Routing**: LiteLLM with model pool failover
-- **TM**: hypomnema (TMX)
-- **Alignment**: span-aligner + VectorAlign
+```yaml
+llm_pool:
+  translation:
+    - provider: "openai"
+      model: "MiniMax-M2.7"
+      priority: 1
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
+      role: "translation"
+    - provider: "openai"
+      model: "ernie-4.5-turbo-32k"
+      priority: 2
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      role: "translation"
+  judging:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      api_key: "${OPENAI_API_KEY}"
+      role: "judging"
+  restoration:
+    - provider: "openai"
+      model: "gpt-4o-mini"
+      priority: 1
+      api_key: "${OPENAI_API_KEY}"
+      role: "restoration"
+```
 
 ## CLI Commands
 
 ```bash
 # Translate markdown
-ol translate-md <file.md> -c <config.yaml> -s <source_lang> -t <target_lang>
+ol translate-md <file.md> -c <config.yaml> -s en -t zh -o output/
 
 # Translate XLIFF
-ol translate-xliff <file.xlf> -c <config.yaml> -s <source_lang> -t <target_lang>
+ol translate-xliff <file.xlf> -c <config.yaml> -s en -t zh -o output/
 
-# Extract warnings
-ol extract-warnings <file> -o <output.md>
+# Extract warnings from file
+ol extract-warnings <file> -o warnings.md
 ```
 
-## Test
+## Key Features
 
-```bash
-# Windows venv
-.venv\Scripts\python.exe -m pytest tests/ -q
+| Feature | Description |
+|---------|-------------|
+| **Model Pool Failover** | LiteLLM router with primary + backup models per role |
+| **Content Shielding** | Code blocks, links, images preserved during translation |
+| **4-Layer Repair** | Regex → Span alignment → LLM restoration → Safe fallback |
+| **Translation + Judging** | JudgeService evaluates quality (adequacy, fluency, terminology) |
+| **TM Integration** | hypomnema for translation memory lookups |
 
-# Or via poetry
-poetry run pytest
-```
+## Architecture
 
-## Development Phases
-
-| Phase | Description | Duration |
-|-------|-------------|----------|
-| M0 | Infrastructure + data structures + mock interfaces | 2.5 days |
-| M1 | MD native channel | 3 days |
-| M2 | XLIFF channel | 2 days |
-| M3a | Routing + model pool + concurrency | 1.5 days |
-| M3b | LQA + TM + checkpoint | 1.5 days |
-| M4 | UX + E2E + PyPI | 1.5 days |
-
-**Total**: 10 days
+- **MD Channel**: Token Stream + 4-layer semantic repair
+- **XLIFF Channel**: translate-toolkit based
+- **LLM Routing**: LiteLLM with model pool failover
+- **LQA**: openevalkit Scorer→Judge + COMET
+- **TM**: hypomnema (TMX)
+- **Alignment**: span-aligner + VectorAlign
 
 ## License
 

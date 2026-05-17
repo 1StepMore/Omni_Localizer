@@ -1,61 +1,52 @@
-[tool.poetry]
+[project]
 name = "omni-localizer"
 version = "0.1.0"
 description = "AI-native localization pipeline with automated quality control"
-authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-license = "MIT"
-repository = "https://github.com/your-org/omni-localizer"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Your Name", email = "you@example.com"}]
 
-packages = [
-    { include = "ol_core", from = "src" },
-    { include = "ol_md", from = "src" },
-    { include = "ol_xliff", from = "src" },
-    { include = "ol_buses", from = "src" },
-    { include = "ol_config", from = "src" },
-    { include = "ol_pool", from = "src" },
-    { include = "ol_concurrency", from = "src" },
-    { include = "ol_checkpoint", from = "src" },
-    { include = "ol_lqa", from = "src" },
-    { include = "ol_retry", from = "src" },
-    { include = "ol_tm", from = "src" },
-    { include = "ol_routing", from = "src" },
+dependencies = [
+    "litellm>=1.84.0",
+    "translate-toolkit>=3.19.9",
+    "markdown-it-py>=3.0.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0.0",
+    "pytest>=8.0.0",
+    "span-aligner>=0.3.2",
+    "hypomnema>=0.8",
+    "openevalkit>=0.1.7",
+    "typer[all]>=0.15.0",
+    "jinja2>=3.1.0",
+    "rich>=13.0.0",
 ]
 
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+[project.optional-dependencies]
+ml = [
+    "torch>=2.0.0",
+    "sentence-transformers>=3.0.0",
+    "transformers>=4.41.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "pip-audit>=2.8.0",
 ]
 
-[tool.poetry.scripts]
+[project.scripts]
 ol = "ol_cli:main"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-litellm = "^1.84.0"
-translate-toolkit = "^3.19.9"
-markdown-it-py = "^3.0.0"
-pydantic = "^2.0.0"
-PyYAML = "^6.0.0"
-pytest = "^8.0.0"
-span-aligner = "^0.3.2"
-hypomnema = "^0.8"
-openevalkit = "^0.1.7"
-sentence-transformers = "^3.0.0"
-transformers = "^4.41.0"
-typer = { extras = ["all"], version = "^0.15.0" }
-jinja2 = "^3.1.0"
-rich = "^13.0.0"
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
-ruff = "^0.9.0"
-mypy = "^1.14.0"
-pip-audit = "^2.8.0"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
@@ -72,13 +63,3 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
