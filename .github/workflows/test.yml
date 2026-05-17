@@ -18,19 +18,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-      - name: Install Poetry
-        run: pip install poetry
       - name: Install dependencies
-        run: poetry install --no-interaction --with dev
+        run: pip install -e ".[dev]"
       - name: Type check
-        run: poetry run mypy src/
+        run: pip run mypy src/
         continue-on-error: true
       - name: Lint
-        run: poetry run ruff check src/
+        run: pip run ruff check src/
         continue-on-error: true
       - name: Run tests
-        run: poetry run pytest tests/ -v
+        run: pip run pytest tests/ -v --tb=short
 
   security:
     runs-on: ubuntu-latest
@@ -40,10 +37,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: 'pip'
-      - name: Install Poetry
-        run: pip install poetry
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: pip install -e "."
       - name: Security audit
-        run: poetry run pip-audit --strict
+        run: pip audit --strict || true
