@@ -7,11 +7,17 @@ from typing import Optional
 
 import typer
 
+from ol_logging import init_logger, get_logger
+
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 __version__ = "0.1.0"
+
+# Initialize logging
+init_logger()
+logger = get_logger("cli")
 
 # Global interrupt flag for graceful shutdown
 _interrupted = False
@@ -119,6 +125,7 @@ def translate_md(
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
+    logger.info(f"Command: translate_md {input}")
     try:
         src = source_lang or "en"
         tgt = target_lang or "zh"
@@ -138,12 +145,14 @@ def translate_md(
         )
 
         typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+        logger.info(f"Completed: translate_md {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
         typer.echo(f"Pipeline error: {e}", err=True)
+        logger.error(f"Failed: translate_md {input} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 
@@ -223,6 +232,7 @@ def translate_batch(
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
+    logger.info(f"Command: translate_batch {directory}")
     try:
         src = source_lang or "en"
         tgt = target_lang or "zh"
@@ -242,13 +252,16 @@ def translate_batch(
         )
 
         if failed > 0:
+            logger.info(f"Completed: translate_batch {directory}")
             raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+        logger.info(f"Completed: translate_batch {directory}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
         typer.echo(f"Pipeline error: {e}", err=True)
+        logger.error(f"Failed: translate_batch {directory} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 
@@ -276,6 +289,7 @@ def translate_xliff(
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
+    logger.info(f"Command: translate_xliff {input}")
     try:
         src_lang = source_lang
         tgt_lang = target_lang
@@ -297,12 +311,14 @@ def translate_xliff(
         output_file.write_text(repaired, encoding="utf-8")
 
         typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
+        logger.info(f"Completed: translate_xliff {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
         typer.echo(f"Pipeline error: {e}", err=True)
+        logger.error(f"Failed: translate_xliff {input} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 
@@ -317,6 +333,7 @@ def extract_warnings(
         typer.echo(f"Error: {e.message}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
+    logger.info(f"Command: extract_warnings {input}")
     try:
         content = input_path.read_text(encoding="utf-8")
         warnings = []
@@ -347,12 +364,14 @@ def extract_warnings(
             else:
                 typer.echo("# No warnings found")
 
+        logger.info(f"Completed: extract_warnings {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
         typer.echo(f"Pipeline error: {e}", err=True)
+        logger.error(f"Failed: extract_warnings {input} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 

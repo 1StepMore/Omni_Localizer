@@ -4,6 +4,9 @@ import re
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMPoolConfig, LLMModelConfig
+from ol_logging import get_logger
+
+_logger = get_logger("pool")
 
 
 def _resolve_env_vars(value: str) -> str:
@@ -47,17 +50,25 @@ class ModelPool:
     async def translate(
         self, text: str, source_lang: str, target_lang: str
     ) -> str:
-        response = await self._router.acompletion(
-            model="translation",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Translate from {source_lang} to {target_lang}: {text}"
-                }
-            ],
-            temperature=0.0,
-        )
-        return response.choices[0].message.content
+        _logger.debug(f"Translation request: {len(text)} chars, {source_lang}→{target_lang}")
+        _logger.debug(f"Model selected: translation")
+        try:
+            response = await self._router.acompletion(
+                model="translation",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Translate from {source_lang} to {target_lang}: {text}"
+                    }
+                ],
+                temperature=0.0,
+            )
+            translated = response.choices[0].message.content
+            _logger.debug(f"Translation response: {len(translated)} chars")
+            return translated
+        except Exception as e:
+            _logger.error(f"Translation failed: {e}")
+            raise
 
     async def judge(
         self, source: str, target: str, source_lang: str, target_lang: str
