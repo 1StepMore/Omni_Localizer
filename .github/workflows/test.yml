@@ -19,7 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" --verbose
+        timeout-minutes: 10
       - name: Type check
         run: python -m mypy src/
         continue-on-error: true
