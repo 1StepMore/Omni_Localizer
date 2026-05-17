@@ -69,10 +69,15 @@ class TestLLMPoolConfig:
             judging=[
                 LLMModelConfig(provider="anthropic", model="claude-3-sonnet", priority=1, role=LLMModelRole.JUDGING),
                 LLMModelConfig(provider="anthropic", model="claude-3-opus", priority=2, role=LLMModelRole.JUDGING),
+            ],
+            restoration=[
+                LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.RESTORATION),
+                LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=2, role=LLMModelRole.RESTORATION),
             ]
         )
         assert len(pool.translation) == 2
         assert len(pool.judging) == 2
+        assert len(pool.restoration) == 2
 
     def test_pool_with_only_one_translation_model_fails(self):
         """Test that pool with only 1 translation model raises error."""
@@ -114,6 +119,10 @@ class TestProjectConfigWithPool:
             judging=[
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.JUDGING),
                 LLMModelConfig(provider="anthropic", model="claude-3-sonnet", priority=2, role=LLMModelRole.JUDGING),
+            ],
+            restoration=[
+                LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.RESTORATION),
+                LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=2, role=LLMModelRole.RESTORATION),
             ]
         )
         config = ProjectConfig(

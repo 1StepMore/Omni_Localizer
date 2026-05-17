@@ -16,13 +16,15 @@ class ModelPool:
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
         model_list = []
-        for role in ("translation", "judging"):
+        for role in ("translation", "judging", "restoration"):
             for model in getattr(pool, role, []):
                 litellm_params = {
                     "model": f"{model.provider}/{model.model}",
                 }
                 if model.api_key:
                     litellm_params["api_key"] = model.api_key
+                if model.base_url:
+                    litellm_params["base_url"] = model.base_url
                 model_list.append(
                     {
                         "model_name": role,

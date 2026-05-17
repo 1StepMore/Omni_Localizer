@@ -9,30 +9,36 @@ llm_pool:
       priority: 1
       role: "translation"
       api_key: null
+      base_url: null  # Optional: "${OPENAI_BASE_URL}" for proxies
     - provider: "openai"
       model: "gpt-4o"
       priority: 2
       role: "translation"
       api_key: null
+      base_url: null
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"
       priority: 1
       role: "judging"
       api_key: null
+      base_url: null
     - provider: "anthropic"
       model: "claude-3-sonnet-20240229"
       priority: 2
       role: "judging"
       api_key: null
+      base_url: null
   restoration:
     - provider: "openai"
       model: "gpt-4o-mini"
       priority: 1
       role: "restoration"
       api_key: null
+      base_url: null
     - provider: "openai"
       model: "gpt-4o-mini"
       priority: 2
       role: "restoration"
       api_key: null
+      base_url: null
