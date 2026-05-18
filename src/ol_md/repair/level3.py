@@ -56,10 +56,10 @@ class LiteLLMRestorer(LLMRestorer):
             for pid, content in shield_map.items()
         )
 
-        prompt = f"""You are a placeholder restoration specialist. The translation process shielded certain content (code blocks, math, etc.) with temporary placeholders. Your job is to FIX the translated text by restoring placeholders to their correct positions.
+        prompt = f"""You are a placeholder restoration specialist. The translation process shielded certain content (code blocks, math, etc.) with HTML comment markers. Your job is to FIX the translated text by restoring placeholders to their correct positions.
 
 CRITICAL RULES:
-1. The text between \\x00OL_CODE_XXXX\\x00 or similar markers is SHIELDED CONTENT that should NOT be translated - restore it EXACTLY as shown in the mapping below
+1. The text between <!--OL_CODE_X|-- and <!--/OL_CODE_X|--> markers is SHIELDED CONTENT that should NOT be translated - restore it EXACTLY as shown in the mapping below
 2. DO NOT translate or modify the shielded content - restore it verbatim
 3. Return ONLY the corrected translation text, nothing else
 
