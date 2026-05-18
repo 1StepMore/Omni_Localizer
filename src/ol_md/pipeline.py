@@ -7,26 +7,13 @@ class MDRepairPipeline:
         self.llm_restorer = llm_restorer
 
     def _get_placeholder_str(self, key: str) -> str:
-        parts = key.rsplit('_', 1)
-        suffix = parts[1]
-        prefix_map = {
-            'code': 'B64',
-            'inline_code': 'I',
-            'math': 'M',
-            'link': 'L',
-            'image': 'G',
-            'html_block': 'H',
-            'autolink': 'A',
-        }
-        prefix = prefix_map.get(parts[0], parts[0].upper())
-        return f'OL{prefix}_{suffix}'
+        return key
 
     def is_complete(self, text: str, shield_map: Dict[str, str]) -> bool:
         if not shield_map:
             return True
-        for placeholder_id in shield_map.keys():
-            placeholder_str = self._get_placeholder_str(placeholder_id)
-            if placeholder_str not in text:
+        for marker in shield_map.keys():
+            if marker not in text:
                 return False
         return True
 
@@ -55,11 +42,7 @@ class MDRepairPipeline:
         if self.is_complete(current_text, shield_map):
             return current_text
 
-        missing = {}
-        for k in shield_map.keys():
-            placeholder_str = self._get_placeholder_str(k)
-            if placeholder_str not in current_text:
-                missing[k] = shield_map[k]
+        missing = {k: v for k, v in shield_map.items() if k not in current_text}
         if missing:
             current_text = level4_safe_fallback(current_text, missing)
 
