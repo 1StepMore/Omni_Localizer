@@ -16,7 +16,7 @@ def shield_markdown(md_text: str) -> Tuple[str, Dict[str, str]]:
     inline_code_pattern = re.compile(r'`([^`\x00]+)`')
     matches = list(inline_code_pattern.finditer(text))
     for i, match in enumerate(reversed(matches)):
-        placeholder = f'\x00OL_CODE_i{i:04d}\x00'
+        placeholder = f'\x00OL_ICODE_{i:04d}\x00'
         shield_map[f'inline_code_{i:04d}'] = match.group(1)
         text = text[:match.start()] + placeholder + text[match.end():]
 
@@ -68,7 +68,7 @@ def unshield_markdown(translated_text: str, shield_map: Dict[str, str]) -> str:
             result = result.replace(f'\x00OL_CODE_{idx}\x00', original_content)
         elif placeholder_id.startswith('inline_code_'):
             idx = placeholder_id.split('_')[2]
-            result = result.replace(f'\x00OL_CODE_i{idx}\x00', f'`{original_content}`')
+            result = result.replace(f'\x00OL_ICODE_{idx}\x00', f'`{original_content}`')
         elif placeholder_id.startswith('math_'):
             idx = placeholder_id.split('_')[1]
             result = result.replace(f'\x00OL_MATH_{idx}\x00', original_content)
@@ -89,6 +89,6 @@ def unshield_markdown(translated_text: str, shield_map: Dict[str, str]) -> str:
 
 
 def get_placeholders_in_text(text: str) -> List[str]:
-    pattern = re.compile(r'\x00OL_([A-Z_]+)_\d+\x00')
+    pattern = re.compile(r'\x00OL_([A-Z_]+)_(\d+)\x00')
     matches = pattern.findall(text)
     return matches

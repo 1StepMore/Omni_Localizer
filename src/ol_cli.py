@@ -91,9 +91,10 @@ async def _translate_md_async(
         translated = await pool.translate(shielded, src_lang, tgt_lang)
 
     if shield_map:
-        translated = unshield_markdown(translated, shield_map)
-
-    repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
+        repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
+        repaired = unshield_markdown(repaired, shield_map)
+    else:
+        repaired = translated
 
     output_file = output_path / input_path.name
     output_file.write_text(repaired, encoding="utf-8")
