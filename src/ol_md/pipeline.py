@@ -7,14 +7,10 @@ class MDRepairPipeline:
         self.llm_restorer = llm_restorer
 
     def _get_placeholder_str(self, key: str) -> str:
-        if key.startswith('inline_code_'):
-            suffix = key.split('_')[2]
-            return f'\x00OL_ICODE_{suffix}\x00'
-        else:
-            parts = key.rsplit('_', 1)
-            prefix = parts[0].upper()
-            suffix = parts[1]
-            return f'\x00OL_{prefix}_{suffix}\x00'
+        parts = key.rsplit('_', 1)
+        prefix = parts[0].upper()
+        suffix = parts[1]
+        return f'<!--OL_{prefix}_{suffix}|-->'
 
     def is_complete(self, text: str, shield_map: Dict[str, str]) -> bool:
         if not shield_map:
