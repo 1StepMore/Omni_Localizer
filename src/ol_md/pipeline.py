@@ -6,12 +6,22 @@ class MDRepairPipeline:
     def __init__(self, llm_restorer=None):
         self.llm_restorer = llm_restorer
 
+    def _get_placeholder_str(self, key: str) -> str:
+        if key.startswith('inline_code_'):
+            suffix = key.split('_')[2]
+            return f'\x00OL_ICODE_{suffix}\x00'
+        else:
+            parts = key.rsplit('_', 1)
+            prefix = parts[0].upper()
+            suffix = parts[1]
+            return f'\x00OL_{prefix}_{suffix}\x00'
+
     def is_complete(self, text: str, shield_map: Dict[str, str]) -> bool:
         if not shield_map:
             return True
         for placeholder_id in shield_map.keys():
-            placeholder_str = f'\x00OL_{placeholder_id.upper().replace("_", "_")}\x00'
-            if placeholder_str not in text and placeholder_id not in text:
+            placeholder_str = self._get_placeholder_str(placeholder_id)
+            if placeholder_str not in text:
                 return False
         return True
 
@@ -40,7 +50,11 @@ class MDRepairPipeline:
         if self.is_complete(current_text, shield_map):
             return current_text
 
-        missing = {k: v for k, v in shield_map.items() if f'\x00OL_{k.upper().replace("_", "_")}\x00' not in current_text}
+        missing = {}
+        for k in shield_map.keys():
+            placeholder_str = self._get_placeholder_str(k)
+            if placeholder_str not in current_text:
+                missing[k] = shield_map[k]
         if missing:
             current_text = level4_safe_fallback(current_text, missing)
 
