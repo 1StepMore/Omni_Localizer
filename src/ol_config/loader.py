@@ -1,10 +1,18 @@
 """Config loader for Omni-Localizer."""
+import os
 from pathlib import Path
 from typing import Union
 import yaml
 from pydantic import ValidationError
 from ol_config.schema import ProjectConfig
-from ol_logging import get_logger
+from ol_logging.core import get_logger
+
+_env_file = Path(__file__).parent.parent.parent / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
 
 _logger = get_logger("config")
 

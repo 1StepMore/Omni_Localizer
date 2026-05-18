@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ol_logging import get_logger
+from ol_logging.core import get_logger
 
 _logger = get_logger("batch.discovery")
 

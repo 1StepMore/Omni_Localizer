@@ -50,21 +50,29 @@ class LiteLLMRestorer(LLMRestorer):
         original_text: str,
         shield_map: Dict[str, str]
     ) -> str:
-        placeholder_list = ", ".join(shield_map.values())
+        # Build a clear mapping of placeholder IDs to original content
+        placeholder_mapping = "\n".join(
+            f"  {pid}: {content[:200]}{'...' if len(content) > 200 else ''}"
+            for pid, content in shield_map.items()
+        )
 
-        prompt = f"""Restore these placeholders to their exact positions in the translation.
+        prompt = f"""You are a placeholder restoration specialist. The translation process shielded certain content (code blocks, math, etc.) with temporary placeholders. Your job is to FIX the translated text by restoring placeholders to their correct positions.
 
-Original text with placeholders:
+CRITICAL RULES:
+1. The text between \\x00OL_CODE_XXXX\\x00 or similar placeholders is SHIELDED CODE that should NOT be translated - restore it EXACTLY as shown in the mapping below
+2. DO NOT translate or modify the shielded content - restore it verbatim
+3. Return ONLY the corrected translation text, nothing else
+
+Shielded content mapping (placeholder_id -> original content to restore):
+{placeholder_mapping}
+
+Original text with placeholders (what it should look like):
 {original_text}
 
-Current translation (placeholders may be missing or moved):
+Current broken translation (placeholders may be missing, duplicated, or in wrong positions):
 {translated_text}
 
-Placeholders to restore:
-{placeholder_list}
-
-Return the translation with all placeholders restored to their correct positions.
-Only return the restored translation, nothing else."""
+Return the corrected translation with all placeholders restored to match the original pattern."""
 
         result = await self._model_pool.translate(
             text=prompt,

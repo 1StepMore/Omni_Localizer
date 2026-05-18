@@ -4,7 +4,7 @@ import re
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMPoolConfig, LLMModelConfig
-from ol_logging import get_logger
+from ol_logging.core import get_logger
 
 _logger = get_logger("pool")
 
