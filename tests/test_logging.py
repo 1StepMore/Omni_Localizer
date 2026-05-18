@@ -101,21 +101,21 @@ class TestGetLogger:
 
     def test_get_logger_returns_ol_prefix(self):
         """Test get_logger prefixes 'ol.' to name."""
-        from ol_logging import get_logger
+        from ol_logging.core import get_logger
 
         logger = get_logger("cli")
         assert logger.name == "ol.cli"
 
     def test_get_logger_nested_name(self):
         """Test get_logger handles dot-separated names."""
-        from ol_logging import get_logger
+        from ol_logging.core import get_logger
 
         logger = get_logger("batch.processor")
         assert logger.name == "ol.batch.processor"
 
     def test_get_logger_returns_logger_instance(self):
         """Test get_logger returns logging.Logger instance."""
-        from ol_logging import get_logger
+        from ol_logging.core import get_logger
 
         logger = get_logger("test")
         assert isinstance(logger, logging.Logger)
@@ -180,7 +180,7 @@ class TestLogLevelEnv:
             import importlib
             importlib.reload(constants)
 
-            from ol_logging import get_logger
+            from ol_logging.core import get_logger
             logger = get_logger("test")
             # Logger level should be set appropriately
             assert logger.level == logging.DEBUG or logger.level == 0  # 0 means not set
@@ -194,7 +194,7 @@ class TestLogLevelEnv:
             import importlib
             importlib.reload(constants)
 
-            from ol_logging import get_logger
+            from ol_logging.core import get_logger
             logger = get_logger("test")
             assert logger.level == logging.INFO or logger.level == 0
 
@@ -208,7 +208,7 @@ class TestLogLevelEnv:
             importlib.reload(constants)
 
             # Should not crash, just use default
-            from ol_logging import get_logger
+            from ol_logging.core import get_logger
             logger = get_logger("test")
 
             importlib.reload(constants)

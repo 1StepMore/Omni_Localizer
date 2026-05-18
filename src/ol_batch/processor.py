@@ -7,7 +7,7 @@ from typing import Optional
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_concurrency.scheduler import ConcurrencyLimiter
-from ol_logging import get_logger
+from ol_logging.core import get_logger
 from ol_pool.router import ModelPool
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_md.pipeline import MDRepairPipeline

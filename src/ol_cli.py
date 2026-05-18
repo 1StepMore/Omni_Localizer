@@ -7,7 +7,7 @@ from typing import Optional
 
 import typer
 
-from ol_logging import init_logger, get_logger
+from ol_logging.core import init_logger, get_logger
 
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
