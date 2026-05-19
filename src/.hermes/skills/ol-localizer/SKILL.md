@@ -49,31 +49,15 @@ ln -s src/.hermes/skills/ol-localizer ~/.hermes/skills/ol-localizer
 ## Configuration
 
 Required environment variables:
-- `MINIMAX_API_KEY` - API key for MiniMax translation service
-- `MINIMAX_BASE_URL` - Base URL for MiniMax API (default: https://api.minimaxi.com/v1)
-- `BAIDU_API_KEY` - API key for Baidu ERNIE translation service (backup)
-- `BAIDU_BASE_URL` - Base URL for Baidu API (default: https://qianfan.baidubce.com/v2)
+- `OPENAI_API_KEY` - API key for your LLM provider
+
+Optional environment variables:
+- `OPENAI_BASE_URL` - Custom endpoint for your LLM provider
 
 Optional environment variable:
 - `PYTHONPATH` - Must include `src` directory when running from project root
 
-The CLI uses a config file to specify the LLM pool with primary and backup models:
-```yaml
-llm_pool:
-  translation:
-    - provider: "openai"
-      model: "MiniMax-M2.7"
-      priority: 1
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
-      role: "translation"
-    - provider: "openai"
-      model: "ernie-4.5-turbo-32k"
-      priority: 2
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
-      role: "translation"
-```
+The CLI uses a config file to specify the LLM pool. See `config/default.yaml` for an example.
 
 ## CLI Options
 
@@ -87,7 +71,7 @@ llm_pool:
 
 ## Pitfalls
 
-- **API keys not set**: Ensure MINIMAX_API_KEY and BAIDU_API_KEY are in environment before running. Without these, the translation will fail with a ModelPool initialization error.
+- **API keys not set**: Ensure OPENAI_API_KEY is in environment before running. Without it, the translation will fail with a ModelPool initialization error.
 
 - **Input file not found**: The CLI validates that the input file exists and is a regular file before processing. Use an absolute path or ensure the relative path is correct.
 

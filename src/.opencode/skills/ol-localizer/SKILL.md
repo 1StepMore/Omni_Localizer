@@ -23,15 +23,13 @@ Use this skill when you need to translate Markdown documents between languages. 
 
 ## Configuration
 Required environment variables:
-- `MINIMAX_API_KEY` - API key for MiniMax translation service
-- `BAIDU_API_KEY` - API key for Baidu ERNIE translation service (backup)
+- `OPENAI_API_KEY` - API key for your LLM provider
 
 Optional environment variables:
-- `MINIMAX_BASE_URL` - Custom endpoint for MiniMax API
-- `BAIDU_BASE_URL` - Custom endpoint for Baidu API
+- `OPENAI_BASE_URL` - Custom endpoint for your LLM provider
 
 ## Pitfalls
-- **API keys not set**: Ensure MINIMAX_API_KEY and BAIDU_API_KEY are in environment before invoking
+- **API keys not set**: Ensure OPENAI_API_KEY is in environment before invoking
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
 - **Unsupported format**: Only Markdown (.md) is supported in v1 - not XLIFF or other formats
