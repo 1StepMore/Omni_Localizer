@@ -40,22 +40,20 @@ test_en_to_zh.bat your_document.md -o output/
 
 ## Configuration
 
-`config/test_universal.yaml` — Example LLM pool configuration:
+`config/default.yaml` — Example LLM pool configuration:
 
 ```yaml
 llm_pool:
   translation:
     - provider: "openai"
-      model: "MiniMax-M2.7"
+      model: "gpt-4o-mini"
       priority: 1
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
+      api_key: "${OPENAI_API_KEY}"
       role: "translation"
     - provider: "openai"
-      model: "ernie-4.5-turbo-32k"
+      model: "gpt-4o"
       priority: 2
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
+      api_key: "${OPENAI_API_KEY}"
       role: "translation"
   judging:
     - provider: "openai"
