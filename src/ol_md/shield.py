@@ -98,6 +98,6 @@ def unshield_markdown(translated_text: str, shield_map: Dict[str, str]) -> str:
 
 
 def get_placeholders_in_text(text: str) -> List[str]:
-    pattern = re.compile(r'OL(B64|I|M|L|G|H|A)_(\d+)')
+    pattern = re.compile(r'OL(B64|I|M|L|G|H|A)_([0-9a-fA-F]+)')
     matches = pattern.findall(text)
     return matches
