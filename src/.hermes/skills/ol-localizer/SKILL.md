@@ -1,4 +1,116 @@
 ---
 name: ol-localizer
-description: Translate Markdown documents using AI
+description: Translate Markdown documents between languages using AI-powered localization with quality control. Handles code blocks, links, and technical content preservation.
+metadata:
+  hermes:
+    tags: [translation, localization, markdown]
+    category: tools
+    requires_toolsets: [terminal]
 ---
+
+# Omni-Localizer
+
+## When to Use
+
+Use this skill when you need to translate Markdown documents between languages. The skill preserves code blocks, links, and images while translating only the natural language content. It supports automatic failover between translation providers and includes quality evaluation.
+
+Common use cases:
+- Translating documentation from English to Chinese, Japanese, or other languages
+- Localizing user-facing markdown content
+- Batch translating multiple markdown files
+
+## Procedure
+
+1. Write the source text to a temporary `.md` file
+
+2. Invoke the CLI:
+   ```
+   python -m ol_cli translate-md <file.md> -c config/default.yaml -s <source_lang> -t <target_lang> -o <output_dir> --json
+   ```
+
+3. Parse the JSON output for success/error status
+
+4. If successful, read the translated file from `<output_dir>/<original_filename>`
+
+## Installation
+
+Copy or symlink this directory to `~/.hermes/skills/ol-localizer/` to activate.
+
+For example:
+```bash
+cp -r src/.hermes/skills/ol-localizer ~/.hermes/skills/
+```
+
+Or create a symlink:
+```bash
+ln -s src/.hermes/skills/ol-localizer ~/.hermes/skills/ol-localizer
+```
+
+## Configuration
+
+Required environment variables:
+- `MINIMAX_API_KEY` - API key for MiniMax translation service
+- `MINIMAX_BASE_URL` - Base URL for MiniMax API (default: https://api.minimaxi.com/v1)
+- `BAIDU_API_KEY` - API key for Baidu ERNIE translation service (backup)
+- `BAIDU_BASE_URL` - Base URL for Baidu API (default: https://qianfan.baidubce.com/v2)
+
+Optional environment variable:
+- `PYTHONPATH` - Must include `src` directory when running from project root
+
+The CLI uses a config file to specify the LLM pool with primary and backup models:
+```yaml
+llm_pool:
+  translation:
+    - provider: "openai"
+      model: "MiniMax-M2.7"
+      priority: 1
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
+      role: "translation"
+    - provider: "openai"
+      model: "ernie-4.5-turbo-32k"
+      priority: 2
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      role: "translation"
+```
+
+## CLI Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--config` | `-c` | Path to config YAML file |
+| `--source-lang` | `-s` | Source language code (e.g., en, zh) |
+| `--target-lang` | `-t` | Target language code (e.g., en, zh) |
+| `--output-dir` | `-o` | Output directory for translated files |
+| `--json` | | Output JSON instead of human-readable text |
+
+## Pitfalls
+
+- **API keys not set**: Ensure MINIMAX_API_KEY and BAIDU_API_KEY are in environment before running. Without these, the translation will fail with a ModelPool initialization error.
+
+- **Input file not found**: The CLI validates that the input file exists and is a regular file before processing. Use an absolute path or ensure the relative path is correct.
+
+- **Output directory not specified**: The `--output-dir` option is required. The directory will be created if it does not exist.
+
+- **Input file too large**: Recommend files under 100KB for optimal performance. Very large files may cause API timeouts.
+
+- **Only Markdown supported**: The `translate-md` command only handles `.md` files. For XLIFF files, use `translate-xliff` instead.
+
+- **JSON output parsing**: When using `--json`, stdout contains the JSON result. stderr may contain log messages. Parse accordingly in your automation.
+
+## Verification
+
+1. Check JSON output has `"success": true`
+
+2. Verify translated file exists in output directory
+
+3. For programmatic verification, parse the JSON output:
+   ```json
+   {"success": true, "input_file": "example.md", "output_file": "output/example.md", "source_lang": "en", "target_lang": "zh"}
+   ```
+
+4. On failure, the JSON includes an error message:
+   ```json
+   {"success": false, "input_file": "example.md", "error": "error description"}
+   ```
