@@ -5,7 +5,17 @@ description = "AI-native localization pipeline with automated quality control"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
-authors = [{name = "Your Name", email = "you@example.com"}]
+authors = [{name = "1StepMore", email = "renanzai@foxmail.com"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Localization",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+keywords = ["localization", "translation", "llm", "ai", "markdown", "xliff", "i18n", "internationalization"]
 
 dependencies = [
     "litellm>=1.84.0",
@@ -35,12 +45,27 @@ dev = [
     "pip-audit>=2.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/1StepMore/Omni_Localizer"
+Documentation = "https://github.com/1StepMore/Omni_Localizer#readme"
+Repository = "https://github.com/1StepMore/Omni_Localizer"
+Issues = "https://github.com/1StepMore/Omni_Localizer/issues"
+
 [project.scripts]
-ol = "ol_cli:main"
+ol = "ol_cli:main_entry"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.yaml", "*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
