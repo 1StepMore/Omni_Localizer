@@ -66,6 +66,31 @@ def ensure_output_dir(path: str) -> Path:
     return output_path
 
 
+def output_json(
+    success: bool,
+    input_file: str,
+    output_file: Optional[str] = None,
+    source_lang: Optional[str] = None,
+    target_lang: Optional[str] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Output structured JSON to stdout."""
+    import json
+    result = {
+        "success": success,
+        "input_file": input_file,
+    }
+    if output_file:
+        result["output_file"] = str(output_file)
+    if source_lang:
+        result["source_lang"] = source_lang
+    if target_lang:
+        result["target_lang"] = target_lang
+    if error:
+        result["error"] = error
+    typer.echo(json.dumps(result, ensure_ascii=False))
+
+
 async def _translate_md_async(
     input_path: Path,
     output_path: Path,
@@ -109,6 +134,7 @@ def translate_md(
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -145,14 +171,21 @@ def translate_md(
             _translate_md_async(input_path, output_path, config, src, tgt)
         )
 
-        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+        if json_output:
+            actual_output = output_path / input_path.name
+            output_json(True, str(input_path), str(actual_output), src, tgt)
+        else:
+            typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
         logger.info(f"Completed: translate_md {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
-        typer.echo(f"Pipeline error: {e}", err=True)
+        if json_output:
+            output_json(False, str(input_path), error=str(e))
+        else:
+            typer.echo(f"Pipeline error: {e}", err=True)
         logger.error(f"Failed: translate_md {input} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
@@ -212,6 +245,7 @@ def translate_batch(
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     concurrency: int = typer.Option(5, "--concurrency", "-j", help="Max concurrent translations"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
 ) -> int:
     try:
         input_path = Path(directory)
@@ -253,15 +287,22 @@ def translate_batch(
         )
 
         if failed > 0:
+            if json_output:
+                output_json(False, directory, error=f"{failed} files failed")
             logger.info(f"Completed: translate_batch {directory}")
             raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+        if json_output:
+            output_json(True, directory, source_lang=src, target_lang=tgt)
         logger.info(f"Completed: translate_batch {directory}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
-        typer.echo(f"Pipeline error: {e}", err=True)
+        if json_output:
+            output_json(False, directory, error=str(e))
+        else:
+            typer.echo(f"Pipeline error: {e}", err=True)
         logger.error(f"Failed: translate_batch {directory} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
@@ -273,6 +314,7 @@ def translate_xliff(
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -311,14 +353,20 @@ def translate_xliff(
         output_file = output_path / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 
-        typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
+        if json_output:
+            output_json(True, str(input_path), str(output_file), src_lang, tgt_lang)
+        else:
+            typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
         logger.info(f"Completed: translate_xliff {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:
         raise
     except Exception as e:
-        typer.echo(f"Pipeline error: {e}", err=True)
+        if json_output:
+            output_json(False, str(input_path), error=str(e))
+        else:
+            typer.echo(f"Pipeline error: {e}", err=True)
         logger.error(f"Failed: translate_xliff {input} - {e}")
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
