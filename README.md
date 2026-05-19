@@ -118,7 +118,7 @@ To use with OpenCode:
 
 2. Or reference it in your OpenCode configuration
 
-For detailed usage instructions, see `.opencode/skills/ol-localizer/SKILL.md`
+For detailed usage instructions, see `src/.opencode/skills/ol-localizer/SKILL.md`
 
 ### Hermes
 
@@ -131,7 +131,7 @@ To use with Hermes:
 
 2. Restart Hermes to activate
 
-For detailed usage instructions, see `.hermes/skills/ol-localizer/SKILL.md`
+For detailed usage instructions, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
 ### Configuration
 

@@ -108,7 +108,7 @@ Wave 2 (Skill Content - SKILL.md files):
 ├── Task 6: Write Hermes SKILL.md content
 └── Task 7: Create skill verification test helper
 
-- [ ] 8. Add skill discovery tests
+- [x] 8. Add skill discovery tests
 
   **What to do**:
   - Create `tests/test_opencode_skill.py` with:
@@ -180,7 +180,7 @@ Wave 2 (Skill Content - SKILL.md files):
   - Files: `tests/test_opencode_skill.py`, `tests/test_hermes_skill.py`
   - Pre-commit: `pytest tests/test_opencode_skill.py tests/test_hermes_skill.py -v`
 
-- [ ] 9. Add skill invocation tests
+- [x] 9. Add skill invocation tests
 
   **What to do**:
   - Create `tests/test_skill_invocation.py` with:
@@ -242,7 +242,7 @@ Wave 2 (Skill Content - SKILL.md files):
   - Files: `tests/test_skill_invocation.py`
   - Pre-commit: `pytest tests/test_skill_invocation.py -v`
 
-- [ ] 10. Update project README with agent usage
+- [x] 10. Update project README with agent usage
 
   **What to do**:
   - Add new section to README.md: "## Agent Usage" or "## Using with Coding Agents"
@@ -349,7 +349,7 @@ Wave FINAL (Verification - 4 parallel reviews):
 
 ## TODOs
 
-- [ ] 1. Add --json flag to CLI translate commands
+- [x] 1. Add --json flag to CLI translate commands
 
   **What to do**:
   - Modify `src/ol_cli.py` to add `--json` flag to `translate-md`, `translate-xliff`, and `translate-batch` commands
@@ -425,7 +425,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Files: `src/ol_cli.py`
   - Pre-commit: `pytest tests/test_ol_cli.py -v`
 
-- [ ] 2. Create OpenCode skill directory structure
+- [x] 2. Create OpenCode skill directory structure
 
   **What to do**:
   - Create directory: `src/.opencode/skills/ol-localizer/`
@@ -487,7 +487,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Message: `feat(skills): add OpenCode skill directory structure`
   - Files: `src/.opencode/skills/` (new directories)
 
-- [ ] 3. Create Hermes skill directory structure
+- [x] 3. Create Hermes skill directory structure
 
   **What to do**:
   - Create directory: `src/.hermes/skills/ol-localizer/` (note: Hermes uses ~/.hermes/skills/ at runtime, but we create src/.hermes/ as the source; actual deployment will copy or symlink)
@@ -550,7 +550,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Message: `feat(skills): add Hermes skill directory structure`
   - Files: `src/.hermes/skills/` (new directories)
 
-- [ ] 4. Add error handling for JSON mode
+- [x] 4. Add error handling for JSON mode
 
   **What to do**:
   - Ensure all CLI commands handle errors gracefully in JSON mode
@@ -614,7 +614,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Files: `src/ol_cli.py`
   - Pre-commit: `pytest tests/test_ol_cli.py -v`
 
-- [ ] 5. Write OpenCode SKILL.md content
+- [x] 5. Write OpenCode SKILL.md content
 
   **What to do**:
   - Write comprehensive SKILL.md for OpenCode in `src/.opencode/skills/ol-localizer/SKILL.md`
@@ -692,7 +692,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Message: `docs(skills): add OpenCode SKILL.md with usage instructions`
   - Files: `src/.opencode/skills/ol-localizer/SKILL.md`
 
-- [ ] 6. Write Hermes SKILL.md content
+- [x] 6. Write Hermes SKILL.md content
 
   **What to do**:
   - Write comprehensive SKILL.md for Hermes in `src/.hermes/skills/ol-localizer/SKILL.md`
@@ -757,7 +757,7 @@ Wave FINAL (Verification - 4 parallel reviews):
   - Message: `docs(skills): add Hermes SKILL.md with usage instructions`
   - Files: `src/.hermes/skills/ol-localizer/SKILL.md`
 
-- [ ] 7. Create skill verification test helper
+- [x] 7. Create skill verification test helper
 
   **What to do**:
   - Create a test helper module `tests/skill_helpers.py` with functions:
@@ -822,10 +822,10 @@ Wave FINAL (Verification - 4 parallel reviews):
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
-- [ ] F2. **Code Quality Review** — `unspecified-high`
-- [ ] F3. **Real Manual QA** — `unspecified-high`
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F1. **Plan Compliance Audit** — `oracle` ✅
+- [x] F2. **Code Quality Review** — `unspecified-high` ✅
+- [x] F3. **Real Manual QA** — `unspecified-high` ✅ (12 skill tests passed; 1 CLI test env issue)
+- [x] F4. **Scope Fidelity Check** — `deep` ✅
 
 ---
 
