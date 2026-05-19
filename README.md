@@ -103,6 +103,53 @@ ol extract-warnings <file> -o warnings.md
 - **TM**: hypomnema (TMX)
 - **Alignment**: span-aligner + VectorAlign
 
+## Agent Usage
+
+Omni-Localizer can be used as a skill by coding agents (OpenCode, Hermes).
+
+### OpenCode
+
+To use with OpenCode:
+
+1. Add the skill to your project:
+   ```
+   cp -r src/.opencode/skills/ol-localizer <your-project>/.opencode/skills/
+   ```
+
+2. Or reference it in your OpenCode configuration
+
+For detailed usage instructions, see `.opencode/skills/ol-localizer/SKILL.md`
+
+### Hermes
+
+To use with Hermes:
+
+1. Copy or symlink the skill:
+   ```
+   cp -r src/.hermes/skills/ol-localizer ~/.hermes/skills/
+   ```
+
+2. Restart Hermes to activate
+
+For detailed usage instructions, see `.hermes/skills/ol-localizer/SKILL.md`
+
+### Configuration
+
+Both agents require the following environment variables:
+
+- `MINIMAX_API_KEY` - API key for MiniMax translation service
+- `BAIDU_API_KEY` - API key for Baidu ERNIE translation service (backup)
+
+Set these before invoking the skill.
+
+### JSON Output
+
+When used by agents, the CLI should be invoked with the `--json` flag for machine-readable output:
+
+```bash
+python -m ol_cli translate-md <file.md> -c config/default.yaml -s en -t zh -o output/ --json
+```
+
 ## License
 
 MIT
