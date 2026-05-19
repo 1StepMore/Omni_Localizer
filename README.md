@@ -105,49 +105,62 @@ ol extract-warnings <file> -o warnings.md
 
 ## Agent Usage
 
-Omni-Localizer can be used as a skill by coding agents (OpenCode, Hermes).
+Omni-Localizer can be used as a **skill** by coding agents (OpenCode, Hermes). Agents read the SKILL.md file to understand how to invoke translation.
 
 ### OpenCode
 
-To use with OpenCode:
-
 1. Add the skill to your project:
-   ```
+   ```bash
    cp -r src/.opencode/skills/ol-localizer <your-project>/.opencode/skills/
    ```
 
-2. Or reference it in your OpenCode configuration
+2. Reference it in your OpenCode configuration if needed
 
-For detailed usage instructions, see `src/.opencode/skills/ol-localizer/SKILL.md`
+For detailed usage, see `src/.opencode/skills/ol-localizer/SKILL.md`
 
 ### Hermes
 
-To use with Hermes:
-
 1. Copy or symlink the skill:
-   ```
+   ```bash
    cp -r src/.hermes/skills/ol-localizer ~/.hermes/skills/
    ```
 
 2. Restart Hermes to activate
 
-For detailed usage instructions, see `src/.hermes/skills/ol-localizer/SKILL.md`
+For detailed usage, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
-### Configuration
+### Required Environment Variables
 
-Both agents require the following environment variables:
-
+Both agents require:
 - `MINIMAX_API_KEY` - API key for MiniMax translation service
-- `BAIDU_API_KEY` - API key for Baidu ERNIE translation service (backup)
+- `BAIDU_API_KEY` - API key for Baidu ERNIE (backup)
 
-Set these before invoking the skill.
+### Testing the Agent Integration
 
-### JSON Output
-
-When used by agents, the CLI should be invoked with the `--json` flag for machine-readable output:
-
+**Verify skill files exist:**
 ```bash
-python -m ol_cli translate-md <file.md> -c config/default.yaml -s en -t zh -o output/ --json
+ls src/.opencode/skills/ol-localizer/SKILL.md
+ls src/.hermes/skills/ol-localizer/SKILL.md
+```
+
+**Test JSON output (machine-readable for agents):**
+```bash
+python -m ol_cli translate-md input.md -c config/default.yaml -s en -t zh -o output/ --json
+```
+
+Expected JSON output:
+```json
+{"success": true, "input_file": "input.md", "output_file": "output/input.md", "source_lang": "en", "target_lang": "zh"}
+```
+
+**Run skill tests:**
+```bash
+pytest tests/test_opencode_skill.py tests/test_hermes_skill.py -v
+```
+
+**Verify --json flag in help:**
+```bash
+python -m ol_cli translate-md --help | grep json
 ```
 
 ## License
