@@ -1,0 +1,24 @@
+# Documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+include AGENT_USAGE.md
+
+# Config files
+include config/*.yaml
+
+# OpenCode skill files (recursively include all files in skill directories)
+recursive-include src/.opencode *
+
+# Hermes skill files (recursively include all files in skill directories)
+recursive-include src/.hermes *
+
+# Jinja2 templates in ol_lqa
+recursive-include src/ol_lqa *.j2
+
+# Exclude unnecessary files
+exclude .gitignore
+exclude .env
+exclude .env.example
+exclude *.pyc
+exclude __pycache__
