@@ -1,5 +1,5 @@
 try:
-    from span_alignment import SpanProjector
+    from span_aligner import SpanProjector
     _has_span_aligner = True
 except ImportError:
     _has_span_aligner = False

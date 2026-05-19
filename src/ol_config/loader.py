@@ -29,7 +29,10 @@ def load_config(path: Union[str, Path]) -> ProjectConfig:
     Raises:
         ValidationError: If config is invalid or missing required fields
         FileNotFoundError: If config file doesn't exist
+        TypeError: If path is None
     """
+    if path is None:
+        raise TypeError("load_config() path must not be None")
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
