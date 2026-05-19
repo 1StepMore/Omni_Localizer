@@ -4,7 +4,7 @@ AI-native localization pipeline that translates documents through intelligent LL
 
 ## What It Does
 
-- **Translate documents** (Markdown, XLIFF) using MiniMax/Baidu ERNIE APIs
+- **Translate documents** (Markdown, XLIFF) using LLM APIs
 - **Automatic failover** — switches to backup model if primary fails
 - **Quality preservation** — shields code blocks, links, images during translation
 - **LLM-based judging** — evaluates translation accuracy and fluency
@@ -20,16 +20,13 @@ pip install -e .
 
 ### 2. Configure API Keys
 
-Create a `.bat` file (gitignored):
+Create a `.bat` file (gitignored) with your API keys:
 
 ```bat
 @echo off
-set MINIMAX_API_KEY=your_minimax_key
-set MINIMAX_BASE_URL=https://api.minimaxi.com/v1
-set BAIDU_API_KEY=your_baidu_key
-set BAIDU_BASE_URL=https://qianfan.baidubce.com/v2
+set OPENAI_API_KEY=your_api_key
 set PYTHONPATH=src
-python -m ol_cli translate-md %* -c config/test_universal.yaml -s en -t zh
+python -m ol_cli translate-md %* -c config/default.yaml -s en -t zh
 ```
 
 ### 3. Run
