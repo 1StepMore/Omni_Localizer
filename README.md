@@ -40,7 +40,7 @@ test_en_to_zh.bat your_document.md -o output/
 
 ## Configuration
 
-`config/test_universal.yaml` — LLM pool with MiniMax (primary) + Baidu ERNIE (backup):
+`config/test_universal.yaml` — Example LLM pool configuration:
 
 ```yaml
 llm_pool:
@@ -129,11 +129,9 @@ For detailed usage, see `src/.opencode/skills/ol-localizer/SKILL.md`
 
 For detailed usage, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
-### Required Environment Variables
+### Environment Variables
 
-Both agents require:
-- `MINIMAX_API_KEY` - API key for MiniMax translation service
-- `BAIDU_API_KEY` - API key for Baidu ERNIE (backup)
+Configure your LLM provider API keys in your shell environment.
 
 ### Testing the Agent Integration
 
