@@ -63,3 +63,9 @@ test_zh_to_en.bat
 
 # Agent/Sisyphus internal files
 .sisyphus/
+
+# uv lock file (generated, not needed in repo)
+uv.lock
+
+# Output directory
+output/
