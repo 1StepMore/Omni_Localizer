@@ -60,3 +60,6 @@ logs/
 # Local scripts (template versions tracked, secrets set via env vars)
 test_en_to_zh.bat
 test_zh_to_en.bat
+
+# Agent/Sisyphus internal files
+.sisyphus/
