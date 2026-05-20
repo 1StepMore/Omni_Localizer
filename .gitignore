@@ -41,6 +41,13 @@ Thumbs.db
 *.bak*
 *.bak
 
+# Chinese/Non-ASCII markdown files (internal docs)
+*版*.md
+*语言质量*.md
+
+# Large documentation files
+OL_DD_*.md
+
 # Logs
 *.log
 logs/
