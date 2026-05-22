@@ -68,6 +68,7 @@ The CLI uses a config file to specify the LLM pool. See `config/default.yaml` fo
 | `--target-lang` | `-t` | Target language code (e.g., en, zh) |
 | `--output-dir` | `-o` | Output directory for translated files |
 | `--json` | | Output JSON instead of human-readable text |
+| `--frontmatter` / `--no-frontmatter` | | Add YAML frontmatter to output (default: yes) |
 
 ## Pitfalls
 

@@ -56,7 +56,7 @@ def _generate_frontmatter(
     source_lang: str,
     target_lang: str,
     original_filename: str,
-    ol_version: str = "0.1.0",
+    ol_version: str = "0.2.0",
 ) -> str:
     """Generate YAML frontmatter header with translation metadata.
 
@@ -112,7 +112,7 @@ def _inject_xliff_header(repaired: str, header_note: str) -> str:
         return repaired.replace('<file', header_note + '\n  <file', 1)
     return repaired  # No <file> element found, skip header injection
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 
 # Initialize logging
 init_logger()

@@ -13,7 +13,10 @@ def _resolve_env_vars(value: str) -> str:
     if value is None:
         return None
     def replacer(m):
-        return os.environ.get(m.group(1), value)
+        env_val = os.environ.get(m.group(1))
+        if env_val is None:
+            raise ValueError(f"Environment variable '{m.group(1)}' not set - cannot resolve config value")
+        return env_val
     return re.sub(r'\$\{([^}]+)\}', replacer, value)
 
 

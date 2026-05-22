@@ -30,7 +30,7 @@ class TestFrontmatterFormat:
         assert "target_lang: zh" in fm
         assert "original_file: test.md" in fm
         assert 'processor: "OL"' in fm
-        assert 'version: "0.1.0"' in fm
+        assert 'version: "0.2.0"' in fm
         assert "translated_at:" in fm
         assert lines[-2] == "---"
 
@@ -64,7 +64,7 @@ target_lang: zh
 
 class TestVersionAccess:
     def test_version_access(self):
-        assert _get_ol_version() == "0.1.0"
+        assert _get_ol_version() == "0.2.1"
 
 
 class TestTranslateMdFrontmatter:

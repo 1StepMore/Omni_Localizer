@@ -32,7 +32,7 @@ Optional environment variables:
 - **API keys not set**: Ensure OPENAI_API_KEY is in environment before invoking
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
-- **Unsupported format**: Only Markdown (.md) is supported in v1 - not XLIFF or other formats
+- **Supported formats**: Both Markdown (.md) and XLIFF (.xlf, .xliff) are supported
 
 ## Verification
 1. Check JSON output has `"success": true`

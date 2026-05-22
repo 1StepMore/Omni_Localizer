@@ -1,9 +1,10 @@
 import sys
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-# sentence_transformers loaded lazily to avoid blocking tests without heavy deps
+_logger = logging.getLogger("tm")
 
 
 def _acquire_lock(lock_path: Path) -> int:
@@ -73,8 +74,8 @@ class TMService:
                         similarity=1.0,
                         language_pair=f"{tmx.source_lang}-{tmx.target_lang}",
                     ))
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"Failed to load TM entries from {self._tmx_path}: {e}")
 
     def _save(self) -> None:
         import hypomnema

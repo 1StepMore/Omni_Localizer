@@ -27,6 +27,23 @@ jobs:
       - name: Run core tests
         run: python -m pytest tests/test_format_guard.py tests/test_routing.py tests/test_config_loader.py tests/test_evaluation_result.py tests/test_llm_restorer_interface.py tests/test_retry.py tests/test_concurrent_engine.py --tb=short -v
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+      - name: Install lint deps
+        run: python -m pip install ruff mypy
+      - name: Run ruff
+        run: ruff check src/ tests/
+      - name: Run mypy
+        run: mypy src/
+
   test-full:
     runs-on: ubuntu-latest
     strategy:
@@ -44,7 +61,7 @@ jobs:
         run: python -m pip install -e ".[ml]"
         continue-on-error: true
       - name: Run full test suite
-        run: python -m pytest tests/ --ignore=tests/test_checkpoint*.py --ignore=tests/test_lqa_judge.py --ignore=tests/test_lqa_scorer.py --ignore=tests/test_lqa_comet.py --ignore=tests/test_tm_service.py --tb=short -v || true
+        run: python -m pytest tests/ --ignore=tests/test_checkpoint*.py --ignore=tests/test_lqa_judge.py --ignore=tests/test_lqa_scorer.py --ignore=tests/test_lqa_comet.py --ignore=tests/test_tm_service.py --tb=short -v
 
   security:
     runs-on: ubuntu-latest
@@ -59,4 +76,4 @@ jobs:
       - name: Install dependencies
         run: python -m pip install litellm translate-toolkit markdown-it-py pydantic PyYAML pytest span-aligner typer jinja2 rich
       - name: Security audit
-        run: pip audit --strict || true
+        run: pip audit --strict

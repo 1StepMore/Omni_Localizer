@@ -5,13 +5,13 @@
 
 llm_pool:
   translation:
-    - provider: "openai"
+    - provider: "minimax"
       model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
       api_key: "${MINIMAX_API_KEY}"
       base_url: "${MINIMAX_BASE_URL}"
-    - provider: "openai"
+    - provider: "baidu"
       model: "ernie-4.5-turbo-32k"
       priority: 2
       role: "translation"

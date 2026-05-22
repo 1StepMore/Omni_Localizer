@@ -3,14 +3,16 @@
 Phase 3a: LiteLLMRestorer implementation using ModelPool.
 """
 import asyncio
+import logging
 from typing import Dict
 
 from ol_core.interfaces import LLMRestorer
 
+_logger = logging.getLogger("md.repair.level3")
+
 
 class LiteLLMRestorer(LLMRestorer):
-    """
-    Phase 3a real implementation using LiteLLM Router.
+    """Phase 3a real implementation using LiteLLM Router.
 
     Uses ModelPool for LLM calls with proper failover and timeout handling.
     """
@@ -32,16 +34,28 @@ class LiteLLMRestorer(LLMRestorer):
             return translated_text
 
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                restored = loop.run_until_complete(
-                    self._call_llm(translated_text, original_text, shield_map)
-                )
+                loop = asyncio.get_running_loop()
+                is_async = True
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                is_async = False
+            try:
+                if is_async:
+                    restored = loop.run_until_complete(
+                        self._call_llm(translated_text, original_text, shield_map)
+                    )
+                else:
+                    asyncio.set_event_loop(loop)
+                    restored = loop.run_until_complete(
+                        self._call_llm(translated_text, original_text, shield_map)
+                    )
                 return restored
             finally:
-                loop.close()
-        except Exception:
+                if not is_async:
+                    loop.close()
+        except Exception as e:
+            _logger.warning(f"LLM restoration failed: {e}, returning original text")
             return translated_text
 
     async def _call_llm(

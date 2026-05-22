@@ -30,6 +30,12 @@ class LLMModelConfig(BaseModel):
     base_url: Optional[str] = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
 
+    @model_validator(mode='after')
+    def validate_env_vars(self) -> 'LLMModelConfig':
+        _check_env_vars(self.api_key)
+        _check_env_vars(self.base_url)
+        return self
+
 class LLMPoolConfig(BaseModel):
     """LLM model pool configuration."""
     translation: List[LLMModelConfig] = Field(default_factory=list, description="Translation models")
