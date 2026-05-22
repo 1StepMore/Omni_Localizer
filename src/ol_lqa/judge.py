@@ -66,6 +66,7 @@ class JudgeService:
             warnings=warnings,
         )
 
+    # MOCK IMPLEMENTATION - replace with real LLM when model_pool is configured
     def _judge_sync(self, source: str, target: str) -> dict[str, float]:
         adequacy = self._mock_score(source, target, "adequacy")
         fluency = self._mock_score(target, "", "fluency")
@@ -79,6 +80,28 @@ class JudgeService:
         }
 
     def _mock_score(self, source: str, target: str, criterion: str) -> float:
+        """Heuristic scoring based on target word count only.
+        
+        This is a MOCK implementation for Phase 1/2 testing.
+        Does NOT evaluate actual translation quality.
+        
+        Scoring heuristics:
+        - Empty target: 5.0 (neutral fallback)
+        - <3 words: 4.0 (short = potentially incomplete)
+        - 3-9 words: 7.0 (medium length = acceptable)
+        - >=10 words: 8.5 (long enough = likely complete)
+        
+        Note: Uses only target word count. Ignores source text entirely.
+        For real LLM-based scoring, configure model_pool in JudgeService.
+        
+        Args:
+            source: Source text (IGNORED in mock - kept for interface compatibility)
+            target: Translated target text
+            criterion: Scoring criterion (IGNORED - mock has no per-criterion logic)
+        
+        Returns:
+            Heuristic score from 4.0 to 8.5 based on target length
+        """
         if not target:
             return 5.0
         target_len = len(target.split())

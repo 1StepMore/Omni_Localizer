@@ -83,6 +83,7 @@ class COMETService:
             warnings=[f"MQM spans: {len(mqm_spans)} errors detected"]
             if mqm_spans
             else [],
+            mqm_spans=mqm_spans,
         )
 
     @property
