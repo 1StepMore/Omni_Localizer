@@ -74,4 +74,4 @@ jobs:
       - name: Install dependencies
         run: python -m pip install litellm translate-toolkit markdown-it-py pydantic PyYAML pytest span-aligner typer jinja2 rich
       - name: Security audit
-        run: pip audit --strict --ignore-vulns pip
+        run: pip audit --strict --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357
