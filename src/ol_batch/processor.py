@@ -7,7 +7,7 @@ from typing import Optional
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_cli import _generate_frontmatter, _get_ol_version, _escape_yaml_value, _validate_lang_code
-from ol_concurrency.scheduler import ConcurrencyLimiter
+from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError
 from ol_logging.core import get_logger
 from ol_pool.router import ModelPool
 from ol_md.shield import shield_markdown, unshield_markdown
@@ -132,8 +132,3 @@ class BatchProcessor:
         output_file.write_text(repaired, encoding="utf-8")
 
         return output_file
-
-
-class QueueTimeoutError(Exception):
-    """Raised when translation queue times out."""
-    pass

@@ -48,6 +48,9 @@ Thumbs.db
 # Large documentation files
 OL_DD_*.md
 
+# Internal planning documents
+OL-改进*.md
+
 # Logs
 *.log
 logs/
@@ -63,6 +66,7 @@ test_zh_to_en.bat
 
 # Agent/Sisyphus internal files
 .sisyphus/
+.omo/
 
 # uv lock file (generated, not needed in repo)
 uv.lock

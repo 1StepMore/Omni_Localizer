@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-22
+
+### Fixed
+- Version number inconsistency (ol_cli.py, tests, README now all use 0.2.0)
+- Environment variable resolution now fails fast instead of using literal placeholder values
+- Added env var validation to LLMModelConfig schema (calls _check_env_vars)
+- Removed .env loading at module import time (side effect)
+- Removed duplicate QueueTimeoutError class, now uses ol_concurrency.scheduler
+- Added logging to silent exception handlers in level3 repair and TM service
+
+### Changed
+- CI now runs ruff and mypy in separate lint job
+- CI no longer silences test failures or security audit failures with `|| true`
+- Restoration pool in default.yaml now uses different model (claude-3-haiku) for actual failover
+- Config test_universal.yaml now correctly uses minimax/baidu providers instead of openai
+
+### Security
+- Environment variable resolution now raises ValueError if referenced env var is not set
+
+## [0.2.0] - 2025-01-20
+
+### Added
+- YAML frontmatter support for markdown translation output
+- XLIFF header note support for translation metadata
+- `--frontmatter` / `--no-frontmatter` CLI options for batch and single file translation
+- OpenCode and Hermes skill documentation updated
+
 ## [0.1.0] - 2025-01-01
 
 ### Added
