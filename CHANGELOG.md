@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-22
+
+### Fixed
+- XLIFF nested same-type inline elements (mrk, em) now handled correctly with stack-based matching
+- L4 repair fallback now appends original tag content, not placeholder markers
+- L1 regex now processes all matches (count=0 instead of count=1)
+- JudgeService mock score heuristic now fully documented
+- ScorerService now uses sacrebleu for real BLEU scoring
+- COMETService MQM error spans now stored in EvaluationResult for future analysis
+- is_complete() now supports optional strict mode for content verification
+- g and ign XLIFF inline tags now properly shielded
+
+### Changed
+- Added sacrebleu>=2.0 dependency for BLEU scoring
+
 ## [0.2.1] - 2026-05-22
 
 ### Fixed
