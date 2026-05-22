@@ -13,12 +13,27 @@ class MDRepairPipeline:
     def _get_placeholder_str(self, key: str) -> str:
         return key
 
-    def is_complete(self, text: str, shield_map: dict[str, str]) -> bool:
+    def is_complete(self, text: str, shield_map: dict[str, str], strict: bool = False) -> bool:
         if not shield_map:
             return True
+
+        # Basic check: marker key exists in text
         for marker in shield_map:
             if marker not in text:
                 return False
+
+        if not strict:
+            return True
+
+        # Strict check: verify markers are in proper placeholder format ({{_OL_XTAG_key_}})
+        # NOT just plain marker keys appearing in text (which could mean restoration failed)
+        for marker in shield_map:
+            placeholder = f'{{{{_OL_XTAG_{marker}_}}}}'
+            # If marker appears in text but not in proper placeholder format,
+            # it might be plain text (restoration failed)
+            if marker in text and placeholder not in text:
+                return False
+
         return True
 
     def repair(self, translated_text: str, original_text: str, shield_map: dict[str, str]) -> str:

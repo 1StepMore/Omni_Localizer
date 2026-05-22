@@ -7,7 +7,7 @@ def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
 
     placeholder_strings = []
     for p_id, original_tag in missing_placeholders.items():
-        placeholder_strings.append(f'{{{{_OL_XTAG_{p_id}_}}}}')
+        placeholder_strings.append(original_tag)
 
     placeholder_str = ' '.join(placeholder_strings)
 

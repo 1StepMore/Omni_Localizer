@@ -29,22 +29,18 @@ class XLIFFRepairPipeline:
         """
         self.llm_restorer = llm_restorer
 
-    def is_complete(self, text: str, shield_map: dict[str, str]) -> bool:
-        """Check if all placeholders from shield_map are present in text.
-
-        Args:
-            text: Translated text to check
-            shield_map: Dict mapping placeholder_id -> original_tag
-
-        Returns:
-            True if all placeholders present or shield_map is empty, False otherwise.
-
-        """
+    def is_complete(self, text: str, shield_map: dict[str, str], strict: bool = False) -> bool:
         if not shield_map:
             return True
         for placeholder_id in shield_map:
             placeholder_str = f'{{{{_OL_XTAG_{placeholder_id}_}}}}'
             if placeholder_str not in text and placeholder_id not in text:
+                return False
+        if not strict:
+            return True
+        for placeholder_id in shield_map:
+            placeholder_str = f'{{{{_OL_XTAG_{placeholder_id}_}}}}'
+            if placeholder_id in text and placeholder_str not in text:
                 return False
         return True
 
