@@ -102,3 +102,31 @@ class TestXLIFFRepairPipeline:
         pipeline = XLIFFRepairPipeline()
         result = pipeline.repair('', '', {})
         assert result == ''
+
+    def test_is_complete_strict_mode_with_placeholder_format(self):
+        """Strict mode verifies proper {{_OL_XTAG_key_}} format"""
+        pipeline = XLIFFRepairPipeline()
+        text = 'Hello {{_OL_XTAG_x_1_}} world'
+        shield_map = {'x_1': '<x id="1"/>'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is True
+
+    def test_is_complete_strict_mode_false_for_plain_key(self):
+        """Strict mode returns False when marker appears but not in placeholder format"""
+        pipeline = XLIFFRepairPipeline()
+        text = 'Hello x_1 world'
+        shield_map = {'x_1': '<x id="1"/>'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is False
+
+    def test_is_complete_strict_mode_backward_compatible(self):
+        """Strict=False (default) allows plain key match for backward compatibility"""
+        pipeline = XLIFFRepairPipeline()
+        text = 'Hello x_1 world'
+        shield_map = {'x_1': '<x id="1"/>'}
+        assert pipeline.is_complete(text, shield_map, strict=False) is True
+
+    def test_is_complete_strict_mode_false_when_missing(self):
+        """Strict mode returns False when placeholder missing"""
+        pipeline = XLIFFRepairPipeline()
+        text = 'Hello world'
+        shield_map = {'x_1': '<x id="1"/>'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is False

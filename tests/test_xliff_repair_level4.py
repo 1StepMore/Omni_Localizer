@@ -6,16 +6,19 @@ class TestRepairLevel4:
     """Test level4_safe_fallback() function."""
 
     def test_append_at_unit_end(self):
-        """Test that placeholders are appended at unit end."""
+        """Test that actual tag content is appended at unit end, not placeholder keys."""
         text = '<unit id="1"><source>Hello world</source></unit>'
         missing_placeholders = {'x_1': '<x id="1"/>', 'mrk_m2': '<mrk id="m2">marked</mrk>'}
         result = level4_safe_fallback(text, missing_placeholders)
 
-        # Should have both placeholders inserted
-        assert '{{_OL_XTAG_x_x1_}}' in result or '{{_OL_XTAG_<x_id="1">_' in result or 'x_1' in result
+        # Should have actual tag content, not placeholder markers
+        assert '<x id="1"/>' in result
+        assert '<mrk id="m2">marked</mrk>' in result
+        # Should NOT have placeholder keys
+        assert '{{_OL_XTAG_' not in result
+        assert 'x_1' not in result or 'x id="1"' in result
         # Should have OL note
         assert '<note from="OL">' in result
-        assert 'Tag auto-appended at end' in result
 
     def test_ol_note_added(self):
         """Test that OL note is added after placeholders."""
@@ -26,13 +29,14 @@ class TestRepairLevel4:
         assert '<note from="OL">Warning: Tag auto-appended at end, manual check needed</note>' in result
 
     def test_no_unit_boundary_fallback(self):
-        """Test fallback when no unit boundary exists."""
+        """Test fallback when no unit boundary exists - actual tags appended."""
         text = 'Plain text without unit tags'
         missing_placeholders = {'x_1': '<x id="1"/>'}
         result = level4_safe_fallback(text, missing_placeholders)
 
-        # Placeholder should be appended at end
-        assert 'x_1' in result or '{{_OL_XTAG_' in result
+        # Actual tag should be appended, not placeholder key
+        assert '<x id="1"/>' in result
+        assert '{{_OL_XTAG_' not in result
         # OL note should be present
         assert '<note from="OL">' in result
 

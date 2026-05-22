@@ -63,4 +63,32 @@ class TestMDAutoRepair:
         pipeline = MDRepairPipeline()  # No restorer passed
         text = 'text \x00OL_CODE_0000\x00 end'
         result = pipeline.repair(text, 'original', {'CODE_0000': 'code'})
-        assert 'OL_CODE_0000' in result  # Should work with default
+        assert 'OL_CODE_0000' in result
+
+    def test_is_complete_strict_mode_with_placeholder_format(self):
+        """Strict mode verifies proper {{_OL_XTAG_key_}} format"""
+        pipeline = MDRepairPipeline()
+        text = 'text {{_OL_XTAG_CODE_0000_}} end'
+        shield_map = {'CODE_0000': 'code'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is True
+
+    def test_is_complete_strict_mode_false_for_plain_key(self):
+        """Strict mode returns False when marker appears but not in placeholder format"""
+        pipeline = MDRepairPipeline()
+        text = 'text CODE_0000 end'
+        shield_map = {'CODE_0000': 'code'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is False
+
+    def test_is_complete_strict_mode_backward_compatible(self):
+        """Strict=False (default) allows plain key match for backward compatibility"""
+        pipeline = MDRepairPipeline()
+        text = 'text CODE_0000 end'
+        shield_map = {'CODE_0000': 'code'}
+        assert pipeline.is_complete(text, shield_map, strict=False) is True
+
+    def test_is_complete_strict_mode_false_when_missing(self):
+        """Strict mode returns False when placeholder missing"""
+        pipeline = MDRepairPipeline()
+        text = 'text end'
+        shield_map = {'CODE_0000': 'code'}
+        assert pipeline.is_complete(text, shield_map, strict=True) is False  # Should work with default
