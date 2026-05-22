@@ -79,6 +79,63 @@ ol translate-xliff <file.xlf> -c <config.yaml> -s en -t zh -o output/
 ol extract-warnings <file> -o warnings.md
 ```
 
+## Output Metadata
+
+### YAML Frontmatter (Markdown)
+
+When translating Markdown files, OL automatically adds YAML frontmatter to the output:
+
+```yaml
+---
+source_lang: en
+target_lang: zh
+original_file: input.md
+processor: "OL"
+version: "0.1.0"
+translated_at: 2026-05-22T15:00:00Z
+---
+
+# Content follows...
+```
+
+**CLI Control:**
+
+```bash
+# Enable frontmatter (default)
+ol translate-md input.md -s en -t zh -o output/
+
+# Disable frontmatter
+ol translate-md input.md -s en -t zh -o output/ --no-frontmatter
+```
+
+### XLIFF Header Note
+
+When translating XLIFF files, OL adds a header note with translation metadata:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <header>
+    <note from="OL">Translated from en to zh by OL</note>
+  </header>
+  <file original="input.xlf" source-language="en" target-language="zh">
+    ...
+  </file>
+</xliff>
+```
+
+### Batch Processing
+
+Batch translate supports the same frontmatter options:
+
+```bash
+# With frontmatter (default)
+ol translate-batch ./docs/ -s en -t zh -o output/
+
+# Without frontmatter
+ol translate-batch ./docs/ -s en -t zh -o output/ --no-frontmatter
+```
+
 ## Key Features
 
 | Feature | Description |
