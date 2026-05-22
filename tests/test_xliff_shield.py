@@ -57,6 +57,22 @@ class TestXLIFFShield:
         assert '{{_OL_XTAG_alayout_a1_}}' in result
         assert 'alayout_a1' in shield_map
 
+    def test_shield_g(self):
+        """Test protection of g (group) inline elements."""
+        text = '<g id="1">Do not translate</g>'
+        result, shield_map = shield_xliff(text)
+        assert '{{_OL_XTAG_g_1_}}' in result
+        assert 'g_1' in shield_map
+        assert shield_map['g_1'] == '<g id="1">Do not translate</g>'
+
+    def test_shield_ign(self):
+        """Test protection of ign (ignore) inline elements."""
+        text = '<ign id="i1">ignore me</ign>'
+        result, shield_map = shield_xliff(text)
+        assert '{{_OL_XTAG_ign_i1_}}' in result
+        assert 'ign_i1' in shield_map
+        assert shield_map['ign_i1'] == '<ign id="i1">ignore me</ign>'
+
     def test_unshield_restoration(self):
         """Test restoration of placeholders back to original tags."""
         text = 'Hello {{_OL_XTAG_mrk_m1_}} world'
@@ -93,3 +109,31 @@ class TestXLIFFShield:
         result, shield_map = shield_xliff(text)
         assert result == text
         assert len(shield_map) == 0
+
+    def test_nested_mrk_elements(self):
+        """Test protection of nested mrk same-type elements."""
+        text = '<mrk id="m1">A<mrk id="m2">B</mrk>C</mrk>'
+        result, shield_map = shield_xliff(text)
+        assert 'mrk_m1' in shield_map
+        assert 'mrk_m2' in shield_map
+        assert result.count('{{_OL_XTAG_') == 2
+        assert '</mrk>' not in result
+
+    def test_nested_em_elements(self):
+        """Test protection of nested em same-type elements."""
+        text = '<em id="e1">outer<em id="e2">inner</em>rest</em>'
+        result, shield_map = shield_xliff(text)
+        assert 'em_e1' in shield_map
+        assert 'em_e2' in shield_map
+        assert result.count('{{_OL_XTAG_') == 2
+        assert '</em>' not in result
+
+    def test_deeply_nested_elements(self):
+        """Test protection of deeply nested same-type elements."""
+        text = '<mrk id="a">A<mrk id="b">B<mrk id="c">C</mrk></mrk>D</mrk>'
+        result, shield_map = shield_xliff(text)
+        assert 'mrk_a' in shield_map
+        assert 'mrk_b' in shield_map
+        assert 'mrk_c' in shield_map
+        assert result.count('{{_OL_XTAG_') == 3
+        assert '</mrk>' not in result
