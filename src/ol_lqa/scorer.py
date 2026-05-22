@@ -32,13 +32,10 @@ class ScorerService:
         )
 
     def _score_sync(self, source: str, target: str) -> dict[str, float]:
-        source_words = set(source.lower().split())
-        target_words = set(target.lower().split())
-        if not source_words:
-            bleu = 0.0
-        else:
-            overlap = len(source_words & target_words)
-            bleu = overlap / len(source_words)
+        import sacrebleu
+
+        bleu = sacrebleu.sentence_bleu(target, [source]).score / 100.0
+
         regex_match = 1.0 if target.strip() else 0.0
         return {
             "bleu": bleu,
