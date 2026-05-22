@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from ol_batch.config import BatchConfig, BatchResult
+from ol_cli import _generate_frontmatter, _get_ol_version, _escape_yaml_value, _validate_lang_code
 from ol_concurrency.scheduler import ConcurrencyLimiter
 from ol_logging.core import get_logger
 from ol_pool.router import ModelPool
@@ -22,17 +23,29 @@ class BatchProcessor:
         config: BatchConfig,
         model_pool: ModelPool,
         limiter: ConcurrencyLimiter,
+        add_frontmatter: bool = True,
+        src_lang: str = "en",
+        tgt_lang: str = "zh",
     ) -> None:
         self._config = config
         self._pool = model_pool
         self._limiter = limiter
+        self.add_frontmatter = add_frontmatter
+        self.src_lang = src_lang
+        self.tgt_lang = tgt_lang
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
         self,
         files: list[Path],
         output_dir: Path,
+        add_frontmatter: bool = True,
+        src_lang: str = "en",
+        tgt_lang: str = "zh",
     ) -> BatchResult:
+        self.add_frontmatter = add_frontmatter
+        self.src_lang = src_lang
+        self.tgt_lang = tgt_lang
         self._logger.info(f"Batch processing started: {len(files)} files")
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,14 +108,25 @@ class BatchProcessor:
 
         translated = await self._pool.translate(
             shielded,
-            "en",
-            "zh",
+            self.src_lang,
+            self.tgt_lang,
         )
 
         if shield_map:
             translated = unshield_markdown(translated, shield_map)
 
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
+
+        if self.add_frontmatter and input_path.suffix == '.md' and not repaired.strip().startswith('---'):
+            safe_src = _validate_lang_code(self.src_lang)
+            safe_tgt = _validate_lang_code(self.tgt_lang)
+            frontmatter = _generate_frontmatter(
+                source_lang=safe_src,
+                target_lang=safe_tgt,
+                original_filename=input_path.name,
+                ol_version=_get_ol_version(),
+            )
+            repaired = frontmatter + repaired
 
         output_file = output_dir / input_path.name
         output_file.write_text(repaired, encoding="utf-8")

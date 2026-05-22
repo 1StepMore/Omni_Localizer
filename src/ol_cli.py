@@ -13,6 +13,105 @@ from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
+# ========== OL Frontmatter Support ==========
+
+from datetime import datetime, timezone
+import re
+
+def _escape_yaml_value(value: str) -> str:
+    """Escape special characters in YAML string values to prevent injection."""
+    if any(c in value for c in ':#\n'):
+        return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return value
+
+def _validate_lang_code(code: str) -> str:
+    """Validate ISO 639-1 language code."""
+    if not re.match(r'^[a-z]{2}(-[A-Z]{2})?$', code):
+        raise ValueError(f"Invalid language code: {code}")
+    return code
+
+def _escape_xml(value: str) -> str:
+    """Escape special characters in XML using single-pass character-by-character approach.
+
+    This prevents double-encoding issues that occur with naive sequential .replace() calls.
+    For example: '&lt;' would become '&amp;lt;' with sequential replacement.
+    """
+    result = []
+    for c in value:
+        if c == '&':
+            result.append('&amp;')
+        elif c == '<':
+            result.append('&lt;')
+        elif c == '>':
+            result.append('&gt;')
+        elif c == '"':
+            result.append('&quot;')
+        elif c == "'":
+            result.append('&apos;')
+        else:
+            result.append(c)
+    return ''.join(result)
+
+def _generate_frontmatter(
+    source_lang: str,
+    target_lang: str,
+    original_filename: str,
+    ol_version: str = "0.1.0",
+) -> str:
+    """Generate YAML frontmatter header with translation metadata.
+
+    Args:
+        source_lang: Source language code (ISO 639-1)
+        target_lang: Target language code (ISO 639-1)
+        original_filename: Original input filename
+        ol_version: OL version number
+
+    Returns:
+        YAML frontmatter string with leading and trailing ---
+
+    Raises:
+        ValueError: If language codes are invalid
+    """
+    # Validate inputs to prevent injection
+    source_lang = _validate_lang_code(source_lang)
+    target_lang = _validate_lang_code(target_lang)
+    escaped_filename = _escape_yaml_value(original_filename)
+
+    timestamp = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+
+    frontmatter_lines = [
+        "---",
+        f"source_lang: {source_lang}",
+        f"target_lang: {target_lang}",
+        f"original_file: {escaped_filename}",
+        'processor: "OL"',
+        f'version: "{ol_version}"',
+        f"translated_at: {timestamp}",
+        "---",
+        "",
+    ]
+
+    return "\n".join(frontmatter_lines)
+
+def _get_ol_version() -> str:
+    """Get OL version from module-level __version__."""
+    # __version__ is defined at line 16 of ol_cli.py
+    return __version__
+
+def _build_xliff_header_note(src_lang: str, tgt_lang: str) -> str:
+    """Build XLIFF-compliant header note element."""
+    validated_src = _validate_lang_code(src_lang)
+    validated_tgt = _validate_lang_code(tgt_lang)
+    note_text = f'Translated from {validated_src} to {validated_tgt} by OL'
+    return f'<header>\n    <note from="OL">{_escape_xml(note_text)}</note>\n  </header>'
+
+def _inject_xliff_header(repaired: str, header_note: str) -> str:
+    """Inject header note into XLIFF output at correct position."""
+    # Insert header after <xliff ...> opening tag, before <file> element
+    if '<file' in repaired:
+        return repaired.replace('<file', header_note + '\n  <file', 1)
+    return repaired  # No <file> element found, skip header injection
+
 __version__ = "0.1.0"
 
 # Initialize logging
@@ -97,6 +196,7 @@ async def _translate_md_async(
     config_path: Optional[str],
     src_lang: str,
     tgt_lang: str,
+    add_frontmatter: bool = True,
 ) -> str:
     from ol_pool.router import ModelPool
 
@@ -121,8 +221,22 @@ async def _translate_md_async(
     else:
         repaired = translated
 
+    if add_frontmatter and not repaired.strip().startswith('---'):
+        safe_src_lang = _validate_lang_code(src_lang)
+        safe_tgt_lang = _validate_lang_code(tgt_lang)
+
+        frontmatter = _generate_frontmatter(
+            source_lang=safe_src_lang,
+            target_lang=safe_tgt_lang,
+            original_filename=input_path.name,
+            ol_version=_get_ol_version(),
+        )
+        output_content = frontmatter + repaired
+    else:
+        output_content = repaired
+
     output_file = output_path / input_path.name
-    output_file.write_text(repaired, encoding="utf-8")
+    output_file.write_text(output_content, encoding="utf-8")
 
     return str(output_file)
 
@@ -135,6 +249,7 @@ def translate_md(
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
+    add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add YAML frontmatter to output file"),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -168,7 +283,7 @@ def translate_md(
             tgt = tgt or "zh"
 
         output_file = asyncio.run(
-            _translate_md_async(input_path, output_path, config, src, tgt)
+            _translate_md_async(input_path, output_path, config, src, tgt, add_frontmatter)
         )
 
         if json_output:
@@ -197,6 +312,7 @@ async def _translate_batch_async(
     src_lang: str,
     tgt_lang: str,
     max_concurrent: int,
+    add_frontmatter: bool = True,
 ) -> tuple[int, int]:
     import time
     from ol_batch.config import BatchConfig
@@ -245,6 +361,7 @@ def translate_batch(
     source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
     target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     concurrency: int = typer.Option(5, "--concurrency", "-j", help="Max concurrent translations"),
+    add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add frontmatter to translated files"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
 ) -> int:
     try:
@@ -283,7 +400,7 @@ def translate_batch(
             tgt = tgt or "zh"
 
         succeeded, failed = asyncio.run(
-            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency)
+            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency, add_frontmatter)
         )
 
         if failed > 0:
@@ -349,6 +466,8 @@ def translate_xliff(
         original_text = input_path.read_text(encoding="utf-8")
         pipeline = XLIFFRepairPipeline()
         repaired = pipeline.repair(original_text, original_text, {})
+        xliff_header = _build_xliff_header_note(src_lang, tgt_lang)
+        repaired = _inject_xliff_header(repaired, xliff_header)
 
         output_file = output_path / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
