@@ -18,13 +18,13 @@ def level1_regex_clean(text: str) -> tuple[str, bool]:
     """
     count = 0
 
-    text, n = re.subn(r'\s+\{\{', '{{', text, count=1)
+    text, n = re.subn(r'\s+\{\{', '{{', text, count=0)
     count += n
 
-    text, n = re.subn(r'\}\}\s+', '}}', text, count=1)
+    text, n = re.subn(r'\}\}\s+', '}}', text, count=0)
     count += n
 
-    text, n = re.subn(r'([.,!?])\s+\{\{', r'{{\1', text, count=1)
+    text, n = re.subn(r'([.,!?])\s+\{\{', r'{{\1', text, count=0)
     count += n
 
     return text, count > 0

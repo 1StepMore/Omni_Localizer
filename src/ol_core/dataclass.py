@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 from enum import Enum
 
 
@@ -75,6 +76,7 @@ class EvaluationResult:
     format_preserved: bool = True
     format_errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    mqm_spans: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def passed_scorer(self) -> bool:
