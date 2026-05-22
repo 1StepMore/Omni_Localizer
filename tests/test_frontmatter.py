@@ -7,16 +7,13 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from ol_cli import app
 from ol_cli import (
-    _escape_yaml_value,
-    _validate_lang_code,
+    _build_xliff_header_note,
     _escape_xml,
     _generate_frontmatter,
     _get_ol_version,
-    _build_xliff_header_note,
+    app,
 )
-
 
 runner = CliRunner()
 
@@ -71,7 +68,7 @@ class TestTranslateMdFrontmatter:
     @pytest.fixture
     def temp_md(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test\n\nContent here.")
             path = f.name

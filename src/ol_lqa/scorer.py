@@ -1,5 +1,4 @@
 import asyncio
-from typing import Dict, List, Tuple
 
 from ol_core.dataclass import EvaluationResult
 
@@ -32,7 +31,7 @@ class ScorerService:
             warnings=[],
         )
 
-    def _score_sync(self, source: str, target: str) -> Dict[str, float]:
+    def _score_sync(self, source: str, target: str) -> dict[str, float]:
         source_words = set(source.lower().split())
         target_words = set(target.lower().split())
         if not source_words:
@@ -48,8 +47,8 @@ class ScorerService:
 
     async def score_batch(
         self,
-        pairs: List[Tuple[str, str, str]],
-    ) -> List[EvaluationResult]:
+        pairs: list[tuple[str, str, str]],
+    ) -> list[EvaluationResult]:
         tasks = [
             self.score(source, target, unit_id)
             for source, target, unit_id in pairs

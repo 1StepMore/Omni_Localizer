@@ -1,5 +1,4 @@
-import pytest
-from ol_md.shield import shield_markdown, unshield_markdown
+from ol_md.shield import shield_markdown
 
 
 class TestMDProtector:

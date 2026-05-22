@@ -1,4 +1,3 @@
-import pytest
 from ol_md.repair.level1 import level1_regex_clean
 
 

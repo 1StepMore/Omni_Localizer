@@ -1,8 +1,9 @@
 """XLIFF bus for Omni-Localizer using translate-toolkit."""
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
-from ol_core.dataclass import TranslationContext, TranslationUnit, ChannelType
+
 from ol_buses.xliff_shield import replace_tags_with_placeholders
+from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
 
 
 def validate_xliff_structure(path: str) -> bool:
@@ -18,14 +19,14 @@ def validate_xliff_structure(path: str) -> bool:
 
 
 def load_xliff(path: str) -> TranslationContext:
-    """
-    Load XLIFF file and create TranslationContext.
+    """Load XLIFF file and create TranslationContext.
 
     Args:
         path: Path to XLIFF file (.xliff or .xlf)
 
     Returns:
         TranslationContext with channel_type=XLIFF and units populated
+
     """
     path = Path(path)
     original_text = path.read_text(encoding='utf-8')
@@ -39,13 +40,12 @@ def load_xliff(path: str) -> TranslationContext:
         original_full_text=original_text,
         units=units,
         glossary={},
-        config={}
+        config={},
     )
 
 
 def iterate_trans_units(path: Path) -> Iterator[TranslationUnit]:
-    """
-    Iterate over trans-unit elements in XLIFF file.
+    """Iterate over trans-unit elements in XLIFF file.
 
     Extracts source text, creates TranslationUnit with placeholder replacement.
     """
@@ -57,7 +57,7 @@ def iterate_trans_units(path: Path) -> Iterator[TranslationUnit]:
     # Pattern: <trans-unit id="..."><source>...</source>...</trans-unit>
     trans_unit_pattern = re.compile(
         r'<trans-unit[^>]*id="([^"]+)"[^>]*>(.*?)</trans-unit>',
-        re.DOTALL
+        re.DOTALL,
     )
 
     source_pattern = re.compile(r'<source[^>]*>(.*?)</source>', re.DOTALL)
@@ -77,17 +77,17 @@ def iterate_trans_units(path: Path) -> Iterator[TranslationUnit]:
                 unit_id=unit_id,
                 source_text=text_with_placeholders,
                 shield_map=shield_map,
-                metadata={}
+                metadata={},
             )
 
 
 def write_target_back(ctx: TranslationContext, output_path: str) -> None:
-    """
-    Write translated content back to XLIFF format.
+    """Write translated content back to XLIFF format.
 
     Args:
         ctx: TranslationContext with translated units
         output_path: Output file path
+
     """
     # Read original file to preserve structure
     original_path = Path(ctx.file_path)
@@ -100,7 +100,7 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
             import re
             target_pattern = re.compile(
                 rf'(<trans-unit[^>]*id="{re.escape(unit.unit_id)}"[^>]*>.*?)<target[^>]*>.*?</target>(.*?</trans-unit>)',
-                re.DOTALL
+                re.DOTALL,
             )
 
             # Restore original tags in target
@@ -108,7 +108,7 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
 
             content = target_pattern.sub(
                 lambda m: m.group(1) + f'<target>{restored_target}</target>' + m.group(2),
-                content
+                content,
             )
 
     Path(output_path).write_text(content, encoding='utf-8')

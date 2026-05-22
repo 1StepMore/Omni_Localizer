@@ -1,5 +1,4 @@
 import asyncio
-from typing import Dict, List, Optional, Tuple
 
 from ol_core.dataclass import EvaluationResult
 
@@ -33,7 +32,6 @@ class JudgeService:
                 "format_preservation": result.get("format_preservation", 50),
             }
             score = result.get("score", 50)
-            reason = result.get("reason", "")
             warnings = []
             if score < self._pass_threshold * 10:
                 warnings.append(f"Judge score {score/10:.1f} below threshold {self._pass_threshold}")
@@ -54,7 +52,7 @@ class JudgeService:
             target,
         )
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         overall = self._compute_weighted_score(scores)
         if overall < self._pass_threshold:
             warnings.append(f"Judge score {overall:.1f} below threshold {self._pass_threshold}")
@@ -68,7 +66,7 @@ class JudgeService:
             warnings=warnings,
         )
 
-    def _judge_sync(self, source: str, target: str) -> Dict[str, float]:
+    def _judge_sync(self, source: str, target: str) -> dict[str, float]:
         adequacy = self._mock_score(source, target, "adequacy")
         fluency = self._mock_score(target, "", "fluency")
         terminology = self._mock_score(source, target, "terminology")
@@ -90,7 +88,7 @@ class JudgeService:
             return 7.0
         return 8.5
 
-    def _compute_weighted_score(self, scores: Dict[str, float]) -> float:
+    def _compute_weighted_score(self, scores: dict[str, float]) -> float:
         if not scores:
             return 0.0
         total = sum(
@@ -101,17 +99,17 @@ class JudgeService:
 
     async def judge_batch(
         self,
-        pairs: List[Tuple[str, str, str]],
+        pairs: list[tuple[str, str, str]],
         source_lang: str = "en",
         target_lang: str = "en",
-    ) -> List[EvaluationResult]:
+    ) -> list[EvaluationResult]:
         tasks = [
             self.judge(source, target, unit_id, source_lang, target_lang)
             for source, target, unit_id in pairs
         ]
         return await asyncio.gather(*tasks)
 
-    def is_acceptable(self, scores: Dict[str, float]) -> bool:
+    def is_acceptable(self, scores: dict[str, float]) -> bool:
         return self._compute_weighted_score(scores) >= self._pass_threshold
 
     @property
@@ -120,7 +118,7 @@ class JudgeService:
 
 
 class EnsembleJudge:
-    def __init__(self, judges: List["JudgeService"], pass_threshold: float = 7.0) -> None:
+    def __init__(self, judges: list["JudgeService"], pass_threshold: float = 7.0) -> None:
         self._judges = judges
         self._pass_threshold = pass_threshold
 
@@ -133,11 +131,11 @@ class EnsembleJudge:
         target_lang: str = "en",
     ) -> EvaluationResult:
         results = await asyncio.gather(
-            *[j.judge(source, target, unit_id, source_lang, target_lang) for j in self._judges]
+            *[j.judge(source, target, unit_id, source_lang, target_lang) for j in self._judges],
         )
 
         criteria = ["adequacy", "fluency", "terminology_consistency", "format_preservation"]
-        aggregated: Dict[str, float] = {}
+        aggregated: dict[str, float] = {}
 
         for criterion in criteria:
             scores = [r.judge_scores.get(criterion, 0.0) for r in results]
@@ -148,7 +146,7 @@ class EnsembleJudge:
             else:
                 aggregated[criterion] = sorted_scores[n // 2]
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         overall = sum(aggregated.values()) / len(aggregated)
         if overall < self._pass_threshold:
             warnings.append(f"Ensemble judge score {overall:.1f} below threshold {self._pass_threshold}")
@@ -164,10 +162,10 @@ class EnsembleJudge:
 
     async def judge_batch(
         self,
-        pairs: List[Tuple[str, str, str]],
+        pairs: list[tuple[str, str, str]],
         source_lang: str = "en",
         target_lang: str = "en",
-    ) -> List[EvaluationResult]:
+    ) -> list[EvaluationResult]:
         tasks = [
             self.judge(source, target, unit_id, source_lang, target_lang)
             for source, target, unit_id in pairs

@@ -1,11 +1,10 @@
 """Integration tests for Phase 3b components: LQA, Retry, TM, Checkpoint flow."""
-import asyncio
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -38,7 +37,6 @@ class TestLQARetryIntegration:
 
     @pytest.mark.asyncio
     async def test_low_score_triggers_retry(self, mock_judge_low_score):
-        from ol_retry.retry import RetryManager
 
         mgr = RetryManager(max_retries=2, pass_threshold=7.0)
         call_count = 0
@@ -57,7 +55,6 @@ class TestLQARetryIntegration:
 
     @pytest.mark.asyncio
     async def test_high_score_no_retry(self, mock_judge_high_score):
-        from ol_retry.retry import RetryManager
 
         mgr = RetryManager(max_retries=2, pass_threshold=7.0)
 
@@ -72,7 +69,6 @@ class TestLQARetryIntegration:
 
     @pytest.mark.asyncio
     async def test_retry_then_pass(self):
-        from ol_retry.retry import RetryManager
 
         mgr = RetryManager(max_retries=2, pass_threshold=7.0)
         call_count = 0
@@ -104,7 +100,6 @@ class TestTMServiceIntegration:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_tm_search_finds_match_above_threshold(self, temp_dir):
-        from ol_tm.service import TMService, TMMatch
 
         tmx_path = os.path.join(temp_dir, "test.tmx")
         svc = TMService(tmx_path)
@@ -122,7 +117,6 @@ class TestTMServiceIntegration:
         assert results[1].source == "good morning"
 
     def test_tm_add_and_search(self, temp_dir):
-        from ol_tm.service import TMService
 
         tmx_path = os.path.join(temp_dir, "test_add.tmx")
         svc = TMService(tmx_path)
@@ -144,7 +138,6 @@ class TestCheckpointResumeIntegration:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_resume_force_clears_and_fresh_start(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
 
         ckpt_path = os.path.join(temp_dir, "checkpoint.json")
         ckpt_path_obj = Path(ckpt_path)
@@ -158,7 +151,6 @@ class TestCheckpointResumeIntegration:
         assert not ckpt_path_obj.exists()
 
     def test_resume_merge_recovers_units(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
 
         ckpt_path = os.path.join(temp_dir, "checkpoint.json")
         ckpt_path_obj = Path(ckpt_path)
@@ -172,7 +164,6 @@ class TestCheckpointResumeIntegration:
         assert result.mode == 'merge'
 
     def test_checkpoint_gc_keeps_only_latest(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
 
         ckpt_base = os.path.join(temp_dir, "checkpoint")
         for i in range(5):
@@ -202,13 +193,12 @@ class TestFullPipeline3B:
         pool.translate = AsyncMock(return_value="translated")
         pool.judge = AsyncMock(return_value=MagicMock(
             judge_overall_score=8.0,
-            judge_scores={"adequacy": 8.0, "fluency": 8.0}
+            judge_scores={"adequacy": 8.0, "fluency": 8.0},
         ))
         return pool
 
     @pytest.mark.asyncio
     async def test_retry_flow_with_checkpoint_save(self, temp_dir, mock_pool):
-        from ol_retry.retry import RetryManager
         from ol_checkpoint import CheckpointManager
 
         ckpt_path = os.path.join(temp_dir, "pipeline_ckpt.json")
@@ -231,7 +221,7 @@ class TestFullPipeline3B:
             processed.append(unit_id)
             checkpoint_mgr.save({
                 "processed_units": processed,
-                "file_hash": checkpoint_mgr._compute_hash(Path(source_path))
+                "file_hash": checkpoint_mgr._compute_hash(Path(source_path)),
             })
 
         loaded = checkpoint_mgr.load()
@@ -239,7 +229,6 @@ class TestFullPipeline3B:
 
     @pytest.mark.asyncio
     async def test_tm_in_pipeline_flow(self, temp_dir):
-        from ol_tm.service import TMService, TMMatch
 
         tmx_path = os.path.join(temp_dir, "pipeline.tmx")
         svc = TMService(tmx_path)
@@ -258,7 +247,6 @@ class TestFullPipeline3B:
 
     @pytest.mark.asyncio
     async def test_low_score_retry_with_mock_pool(self, temp_dir):
-        from ol_retry.retry import RetryManager
         from ol_checkpoint import CheckpointManager
 
         call_count = 0
@@ -304,7 +292,6 @@ class TestErrorRecoveryIntegration:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_checkpoint_hash_mismatch_requires_explicit_action(self, temp_dir):
-        from ol_checkpoint import CheckpointManager, HashMismatchError
 
         source_path = os.path.join(temp_dir, "source.txt")
         Path(source_path).write_text("original content")
@@ -324,7 +311,6 @@ class TestErrorRecoveryIntegration:
         assert result.fresh_start is True
 
     def test_checkpoint_resume_invalid_mode_raises(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
 
         ckpt_path = os.path.join(temp_dir, "checkpoint.json")
         mgr = CheckpointManager(ckpt_path)
@@ -334,7 +320,6 @@ class TestErrorRecoveryIntegration:
 
     @pytest.mark.asyncio
     async def test_retry_exhausted_all_attempts(self, temp_dir):
-        from ol_retry.retry import RetryManager
 
         mgr = RetryManager(max_retries=2, pass_threshold=7.0)
 
@@ -352,7 +337,6 @@ class TestErrorRecoveryIntegration:
         assert len(result.attempt_history) == 3
 
     def test_tm_search_empty_entries(self, temp_dir):
-        from ol_tm.service import TMService
 
         tmx_path = os.path.join(temp_dir, "empty.tmx")
         svc = TMService(tmx_path)
@@ -362,6 +346,4 @@ class TestErrorRecoveryIntegration:
 
 
 # Import at bottom to avoid import issues
-from ol_checkpoint import CheckpointManager, HashMismatchError, ResumeResult
-from ol_retry.retry import RetryManager, RetryResult
-from ol_tm.service import TMService, TMMatch
+from ol_retry.retry import RetryManager

@@ -1,15 +1,14 @@
 """Edge case tests for batch processing."""
-import os
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_batch.discovery import discover_files, validate_directory
-from ol_batch.processor import BatchProcessor, QueueTimeoutError
+from ol_batch.processor import BatchProcessor
 from ol_concurrency.scheduler import ConcurrencyLimiter
 
 
@@ -287,7 +286,7 @@ class TestBatchResultSummary:
         result = BatchResult(
             succeeded=[Path("a.md"), Path("b.md")],
             failed=[],
-            total=2
+            total=2,
         )
         assert result.success_rate == 100.0
 
@@ -296,7 +295,7 @@ class TestBatchResultSummary:
         result = BatchResult(
             succeeded=[],
             failed=[(Path("a.md"), "error"), (Path("b.md"), "error")],
-            total=2
+            total=2,
         )
         assert result.success_rate == 0.0
 
@@ -305,7 +304,7 @@ class TestBatchResultSummary:
         result = BatchResult(
             succeeded=[Path("a.md")],
             failed=[(Path("b.md"), "error")],
-            total=2
+            total=2,
         )
         assert result.success_rate == 50.0
 
@@ -314,7 +313,7 @@ class TestBatchResultSummary:
         result = BatchResult(
             succeeded=[],
             failed=[],
-            total=0
+            total=0,
         )
         assert result.success_rate == 0.0
 

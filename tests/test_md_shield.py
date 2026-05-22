@@ -1,5 +1,4 @@
-import pytest
-from ol_md.shield import shield_markdown, unshield_markdown, get_placeholders_in_text
+from ol_md.shield import get_placeholders_in_text, shield_markdown, unshield_markdown
 
 
 class TestMDShield:

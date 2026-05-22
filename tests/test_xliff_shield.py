@@ -1,5 +1,4 @@
 """Tests for XLIFF shield functionality."""
-import pytest
 from ol_xliff.shield import shield_xliff
 
 
@@ -64,7 +63,6 @@ class TestXLIFFShield:
         shield_map = {'mrk_m1': '<mrk id="m1" type="comment">world</mrk>'}
 
         # Unshield is not implemented in shield module; use parser's restore
-        from ol_xliff.parser import extract_inline_elements
         restored_text = text
         for key, tag in shield_map.items():
             placeholder = f'{{{{_OL_XTAG_{key}_}}}}'

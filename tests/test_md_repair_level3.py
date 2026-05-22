@@ -1,6 +1,5 @@
-import pytest
-from ol_md.repair.level3 import level3_llm_restore
 from ol_core.interfaces import MockLLMRestorer
+from ol_md.repair.level3 import level3_llm_restore
 
 
 class TestRepairLevel3:

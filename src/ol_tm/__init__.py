@@ -1,3 +1,3 @@
-from ol_tm.service import TMService, TMMatch
+from ol_tm.service import TMMatch, TMService
 
-__all__ = ["TMService", "TMMatch"]
+__all__ = ["TMMatch", "TMService"]

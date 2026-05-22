@@ -6,12 +6,9 @@ This module generates HTML and CSV reports with:
 - OL_WARN summary with severity breakdown
 """
 
-import csv
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -21,6 +18,7 @@ from ol_core.dataclass import EvaluationResult
 @dataclass
 class WarningEntry:
     """Represents a warning entry in the report."""
+
     file_path: str
     line_number: int
     warning_type: str
@@ -35,6 +33,7 @@ class WarningEntry:
 @dataclass
 class ModelCostEntry:
     """Represents model usage and cost statistics."""
+
     model_name: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -46,12 +45,13 @@ class ModelCostEntry:
 @dataclass
 class ReportData:
     """Container for report generation data."""
+
     job_id: str
     generated_at: datetime
-    warnings: List[WarningEntry] = field(default_factory=list)
-    model_costs: Dict[str, ModelCostEntry] = field(default_factory=dict)
+    warnings: list[WarningEntry] = field(default_factory=list)
+    model_costs: dict[str, ModelCostEntry] = field(default_factory=dict)
     total_warnings: int = 0
-    severity_breakdown: Dict[str, int] = field(default_factory=dict)
+    severity_breakdown: dict[str, int] = field(default_factory=dict)
 
     @property
     def has_warnings(self) -> bool:
@@ -114,9 +114,9 @@ def _serialize_evaluation_result(result: EvaluationResult) -> dict:
 
 def _create_report_data(
     job_id: str,
-    evaluation_results: Optional[List[EvaluationResult]] = None,
-    warnings: Optional[List[WarningEntry]] = None,
-    model_costs: Optional[Dict[str, ModelCostEntry]] = None,
+    evaluation_results: list[EvaluationResult] | None = None,
+    warnings: list[WarningEntry] | None = None,
+    model_costs: dict[str, ModelCostEntry] | None = None,
 ) -> ReportData:
     report_data = ReportData(
         job_id=job_id,
@@ -133,7 +133,7 @@ def _create_report_data(
     else:
         report_data.model_costs = {}
 
-    severity_counts: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
+    severity_counts: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
     for warning in report_data.warnings:
         severity = warning.severity.lower()
         if severity in severity_counts:
@@ -152,10 +152,10 @@ def generate_report(
     job_id: str,
     *,
     force: bool = False,
-    evaluation_results: Optional[List[EvaluationResult]] = None,
-    warnings: Optional[List[WarningEntry]] = None,
-    model_costs: Optional[Dict[str, ModelCostEntry]] = None,
-) -> Dict[str, str]:
+    evaluation_results: list[EvaluationResult] | None = None,
+    warnings: list[WarningEntry] | None = None,
+    model_costs: dict[str, ModelCostEntry] | None = None,
+) -> dict[str, str]:
     """Generate HTML and CSV reports.
 
     Args:
@@ -199,6 +199,7 @@ def generate_report(
         >>> result = generate_report("/tmp/out", "job123", warnings=warnings, model_costs=model_costs)
         >>> print(result)
         {'html': '/tmp/out/reports/job123_report.html', 'csv': '/tmp/out/reports/job123_report.csv'}
+
     """
     reports_dir = _ensure_reports_dir(output_dir)
     html_path = _get_html_report_path(reports_dir, job_id)
@@ -261,6 +262,7 @@ def create_warning_entry(
 
     Returns:
         WarningEntry object
+
     """
     return WarningEntry(
         file_path=file_path,
@@ -291,6 +293,7 @@ def create_model_cost_entry(
 
     Returns:
         ModelCostEntry object
+
     """
     total_tokens = prompt_tokens + completion_tokens
     total_cost = (total_tokens / 1000.0) * cost_per_1k_tokens

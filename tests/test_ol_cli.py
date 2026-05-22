@@ -1,13 +1,12 @@
 """Unit tests for ol_cli typer application."""
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-from ol_cli import app, __version__
+from ol_cli import __version__, app
 
 runner = CliRunner()
 
@@ -52,7 +51,7 @@ class TestTranslateMD:
     @pytest.fixture
     def temp_md(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test\n\nContent here.")
             path = f.name
@@ -87,7 +86,7 @@ class TestTranslateXliff:
     @pytest.fixture
     def temp_xliff(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".xlf", delete=False
+            mode="w", suffix=".xlf", delete=False,
         ) as f:
             f.write('<?xml version="1.0"?>\n<xliff version="1.2"><file></file></xliff>')
             path = f.name
@@ -122,7 +121,7 @@ class TestExtractWarnings:
     @pytest.fixture
     def temp_md_with_warnings(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test\n\n<!-- OL_WARN: Tag_auto_appended -->\nContent.\n\n<!-- OL_WARN: Low_Score -->\nMore content.")
             path = f.name
@@ -132,7 +131,7 @@ class TestExtractWarnings:
     @pytest.fixture
     def temp_md_empty(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test\n\nJust normal content.")
             path = f.name

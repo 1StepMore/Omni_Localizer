@@ -1,6 +1,6 @@
 """TranslationContext tests for Omni-Localizer."""
-import pytest
-from ol_core.dataclass import TranslationContext, TranslationUnit, ChannelType
+from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
+
 
 class TestTranslationContext:
     """Test TranslationContext dataclass."""
@@ -13,7 +13,7 @@ class TestTranslationContext:
             original_full_text="Hello {{_OL_TAG_1_}}",
             units=[],
             glossary={},
-            config={}
+            config={},
         )
         assert ctx.file_path == "test.md"
         assert ctx.channel_type == ChannelType.MD
@@ -27,7 +27,7 @@ class TestTranslationContext:
             original_full_text="Hello",
             units=[],
             glossary={},
-            config={}
+            config={},
         )
         json_data = ctx.to_json()
         assert json_data["file_path"] == "test.md"
@@ -41,7 +41,7 @@ class TestTranslationContext:
             "original_full_text": "Hello",
             "units": [],
             "glossary": {},
-            "config": {}
+            "config": {},
         }
         ctx = TranslationContext.from_json(data)
         assert ctx.file_path == "test.xliff"
@@ -59,7 +59,7 @@ class TestTranslationContext:
             original_full_text="Hello World",
             units=units,
             glossary={},
-            config={}
+            config={},
         )
         found = ctx.get_unit_by_id("u2")
         assert found is not None

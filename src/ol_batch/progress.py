@@ -1,10 +1,8 @@
 """Rich progress bar for batch processing."""
 
 import asyncio
-import signal
-from pathlib import Path
 
-from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 
 class ProgressContext:
@@ -30,7 +28,6 @@ class ProgressContext:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._progress is not None:
             self._progress.__exit__(exc_type, exc_val, exc_tb)
-        return None
 
     def update(self, filename: str, completed: int, total: int) -> None:
         """Update progress bar with current state."""

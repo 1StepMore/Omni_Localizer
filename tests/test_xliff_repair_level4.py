@@ -1,5 +1,4 @@
 """Tests for XLIFF repair level 4 (safe fallback)."""
-import pytest
 from ol_xliff.repair.level4 import level4_safe_fallback
 
 
@@ -54,7 +53,7 @@ class TestRepairLevel4:
         missing_placeholders = {
             'x_1': '<x id="1"/>',
             'ph_2': '<ph id="2"/>',
-            'mrk_m3': '<mrk id="m3">text</mrk>'
+            'mrk_m3': '<mrk id="m3">text</mrk>',
         }
         result = level4_safe_fallback(text, missing_placeholders)
 

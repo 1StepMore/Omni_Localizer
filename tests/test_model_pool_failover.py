@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from ol_config.schema import LLMModelConfig, LLMModelRole, LLMPoolConfig
 from ol_pool.router import ModelPool
-from ol_config.schema import LLMPoolConfig, LLMModelConfig, LLMModelRole
 
 
 class TestModelPool:

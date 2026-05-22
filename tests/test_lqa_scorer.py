@@ -1,6 +1,7 @@
 import pytest
-from ol_lqa.scorer import ScorerService
+
 from ol_core.dataclass import EvaluationResult
+from ol_lqa.scorer import ScorerService
 
 
 class TestScorerService:

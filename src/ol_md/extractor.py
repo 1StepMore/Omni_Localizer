@@ -1,11 +1,10 @@
-import pytest
-from typing import List, Iterator
+from collections.abc import Iterator
+
 from ol_core.dataclass import TranslationUnit
 
 
 def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[TranslationUnit]:
-    """
-    Extract text content tokens for translation.
+    """Extract text content tokens for translation.
 
     Skips:
     - Code blocks (fence)
@@ -24,8 +23,8 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
 
     Raises:
         None (logs warning for unknown token types)
+
     """
-    import sys
     import warnings
 
     current_unit_id = 1
@@ -35,7 +34,7 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
         'link_open', 'link_close', 'image', 'strong_open', 'strong_close',
         'em_open', 'em_close', 's_open', 's_close', 'bullet_list_open',
         'bullet_list_close', 'ordered_list_open', 'ordered_list_close',
-        'list_item_open', 'list_item_close', 'blockquote_open', 'blockquote_close'
+        'list_item_open', 'list_item_close', 'blockquote_open', 'blockquote_close',
     }
 
     for token in tokens:
@@ -57,7 +56,7 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
                     unit_id=f'md_{current_unit_id}',
                     source_text=content,
                     shield_map={},
-                    metadata={'token_type': token_type}
+                    metadata={'token_type': token_type},
                 )
                 current_unit_id += 1
         elif token_type not in known_types:
@@ -69,7 +68,7 @@ def is_translatable(token) -> bool:
     """Check if a token type is translatable."""
     non_translatable = {
         'fence', 'code_block', 'html_block', 'image', 'link_open', 'link_close',
-        'softbreak', 'hardbreak'
+        'softbreak', 'hardbreak',
     }
     return token.type not in non_translatable
 

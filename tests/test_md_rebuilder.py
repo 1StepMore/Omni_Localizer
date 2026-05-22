@@ -1,7 +1,7 @@
-import pytest
 from markdown_it import MarkdownIt
-from ol_md.token_stream import TokenPositionTracker
+
 from ol_core.dataclass import TranslationUnit
+from ol_md.token_stream import TokenPositionTracker
 
 
 class TestMDRebuilder:
@@ -20,7 +20,7 @@ class TestMDRebuilder:
         tokens = md.parse(original)
         units = [
             TranslationUnit(unit_id='u1', source_text='Heading', target_text='标题'),
-            TranslationUnit(unit_id='u2', source_text='Paragraph with content.', target_text='带有内容的段落。')
+            TranslationUnit(unit_id='u2', source_text='Paragraph with content.', target_text='带有内容的段落。'),
         ]
         rebuilt = TokenPositionTracker.rebuild(tokens, units)
         assert '#' in rebuilt  # Heading marker preserved
@@ -37,7 +37,7 @@ class TestMDRebuilder:
         tokens = md.parse('# Hello')
         units = [
             TranslationUnit(unit_id='u1', source_text='Hello', target_text='世界'),
-            TranslationUnit(unit_id='u2', source_text='Extra', target_text='额外')
+            TranslationUnit(unit_id='u2', source_text='Extra', target_text='额外'),
         ]
         rebuilt = TokenPositionTracker.rebuild(tokens, units)
         assert isinstance(rebuilt, str)

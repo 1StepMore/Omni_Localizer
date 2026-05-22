@@ -3,9 +3,8 @@
 Format preservation ensures placeholders, variables, and escape characters
 are fully preserved and accounted for throughout the translation pipeline.
 """
-import pytest
-from ol_xliff.shield import shield_xliff
 from ol_xliff.pipeline import XLIFFRepairPipeline
+from ol_xliff.shield import shield_xliff
 
 
 class TestFormatPreservation:

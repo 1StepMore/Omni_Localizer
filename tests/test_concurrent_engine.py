@@ -1,6 +1,8 @@
 """Tests for ConcurrencyLimiter."""
 import asyncio
+
 import pytest
+
 from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError
 
 

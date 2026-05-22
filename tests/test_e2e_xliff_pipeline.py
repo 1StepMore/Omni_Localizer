@@ -2,7 +2,6 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -49,7 +48,7 @@ class TestXLIFFPipelineE2E:
             repaired = pipeline.repair(
                 unit.source_text,
                 unit.source_text,
-                unit.shield_map
+                unit.shield_map,
             )
             assert isinstance(repaired, str)
             assert len(repaired) > 0

@@ -1,16 +1,16 @@
 """MD special token shielding and restoration for Omni-Localizer."""
 import re
-from typing import Dict, Tuple
 
-def shield_special_tokens(md_text: str) -> Tuple[str, Dict[str, str]]:
-    """
-    Shield code blocks, formulas, and other special content with placeholders.
+
+def shield_special_tokens(md_text: str) -> tuple[str, dict[str, str]]:
+    """Shield code blocks, formulas, and other special content with placeholders.
 
     Args:
         md_text: Raw markdown text
 
     Returns:
         Tuple of (text_with_placeholders, shield_map)
+
     """
     shield_map = {}
     text = md_text
@@ -41,9 +41,8 @@ def shield_special_tokens(md_text: str) -> Tuple[str, Dict[str, str]]:
 
     return text, shield_map
 
-def unshield_special_tokens(translated_text: str, shield_map: Dict[str, str]) -> str:
-    """
-    Restore special tokens from shield map to translated text.
+def unshield_special_tokens(translated_text: str, shield_map: dict[str, str]) -> str:
+    """Restore special tokens from shield map to translated text.
 
     Args:
         translated_text: Text with placeholders
@@ -51,6 +50,7 @@ def unshield_special_tokens(translated_text: str, shield_map: Dict[str, str]) ->
 
     Returns:
         Text with special tokens restored
+
     """
     result = translated_text
 

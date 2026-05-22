@@ -1,6 +1,6 @@
 """EvaluationResult tests for Omni-Localizer."""
-import pytest
 from ol_core.dataclass import EvaluationResult
+
 
 class TestEvaluationResult:
     """Test EvaluationResult dataclass."""
@@ -13,7 +13,7 @@ class TestEvaluationResult:
             judge_scores={"adequacy": 8.0},
             format_preserved=True,
             format_errors=[],
-            warnings=[]
+            warnings=[],
         )
         assert er.unit_id == "u1"
         assert er.scorer_scores == {"bleu": 0.85}
@@ -27,7 +27,7 @@ class TestEvaluationResult:
             judge_scores={},
             format_preserved=True,
             format_errors=[],
-            warnings=[]
+            warnings=[],
         )
         assert er.passed_scorer == True  # all >= 0.7
 
@@ -37,7 +37,7 @@ class TestEvaluationResult:
             judge_scores={},
             format_preserved=True,
             format_errors=[],
-            warnings=[]
+            warnings=[],
         )
         assert er_low.passed_scorer == False  # 0.5 < 0.7
 
@@ -49,7 +49,7 @@ class TestEvaluationResult:
             judge_scores={"adequacy": 8.0, "fluency": 9.0},
             format_preserved=True,
             format_errors=[],
-            warnings=[]
+            warnings=[],
         )
         assert er.judge_overall_score == 8.5  # (8.0 + 9.0) / 2
 
@@ -61,7 +61,7 @@ class TestEvaluationResult:
             judge_scores={},
             format_preserved=True,
             format_errors=[],
-            warnings=[]
+            warnings=[],
         )
         assert er.judge_overall_score == 0.0
 
@@ -73,7 +73,7 @@ class TestEvaluationResult:
             judge_scores={},
             format_preserved=False,
             format_errors=["Missing placeholder", "Tag mismatch"],
-            warnings=["Low score", "Term miss"]
+            warnings=["Low score", "Term miss"],
         )
         assert len(er.format_errors) == 2
         assert len(er.warnings) == 2

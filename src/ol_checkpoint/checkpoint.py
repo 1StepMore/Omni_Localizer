@@ -5,7 +5,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
 from ol_checkpoint.exceptions import HashMismatchError
 
@@ -15,11 +15,11 @@ class ResumeResult:
     mode: str
     fresh_start: bool
     recovered_units: int = 0
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class CheckpointManager:
-    def __init__(self, checkpoint_path: str, source_path: Optional[str] = None):
+    def __init__(self, checkpoint_path: str, source_path: str | None = None):
         self._path = Path(checkpoint_path)
         self._source_path = Path(source_path) if source_path else None
         self._lock_path = self._path.with_suffix('.lock')
@@ -55,7 +55,7 @@ class CheckpointManager:
         try:
             temp_fd, temp_path = tempfile.mkstemp(
                 dir=self._path.parent,
-                suffix='.tmp'
+                suffix='.tmp',
             )
             try:
                 os.write(temp_fd, json.dumps(data, indent=2).encode('utf-8'))
@@ -73,7 +73,7 @@ class CheckpointManager:
 
         lock = self._acquire_lock(exclusive=False)
         try:
-            with open(self._path, 'r', encoding='utf-8') as f:
+            with open(self._path, encoding='utf-8') as f:
                 data = json.load(f)
 
             if self._source_path and self._source_path.exists():
@@ -81,7 +81,7 @@ class CheckpointManager:
                 if 'file_hash' in data and data['file_hash'] != expected_hash:
                     raise HashMismatchError(
                         f"Hash mismatch: checkpoint={data['file_hash']}, "
-                        f"source={expected_hash}"
+                        f"source={expected_hash}",
                     )
         finally:
             self._release_lock(lock)
@@ -97,7 +97,7 @@ class CheckpointManager:
                 self._path.unlink()
             return ResumeResult(mode='force', fresh_start=True, recovered_units=0, warnings=[])
         elif mode == 'merge':
-            warnings: List[str] = []
+            warnings: list[str] = []
             recovered = 0
             if self._path.exists():
                 try:
@@ -105,7 +105,7 @@ class CheckpointManager:
                     recovered = len(existing.get('processed_units', []))
                 except HashMismatchError as e:
                     raise HashMismatchError(
-                        f"Hash mismatch detected. Use --force to restart fresh or --merge to continue anyway."
+                        "Hash mismatch detected. Use --force to restart fresh or --merge to continue anyway.",
                     ) from e
             return ResumeResult(mode='merge', fresh_start=False, recovered_units=recovered, warnings=warnings)
         else:
@@ -118,7 +118,7 @@ class CheckpointManager:
         checkpoint_files = sorted(
             checkpoint_dir.glob(f"{self._path.stem}*"),
             key=lambda p: p.stat().st_mtime,
-            reverse=True
+            reverse=True,
         )
         for old_file in checkpoint_files[keep_latest:]:
             old_file.unlink()

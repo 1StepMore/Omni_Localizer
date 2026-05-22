@@ -1,14 +1,13 @@
 """XLIFF tag extraction and restoration for Omni-Localizer."""
 import re
-from typing import Dict, Tuple
 
 
-def extract_tags(source_xml: str) -> Dict[str, str]:
-    """
-    Extract <x/>, <bx/>, <ex/> tags from XLIFF source.
+def extract_tags(source_xml: str) -> dict[str, str]:
+    """Extract <x/>, <bx/>, <ex/> tags from XLIFF source.
 
     Returns:
         Dict mapping placeholder ID to original tag
+
     """
     tags = {}
 
@@ -33,9 +32,8 @@ def extract_tags(source_xml: str) -> Dict[str, str]:
     return tags
 
 
-def restore_tags(target_text: str, tag_map: Dict[str, str]) -> str:
-    """
-    Restore tags from placeholder map to target text.
+def restore_tags(target_text: str, tag_map: dict[str, str]) -> str:
+    """Restore tags from placeholder map to target text.
 
     Args:
         target_text: Text with placeholders like {{_OL_XTAG_x_1_}}
@@ -43,6 +41,7 @@ def restore_tags(target_text: str, tag_map: Dict[str, str]) -> str:
 
     Returns:
         Text with tags restored
+
     """
     result = target_text
     for placeholder, tag in tag_map.items():
@@ -50,15 +49,15 @@ def restore_tags(target_text: str, tag_map: Dict[str, str]) -> str:
     return result
 
 
-def replace_tags_with_placeholders(source_xml: str) -> Tuple[str, Dict[str, str]]:
-    """
-    Replace XML tags in source with placeholders.
+def replace_tags_with_placeholders(source_xml: str) -> tuple[str, dict[str, str]]:
+    """Replace XML tags in source with placeholders.
 
     Args:
         source_xml: Raw XLIFF source with tags
 
     Returns:
         Tuple of (text_with_placeholders, shield_map)
+
     """
     shield_map = {}
     text = source_xml

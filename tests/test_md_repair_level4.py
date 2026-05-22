@@ -1,4 +1,3 @@
-import pytest
 from ol_md.repair.level4 import level4_safe_fallback
 
 

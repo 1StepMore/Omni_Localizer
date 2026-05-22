@@ -1,15 +1,15 @@
 """MD bus tests for Omni-Localizer."""
-import pytest
 from ol_buses.md_bus import (
-    validate_md_structure,
     load_md,
     parse_md_to_tokens,
+    validate_md_structure,
 )
 from ol_buses.md_shield import (
     shield_special_tokens,
     unshield_special_tokens,
 )
 from ol_core.dataclass import ChannelType
+
 
 class TestMDBus:
     """Test MD bus functionality."""

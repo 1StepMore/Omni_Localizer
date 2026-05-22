@@ -1,9 +1,10 @@
-from litellm import Router
 import os
 import re
 
+from litellm import Router
+
 from ol_config.loader import load_config
-from ol_config.schema import LLMPoolConfig, LLMModelConfig
+from ol_config.schema import LLMPoolConfig
 from ol_logging.core import get_logger
 
 _logger = get_logger("pool")
@@ -46,23 +47,23 @@ class ModelPool:
                         "model_name": role,
                         "litellm_params": litellm_params,
                         "rpm": 500,
-                    }
+                    },
                 )
         return model_list
 
     async def translate(
-        self, text: str, source_lang: str, target_lang: str
+        self, text: str, source_lang: str, target_lang: str,
     ) -> str:
         _logger.debug(f"Translation request: {len(text)} chars, {source_lang}→{target_lang}")
-        _logger.debug(f"Model selected: translation")
+        _logger.debug("Model selected: translation")
         try:
             response = await self._router.acompletion(
                 model="translation",
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Translate from {source_lang} to {target_lang}: {text}"
-                    }
+                        "content": f"Translate from {source_lang} to {target_lang}: {text}",
+                    },
                 ],
                 temperature=0.0,
             )
@@ -74,7 +75,7 @@ class ModelPool:
             raise
 
     async def judge(
-        self, source: str, target: str, source_lang: str, target_lang: str
+        self, source: str, target: str, source_lang: str, target_lang: str,
     ) -> dict:
         prompt = f"""Evaluate translation quality:
 

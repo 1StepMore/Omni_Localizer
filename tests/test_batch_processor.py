@@ -1,12 +1,11 @@
 """Tests for BatchProcessor batch translation orchestration."""
-import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ol_batch.config import BatchConfig, BatchResult
+from ol_batch.config import BatchConfig
 from ol_batch.discovery import discover_files, validate_directory
 from ol_batch.processor import BatchProcessor, QueueTimeoutError
 
@@ -195,7 +194,7 @@ class TestBatchProcessor:
             file1 = input_dir / "test1.md"
             file1.write_text("original content")
 
-            mock_limiter.translation.return_value.__aenter__.side_effect = asyncio.TimeoutError()
+            mock_limiter.translation.return_value.__aenter__.side_effect = TimeoutError()
 
             result = await processor.process_batch([file1], output_dir)
 

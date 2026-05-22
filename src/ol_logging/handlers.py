@@ -5,7 +5,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from ol_logging.constants import LOG_FILE_PATTERN, MAX_BYTES, BACKUP_COUNT
+from ol_logging.constants import BACKUP_COUNT, LOG_FILE_PATTERN, MAX_BYTES
 from ol_logging.formatters import get_formatter
 
 

@@ -4,7 +4,6 @@ Phase 3a: LiteLLMRestorer implementation using ModelPool.
 """
 import asyncio
 import logging
-from typing import Dict
 
 from ol_core.interfaces import LLMRestorer
 
@@ -28,7 +27,7 @@ class LiteLLMRestorer(LLMRestorer):
         self,
         translated_text: str,
         original_text: str,
-        shield_map: Dict[str, str]
+        shield_map: dict[str, str],
     ) -> str:
         if not shield_map:
             return translated_text
@@ -43,12 +42,12 @@ class LiteLLMRestorer(LLMRestorer):
             try:
                 if is_async:
                     restored = loop.run_until_complete(
-                        self._call_llm(translated_text, original_text, shield_map)
+                        self._call_llm(translated_text, original_text, shield_map),
                     )
                 else:
                     asyncio.set_event_loop(loop)
                     restored = loop.run_until_complete(
-                        self._call_llm(translated_text, original_text, shield_map)
+                        self._call_llm(translated_text, original_text, shield_map),
                     )
                 return restored
             finally:
@@ -62,7 +61,7 @@ class LiteLLMRestorer(LLMRestorer):
         self,
         translated_text: str,
         original_text: str,
-        shield_map: Dict[str, str]
+        shield_map: dict[str, str],
     ) -> str:
         # Build a clear mapping of placeholder IDs to original content
         placeholder_mapping = "\n".join(
@@ -91,7 +90,7 @@ Return the corrected translation with all placeholders restored to match the ori
         result = await self._model_pool.translate(
             text=prompt,
             source_lang="en",
-            target_lang="en"
+            target_lang="en",
         )
 
         return result

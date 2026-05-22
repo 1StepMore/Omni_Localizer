@@ -1,6 +1,8 @@
 """Tests for Hermes skill discovery."""
-import pytest
 from pathlib import Path
+
+import pytest
+
 from tests.skill_helpers import (
     verify_skill_discovery,
     verify_skill_frontmatter,
@@ -26,7 +28,7 @@ class TestHermesSkill:
     def test_hermes_skill_required_fields(self, skill_path: Path):
         """Verify SKILL.md has required frontmatter fields."""
         required = ["name", "description"]
-        assert verify_skill_frontmatter(skill_path, required), f"Missing required field"
+        assert verify_skill_frontmatter(skill_path, required), "Missing required field"
 
     def test_hermes_skill_has_procedure(self, skill_path: Path):
         """Verify SKILL.md contains Procedure section."""

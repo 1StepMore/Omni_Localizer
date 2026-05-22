@@ -1,6 +1,4 @@
-import pytest
-from ol_tm.service import TMService, TMMatch
-from ol_core.dataclass import EvaluationResult
+from ol_tm.service import TMMatch, TMService
 
 
 class TestTMMatch:

@@ -1,4 +1,3 @@
-import pytest
 from ol_md.repair.level2 import level2_span_align
 
 

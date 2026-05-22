@@ -1,4 +1,3 @@
-import pytest
 from ol_md.token_stream import TokenPositionTracker
 
 
@@ -12,6 +11,7 @@ class TestMDTokenStream:
 
     def test_rebuild_produces_markdown(self):
         from markdown_it import MarkdownIt
+
         from ol_core.dataclass import TranslationUnit
         md = MarkdownIt()
         original = '# Hello\n\nParagraph text.'

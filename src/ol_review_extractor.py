@@ -4,8 +4,7 @@ from pathlib import Path
 
 
 def extract_warnings(input_file: str, output_file: str) -> None:
-    """
-    Extract segments containing OL_WARN patterns from input file.
+    """Extract segments containing OL_WARN patterns from input file.
 
     Supports three formats:
     - MD: <!-- OL_WARN: {message} -->
@@ -17,6 +16,7 @@ def extract_warnings(input_file: str, output_file: str) -> None:
         output_file: Path to output review file
 
     Read-only operation - does NOT modify source files.
+
     """
     import re
 
@@ -32,7 +32,6 @@ def extract_warnings(input_file: str, output_file: str) -> None:
         plain_match = re.search(r'OL_WARN:\s*(\w+)', line)
 
         if md_match or xliff_match or plain_match:
-            has_warnings = True
             output_lines.append(line)
 
     output_path = Path(output_file)

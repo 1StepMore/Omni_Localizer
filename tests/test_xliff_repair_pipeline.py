@@ -1,7 +1,6 @@
 """Tests for XLIFF repair pipeline."""
-import pytest
-from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_core.interfaces import MockLLMRestorer
+from ol_xliff.pipeline import XLIFFRepairPipeline
 
 
 class TestXLIFFRepairPipeline:

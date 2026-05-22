@@ -1,6 +1,7 @@
 import pytest
-from ol_retry.retry import RetryManager, RetryResult
+
 from ol_core.dataclass import EvaluationResult
+from ol_retry.retry import RetryManager, RetryResult
 
 
 class TestRetryResult:
