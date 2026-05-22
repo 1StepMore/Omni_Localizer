@@ -1,9 +1,11 @@
 """Config loader tests for Omni-Localizer."""
+
 import pytest
-from pathlib import Path
 from pydantic import ValidationError
+
+from ol_config.loader import load_config
 from ol_config.schema import LLMModelConfig, LLMPoolConfig, ProjectConfig
-from ol_config.loader import load_config, validate_config
+
 
 class TestConfigSchema:
     """Test config schema definitions."""
@@ -32,7 +34,7 @@ class TestConfigSchema:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="anthropic", model="claude-3-haiku", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         assert len(pool.translation) == 2
         assert len(pool.judging) == 2
@@ -53,13 +55,13 @@ class TestConfigSchema:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="anthropic", model="claude-3-haiku", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         config = ProjectConfig(
             project_id="test-project",
             source_lang="en",
             target_lang="zh",
-            llm_pool=pool
+            llm_pool=pool,
         )
         assert config.project_id == "test-project"
         assert config.source_lang == "en"
@@ -67,7 +69,7 @@ class TestConfigSchema:
 
 class TestConfigLoader:
     """Test config loading from YAML."""
-    
+
     def test_load_valid_config(self):
         """Test loading valid config file and checking basic fields."""
         from ol_config.schema import LLMModelRole
@@ -83,31 +85,30 @@ class TestConfigLoader:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="deepseek", model="deepseek-chat", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         config = ProjectConfig(
             project_id="test",
             source_lang="en",
             target_lang="zh",
-            llm_pool=pool
+            llm_pool=pool,
         )
         assert config.project_id == "test"
         assert config.source_lang == "en"
         assert config.target_lang == "zh"
-    
+
     def test_missing_required_field(self):
         """Test that missing required field raises ValidationError."""
         with pytest.raises(ValidationError):
             ProjectConfig(
                 source_lang="en",
                 target_lang="zh",
-                llm_pool=LLMPoolConfig(translation=[], judging=[])
+                llm_pool=LLMPoolConfig(translation=[], judging=[]),
                 # missing project_id
             )
-    
+
     def test_empty_model_list_not_allowed_by_schema(self):
         """Test that schema requires at least 2 models per role (primary + backup)."""
-        from ol_config.schema import LLMModelRole
         with pytest.raises(ValidationError) as exc_info:
             pool = LLMPoolConfig(translation=[], judging=[])
         assert "at least 2 models" in str(exc_info.value)
@@ -127,17 +128,17 @@ class TestConfigLoader:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="anthropic", model="claude-3-haiku", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         config = ProjectConfig(
             project_id="test",
             source_lang="en",
             target_lang="zh",
-            llm_pool=pool
+            llm_pool=pool,
         )
         assert config.glossary_path is None
         assert config.model_dump().get("glossary_path") is None
-    
+
     def test_nonexistent_file_raises(self):
         """Test that nonexistent file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):

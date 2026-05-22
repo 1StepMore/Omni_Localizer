@@ -1,11 +1,10 @@
 """Core logging initialization and utilities."""
 
 import logging
-import os
 from pathlib import Path
 
-from ol_logging.constants import LOG_LEVEL_ENV, LOG_DIR, INFO
-from ol_logging.handlers import get_file_handler, get_console_handler, is_console_enabled
+from ol_logging.constants import INFO, LOG_DIR
+from ol_logging.handlers import get_console_handler, get_file_handler, is_console_enabled
 
 _initialized = False
 

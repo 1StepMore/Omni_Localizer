@@ -1,6 +1,6 @@
 """Tests for XLIFF repair level 3 (LLM restoration delegation)."""
-import pytest
 from unittest.mock import Mock
+
 from ol_xliff.repair.level3 import level3_llm_restore
 
 
@@ -16,13 +16,13 @@ class TestRepairLevel3:
             'Translated text',
             'Original text',
             {'x_1': '<x id="1"/>'},
-            mock_restorer
+            mock_restorer,
         )
 
         mock_restorer.restore_placeholders.assert_called_once_with(
             'Translated text',
             'Original text',
-            {'x_1': '<x id="1"/>'}
+            {'x_1': '<x id="1"/>'},
         )
         assert result == 'Restored text'
 

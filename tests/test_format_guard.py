@@ -1,13 +1,15 @@
 """Format guard tests for Omni-Localizer."""
+
 import pytest
-from pathlib import Path
+
 from ol_buses.format_guard import (
-    validate_input_format,
-    is_supported,
-    get_supported_formats,
-    FormatNotSupportedError,
     SUPPORTED_FORMATS,
+    FormatNotSupportedError,
+    get_supported_formats,
+    is_supported,
+    validate_input_format,
 )
+
 
 class TestFormatGuard:
     """Test format guard functionality."""

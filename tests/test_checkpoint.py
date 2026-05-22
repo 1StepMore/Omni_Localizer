@@ -1,6 +1,5 @@
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -26,7 +25,7 @@ class TestCheckpointManager:
             "version": "1.0",
             "processed_units": ["unit1", "unit2"],
             "total_units": 100,
-            "completed_units": 50
+            "completed_units": 50,
         }
         manager.save(data)
         loaded = manager.load()
@@ -44,7 +43,7 @@ class TestCheckpointManager:
         data = {
             "version": "1.0",
             "file_hash": "wrong_hash_value",
-            "processed_units": []
+            "processed_units": [],
         }
         manager.save(data)
         with pytest.raises(HashMismatchError):
@@ -65,7 +64,7 @@ class TestCheckpointManager:
         manager = CheckpointManager(self.checkpoint_path)
         existing_data = {
             "version": "1.0",
-            "processed_units": ["unit1", "unit2"]
+            "processed_units": ["unit1", "unit2"],
         }
         manager.save(existing_data)
         result = manager.resume("merge")

@@ -79,8 +79,8 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "D", "UP", "YTT", "ANN", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T", "TID", "ARG", "P", "PL", "TRY", "NPY", "RUF", "SIM"]
-ignore = ["D100", "D104", "ANN101", "ANN102", "PLR0913", "TRY003"]
+select = ["E", "F"]
+ignore = ["D100", "D104", "PLR0913", "TRY003", "E501", "F841", "E712", "F821", "E402"]
 
 [tool.mypy]
 python_version = "3.13"

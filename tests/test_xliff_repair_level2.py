@@ -1,7 +1,9 @@
 """Tests for XLIFF repair level 2 (anchor mapping)."""
-import pytest
 from unittest.mock import Mock, patch
-from ol_xliff.repair.level2 import level2_span_align, _has_span_aligner
+
+import pytest
+
+from ol_xliff.repair.level2 import _has_span_aligner, level2_span_align
 
 
 class TestRepairLevel2:
@@ -53,6 +55,7 @@ class TestRepairLevel2:
         with patch.dict('sys.modules', {'span_alignment': None}):
             # Re-import to test the import error path
             import importlib
+
             import ol_xliff.repair.level2 as level2_mod
             importlib.reload(level2_mod)
 

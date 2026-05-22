@@ -1,17 +1,16 @@
 """Integration tests for Phase 3a components: routing, model pool, concurrency, checkpoint."""
 import asyncio
 import os
-import tempfile
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from ol_core.dataclass import ChannelType
 from ol_core.exceptions import FormatNotSupportedError
 from ol_pool.router import ModelPool
-from ol_routing.router import route_by_extension, route_batch
-
+from ol_routing.router import route_batch, route_by_extension
 
 # Mock fcntl for Windows compatibility in tests
 if sys.platform == 'win32':
@@ -148,7 +147,6 @@ class TestCheckpointIntegration:
 
     @pytest.fixture
     def checkpoint_manager(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
         checkpoint_path = os.path.join(temp_dir, "test_checkpoint.json")
         source_path = os.path.join(temp_dir, "source.txt")
         with open(source_path, 'w') as f:
@@ -184,7 +182,7 @@ class TestCheckpointIntegration:
     def test_resume_merge_mode(self, checkpoint_manager):
         existing_data = {
             "version": "1.0",
-            "processed_units": ["unit1", "unit2"]
+            "processed_units": ["unit1", "unit2"],
         }
         checkpoint_manager.save(existing_data)
         new_data = {"processed_units": ["unit2", "unit3"]}
@@ -194,7 +192,6 @@ class TestCheckpointIntegration:
         assert "unit3" in result["processed_units"]
 
     def test_hash_verification_on_load(self, temp_dir):
-        from ol_checkpoint import CheckpointManager, HashMismatchError
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
         source_path = os.path.join(temp_dir, "source.txt")
         with open(source_path, 'w') as f:
@@ -204,7 +201,7 @@ class TestCheckpointIntegration:
         data = {
             "version": "1.0",
             "file_hash": "wrong_hash_value",
-            "processed_units": []
+            "processed_units": [],
         }
         manager.save(data)
         with pytest.raises(HashMismatchError):
@@ -222,7 +219,6 @@ class TestPipelineIntegration:
 
         limiter = ConcurrencyLimiter(max_translation=5, max_scoring=3)
 
-        from ol_checkpoint import CheckpointManager
         checkpoint_path = os.path.join(temp_dir, "pipeline_checkpoint.json")
         source_path = os.path.join(temp_dir, "pipeline_source.md")
         with open(source_path, 'w') as f:
@@ -250,7 +246,7 @@ class TestPipelineIntegration:
 
         async with mock_components["limiter"].translation():
             result = await mock_components["pool"].translate(
-                "hello world", "en", "zh"
+                "hello world", "en", "zh",
             )
         assert result == "translated content"
 
@@ -261,7 +257,7 @@ class TestPipelineIntegration:
 
         async with mock_components["limiter"].scoring():
             result = await mock_components["pool"].judge(
-                "hello", "你好", "en", "zh"
+                "hello", "你好", "en", "zh",
             )
         assert result["score"] == 9.0
 
@@ -284,7 +280,7 @@ class TestPipelineIntegration:
     @pytest.mark.anyio
     async def test_pipeline_error_propagates(self, mock_components):
         mock_components["pool"].translate = AsyncMock(
-            side_effect=Exception("API Error")
+            side_effect=Exception("API Error"),
         )
 
         with pytest.raises(Exception) as exc_info:
@@ -301,7 +297,7 @@ class TestPipelineIntegration:
             channel = route_by_extension(f"file{file_idx}.md")
             async with mock_components["limiter"].translation():
                 result = await mock_components["pool"].translate(
-                    f"text {file_idx}", "en", "zh"
+                    f"text {file_idx}", "en", "zh",
                 )
             results.append((file_idx, result, channel))
 
@@ -328,13 +324,11 @@ class TestErrorHandlingIntegration:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_checkpoint_load_nonexistent_raises(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
         manager = CheckpointManager("/nonexistent/path.json")
         with pytest.raises(FileNotFoundError):
             manager.load()
 
     def test_checkpoint_resume_invalid_mode_raises(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
         manager = CheckpointManager(checkpoint_path)
         with pytest.raises(ValueError):
@@ -365,7 +359,6 @@ class TestComponentInitialization:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_checkpoint_manager_initializes_with_paths(self, temp_dir):
-        from ol_checkpoint import CheckpointManager
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
         source_path = os.path.join(temp_dir, "source.txt")
         with open(source_path, 'w') as f:
@@ -393,5 +386,5 @@ class TestComponentInitialization:
 
 
 # Import at bottom to avoid fcntl import issues on Windows
-from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError
 from ol_checkpoint import CheckpointManager, HashMismatchError
+from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError

@@ -1,10 +1,10 @@
 """Config loader for Omni-Localizer."""
 import os
 from pathlib import Path
-from typing import Union
+
 import yaml
-from pydantic import ValidationError
-from ol_config.schema import ProjectConfig, _check_env_vars
+
+from ol_config.schema import ProjectConfig
 from ol_logging.core import get_logger
 
 _logger = get_logger("config")
@@ -18,9 +18,8 @@ def _load_env_file() -> None:
                 k, _, v = line.partition("=")
                 os.environ.setdefault(k.strip(), v.strip())
 
-def load_config(path: Union[str, Path]) -> ProjectConfig:
-    """
-    Load and validate project configuration from YAML.
+def load_config(path: str | Path) -> ProjectConfig:
+    """Load and validate project configuration from YAML.
 
     Args:
         path: Path to YAML config file
@@ -32,6 +31,7 @@ def load_config(path: Union[str, Path]) -> ProjectConfig:
         ValidationError: If config is invalid or missing required fields
         FileNotFoundError: If config file doesn't exist
         TypeError: If path is None
+
     """
     if path is None:
         raise TypeError("load_config() path must not be None")
@@ -41,7 +41,7 @@ def load_config(path: Union[str, Path]) -> ProjectConfig:
 
     _logger.info(f"Loading config: {path}")
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             data = yaml.safe_load(f)
 
         cfg = ProjectConfig(**data)

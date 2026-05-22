@@ -5,7 +5,6 @@ from rich.table import Table
 
 from ol_batch.config import BatchResult
 
-
 console = Console()
 
 
@@ -15,6 +14,7 @@ def print_summary(result: BatchResult, duration: float) -> None:
     Args:
         result: Batch result containing succeeded and failed files.
         duration: Total processing duration in seconds.
+
     """
     console.print("\n[bold]Batch Processing Summary[/bold]")
     console.print(f"Duration: {duration:.2f}s")
@@ -52,6 +52,7 @@ def _sanitize_error(error: str) -> str:
 
     Returns:
         Error message with sensitive data redacted.
+
     """
     import re
 

@@ -1,10 +1,10 @@
 """Tests for Smart Routing Engine."""
+
 import pytest
-from pathlib import Path
 
 from ol_core.dataclass import ChannelType
 from ol_core.exceptions import FormatNotSupportedError
-from ol_routing.router import route_by_extension, route_batch
+from ol_routing.router import route_batch, route_by_extension
 
 
 class TestRouteByExtension:

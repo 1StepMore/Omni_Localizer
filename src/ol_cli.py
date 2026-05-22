@@ -1,22 +1,20 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
+import asyncio
+import re
 import signal
 import sys
-import asyncio
+
+# ========== OL Frontmatter Support ==========
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 
-from ol_logging.core import init_logger, get_logger
-
+from ol_logging.core import get_logger, init_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
-# ========== OL Frontmatter Support ==========
-
-from datetime import datetime, timezone
-import re
 
 def _escape_yaml_value(value: str) -> str:
     """Escape special characters in YAML string values to prevent injection."""
@@ -71,13 +69,14 @@ def _generate_frontmatter(
 
     Raises:
         ValueError: If language codes are invalid
+
     """
     # Validate inputs to prevent injection
     source_lang = _validate_lang_code(source_lang)
     target_lang = _validate_lang_code(target_lang)
     escaped_filename = _escape_yaml_value(original_filename)
 
-    timestamp = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+    timestamp = datetime.now(UTC).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
     frontmatter_lines = [
         "---",
@@ -168,10 +167,10 @@ def ensure_output_dir(path: str) -> Path:
 def output_json(
     success: bool,
     input_file: str,
-    output_file: Optional[str] = None,
-    source_lang: Optional[str] = None,
-    target_lang: Optional[str] = None,
-    error: Optional[str] = None,
+    output_file: str | None = None,
+    source_lang: str | None = None,
+    target_lang: str | None = None,
+    error: str | None = None,
 ) -> None:
     """Output structured JSON to stdout."""
     import json
@@ -193,7 +192,7 @@ def output_json(
 async def _translate_md_async(
     input_path: Path,
     output_path: Path,
-    config_path: Optional[str],
+    config_path: str | None,
     src_lang: str,
     tgt_lang: str,
     add_frontmatter: bool = True,
@@ -245,9 +244,9 @@ async def _translate_md_async(
 def translate_md(
     input: str = typer.Argument(..., help="Input markdown file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
-    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
     add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add YAML frontmatter to output file"),
 ) -> int:
@@ -283,7 +282,7 @@ def translate_md(
             tgt = tgt or "zh"
 
         output_file = asyncio.run(
-            _translate_md_async(input_path, output_path, config, src, tgt, add_frontmatter)
+            _translate_md_async(input_path, output_path, config, src, tgt, add_frontmatter),
         )
 
         if json_output:
@@ -308,13 +307,14 @@ def translate_md(
 async def _translate_batch_async(
     directory: Path,
     output_dir: Path,
-    config_path: Optional[str],
+    config_path: str | None,
     src_lang: str,
     tgt_lang: str,
     max_concurrent: int,
     add_frontmatter: bool = True,
 ) -> tuple[int, int]:
     import time
+
     from ol_batch.config import BatchConfig
     from ol_batch.discovery import discover_files, validate_directory
     from ol_batch.processor import BatchProcessor
@@ -344,7 +344,7 @@ async def _translate_batch_async(
     processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter)
 
     start_time = time.time()
-    async with ProgressContext() as progress:
+    async with ProgressContext() as _:
         result = await processor.process_batch(files, output_dir)
 
     duration = time.time() - start_time
@@ -356,10 +356,10 @@ async def _translate_batch_async(
 @app.command()
 def translate_batch(
     directory: str = typer.Argument(..., help="Input directory path"),
-    output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="Output directory"),
-    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    output_dir: str | None = typer.Option(None, "--output-dir", "-o", help="Output directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     concurrency: int = typer.Option(5, "--concurrency", "-j", help="Max concurrent translations"),
     add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add frontmatter to translated files"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
@@ -400,7 +400,7 @@ def translate_batch(
             tgt = tgt or "zh"
 
         succeeded, failed = asyncio.run(
-            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency, add_frontmatter)
+            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency, add_frontmatter),
         )
 
         if failed > 0:
@@ -428,9 +428,9 @@ def translate_batch(
 def translate_xliff(
     input: str = typer.Argument(..., help="Input XLIFF file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
-    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: Optional[str] = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: Optional[str] = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
+    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
 ) -> int:
     try:
@@ -493,7 +493,7 @@ def translate_xliff(
 @app.command()
 def extract_warnings(
     input: str = typer.Argument(..., help="Input file path (MD or XLIFF)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -525,12 +525,11 @@ def extract_warnings(
             output_content = "\n".join(warnings) if warnings else "# No warnings found"
             output_path.write_text(output_content, encoding="utf-8")
             typer.echo(f"Warnings extracted to: {output}")
+        elif warnings:
+            for w in warnings:
+                typer.echo(w)
         else:
-            if warnings:
-                for w in warnings:
-                    typer.echo(w)
-            else:
-                typer.echo("# No warnings found")
+            typer.echo("# No warnings found")
 
         logger.info(f"Completed: extract_warnings {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
@@ -545,7 +544,7 @@ def extract_warnings(
 
 @app.callback(invoke_without_command=True)
 def main(
-    version: Optional[bool] = typer.Option(None, "--version", is_eager=True, help="Show version"),
+    version: bool | None = typer.Option(None, "--version", is_eager=True, help="Show version"),
 ) -> None:
     if version:
         typer.echo(f"ol version {__version__}")

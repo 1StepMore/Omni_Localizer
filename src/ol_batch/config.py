@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -10,11 +9,11 @@ class BatchConfig:
     max_concurrent: int = 5
     retry_attempts: int = 3
     retry_delay: float = 1.0
-    file_patterns: List[str] = field(
-        default_factory=lambda: ["*.md", "*.xliff", "*.xlf"]
+    file_patterns: list[str] = field(
+        default_factory=lambda: ["*.md", "*.xliff", "*.xlf"],
     )
     skip_existing: bool = True
-    timeout: Optional[float] = None
+    timeout: float | None = None
 
 
 @dataclass

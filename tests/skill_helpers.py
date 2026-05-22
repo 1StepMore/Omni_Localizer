@@ -17,6 +17,7 @@ def verify_skill_discovery(skill_path: Path) -> bool:
 
     Returns:
         True if SKILL.md exists and has valid YAML frontmatter
+
     """
     skill_md = skill_path / 'SKILL.md'
     if not skill_md.exists():
@@ -46,6 +47,7 @@ def verify_skill_frontmatter(skill_path: Path, required_fields: list[str]) -> bo
 
     Returns:
         True if all required fields present
+
     """
     skill_md = skill_path / 'SKILL.md'
     if not skill_md.exists():
@@ -77,11 +79,12 @@ def verify_cli_json_output(command: list[str], expected_fields: list[str]) -> di
 
     Returns:
         dict with keys: 'success' (bool), 'json' (parsed JSON or None), 'error' (str or None)
+
     """
     result = {
         'success': False,
         'json': None,
-        'error': None
+        'error': None,
     }
 
     try:
@@ -89,7 +92,7 @@ def verify_cli_json_output(command: list[str], expected_fields: list[str]) -> di
             command,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
 
         output = proc.stdout.strip()
@@ -126,6 +129,7 @@ def create_temp_input(text: str, suffix: str = '.md') -> Path:
 
     Returns:
         Path to temporary file (caller should delete)
+
     """
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:

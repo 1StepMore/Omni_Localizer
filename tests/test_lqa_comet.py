@@ -1,6 +1,5 @@
 """COMETService tests for Omni-Localizer."""
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 
 class TestCOMETService:
@@ -74,7 +73,7 @@ class TestCOMETService:
         asyncio.set_event_loop(loop)
         try:
             score = loop.run_until_complete(
-                service.score_xcomet("Hello", "Bonjour", "en", "fr")
+                service.score_xcomet("Hello", "Bonjour", "en", "fr"),
             )
         finally:
             loop.close()
@@ -99,9 +98,9 @@ class TestCOMETService:
                         "text": "Bonjour",
                         "severity": "minor",
                         "confidence": 0.9,
-                    }
-                ]
-            }
+                    },
+                ],
+            },
         ]
         mock_model.predict.return_value = mock_output
         mock_load.return_value = mock_model
@@ -157,8 +156,8 @@ class TestCOMETService:
                     "Bonjour le monde",
                     "unit_1",
                     "en",
-                    "fr"
-                )
+                    "fr",
+                ),
             )
         finally:
             loop.close()
@@ -180,9 +179,9 @@ class TestCOMETService:
         mock_output.metadata = [
             {
                 "error_spans": [
-                    {"start": 0, "end": 5, "text": "Bonjour", "severity": "major", "confidence": 0.8}
-                ]
-            }
+                    {"start": 0, "end": 5, "text": "Bonjour", "severity": "major", "confidence": 0.8},
+                ],
+            },
         ]
         mock_model.predict.return_value = mock_output
         mock_load.return_value = mock_model
@@ -199,8 +198,8 @@ class TestCOMETService:
                     "Bonjour",
                     "unit_1",
                     "en",
-                    "fr"
-                )
+                    "fr",
+                ),
             )
         finally:
             loop.close()
@@ -228,7 +227,7 @@ class TestCOMETServiceEdgeCases:
         asyncio.set_event_loop(loop)
         try:
             score = loop.run_until_complete(
-                service.score_xcomet("Hello", "Bonjour", "en", "fr")
+                service.score_xcomet("Hello", "Bonjour", "en", "fr"),
             )
         finally:
             loop.close()

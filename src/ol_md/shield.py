@@ -1,7 +1,6 @@
-import re
 import base64
+import re
 import uuid
-from typing import Dict, Tuple, List
 
 
 def _b64_encode(content: str) -> str:
@@ -17,8 +16,8 @@ def _make_marker(prefix: str) -> str:
     return f"OL{prefix.upper()}_{uid}_"
 
 
-def shield_markdown(md_text: str) -> Tuple[str, Dict[str, str]]:
-    shield_map: Dict[str, str] = {}
+def shield_markdown(md_text: str) -> tuple[str, dict[str, str]]:
+    shield_map: dict[str, str] = {}
     text = md_text
 
     code_pattern = re.compile(r'(```[\w]*\n[\s\S]*?```)')
@@ -73,7 +72,7 @@ def shield_markdown(md_text: str) -> Tuple[str, Dict[str, str]]:
     return text, shield_map
 
 
-def unshield_markdown(translated_text: str, shield_map: Dict[str, str]) -> str:
+def unshield_markdown(translated_text: str, shield_map: dict[str, str]) -> str:
     result = translated_text
     sorted_items = sorted(shield_map.items(), key=lambda x: len(x[0]), reverse=True)
 
@@ -83,21 +82,13 @@ def unshield_markdown(translated_text: str, shield_map: Dict[str, str]) -> str:
             result = result.replace(marker, original_content)
         elif marker.startswith('OLICODE_'):
             result = result.replace(marker, f'`{original_content}`')
-        elif marker.startswith('OLMATH_'):
-            result = result.replace(marker, original_content)
-        elif marker.startswith('OLLINK_'):
-            result = result.replace(marker, original_content)
-        elif marker.startswith('OLIMG_'):
-            result = result.replace(marker, original_content)
-        elif marker.startswith('OLHTML_'):
-            result = result.replace(marker, original_content)
-        elif marker.startswith('OLAUTO_'):
+        elif marker.startswith('OLMATH_') or marker.startswith('OLLINK_') or marker.startswith('OLIMG_') or marker.startswith('OLHTML_') or marker.startswith('OLAUTO_'):
             result = result.replace(marker, original_content)
 
     return result
 
 
-def get_placeholders_in_text(text: str) -> List[str]:
+def get_placeholders_in_text(text: str) -> list[str]:
     pattern = re.compile(r'OL(B64|I|M|L|G|H|A)_([0-9a-fA-F]+)')
     matches = pattern.findall(text)
     return matches

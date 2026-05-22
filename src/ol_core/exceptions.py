@@ -3,14 +3,15 @@
 
 class OLBaseError(Exception):
     """Base exception for all Omni-Localizer errors."""
+
     pass
 
 
 class RestoreFailedError(OLBaseError):
-    """
-    Raised when Level 3 LLM re-insertion fails.
+    """Raised when Level 3 LLM re-insertion fails.
     Triggers Level 4 safe fallback (append placeholders to sentence end).
     """
+
     pass
 
 
@@ -23,4 +24,5 @@ class FormatNotSupportedError(OLBaseError):
 
 class TranslationError(OLBaseError):
     """Raised when translation fails."""
+
     pass

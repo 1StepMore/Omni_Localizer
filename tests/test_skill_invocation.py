@@ -1,8 +1,7 @@
 """Tests for skill invocation via CLI."""
-import json
 import pytest
-from pathlib import Path
-from tests.skill_helpers import verify_cli_json_output, create_temp_input
+
+from tests.skill_helpers import create_temp_input, verify_cli_json_output
 
 
 class TestSkillInvocation:
@@ -15,7 +14,7 @@ class TestSkillInvocation:
             "python", "-m", "ol_cli",
             "translate-md", "nonexistent.md",
             "-o", "/tmp/out",
-            "--json"
+            "--json",
         ]
         result = verify_cli_json_output(cmd, ["success", "error"])
 
@@ -29,7 +28,7 @@ class TestSkillInvocation:
             "python", "-m", "ol_cli",
             "translate-md", "nonexistent.md",
             "-o", "/tmp/out",
-            "--json"
+            "--json",
         ]
         result = verify_cli_json_output(cmd, ["success", "error"])
 

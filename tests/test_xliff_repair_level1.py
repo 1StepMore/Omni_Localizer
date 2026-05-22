@@ -1,5 +1,4 @@
 """Tests for XLIFF repair level 1 (regex cleaning)."""
-import pytest
 from ol_xliff.repair.level1 import level1_regex_clean
 
 

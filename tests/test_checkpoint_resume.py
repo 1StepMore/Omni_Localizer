@@ -78,7 +78,7 @@ class TestCheckpointManagerHashMismatch:
             ckpt_path = Path(tmpdir) / "checkpoint.json"
             ckpt_path.write_text(json.dumps({
                 "processed_units": ["u1"],
-                "file_hash": "different_hash"
+                "file_hash": "different_hash",
             }))
 
             mgr = CheckpointManager(str(ckpt_path), source_path=str(src_path))

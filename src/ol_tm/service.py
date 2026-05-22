@@ -1,8 +1,7 @@
-import sys
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 _logger = logging.getLogger("tm")
 
@@ -49,7 +48,7 @@ class TMService:
         self._tmx_path = Path(tmx_path)
         self._embedding_model = embedding_model
         self._model = None
-        self._entries: List[TMMatch] = []
+        self._entries: list[TMMatch] = []
         self._load()
 
     def _get_model(self):
@@ -89,7 +88,7 @@ class TMService:
         finally:
             _release_lock(0, lock_path)
 
-    def search(self, source_text: str, threshold: float = 0.85) -> List[TMMatch]:
+    def search(self, source_text: str, threshold: float = 0.85) -> list[TMMatch]:
         if not self._entries:
             return []
         model = self._get_model()
@@ -107,7 +106,7 @@ class TMService:
                 ))
         return sorted(results, key=lambda x: x.similarity, reverse=True)
 
-    def _cosine_sim(self, source_emb, target_embs) -> List[float]:
+    def _cosine_sim(self, source_emb, target_embs) -> list[float]:
         import numpy as np
         source_norm = np.linalg.norm(source_emb)
         target_norms = np.linalg.norm(target_embs, axis=1)

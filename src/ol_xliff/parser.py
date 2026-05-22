@@ -1,10 +1,8 @@
 """XLIFF parser for Omni-Localizer using translate-toolkit + regex fallback."""
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from ol_core.dataclass import TranslationUnit
-
 
 # Regex patterns for inline element extraction
 # XLIFF 1.x inline elements: x, bx, ex, ph, alayout
@@ -29,17 +27,17 @@ XLIFF_1_NS = 'xmlns="urn:oasis:names:tc:xliff:document:1.1'
 XLIFF_2_NS = 'xmlns="urn:oasis:names:tc:xliff:document:2.0'
 
 
-def extract_inline_elements(text: str) -> Tuple[str, Dict[str, str]]:
-    """
-    Extract inline elements from XLIFF text using regex.
+def extract_inline_elements(text: str) -> tuple[str, dict[str, str]]:
+    """Extract inline elements from XLIFF text using regex.
 
     Args:
         text: Raw XLIFF text with inline elements
 
     Returns:
         Tuple of (text_with_placeholders, shield_map)
+
     """
-    shield_map: Dict[str, str] = {}
+    shield_map: dict[str, str] = {}
     result = text
 
     # Process all inline element patterns
@@ -71,14 +69,14 @@ def extract_inline_elements(text: str) -> Tuple[str, Dict[str, str]]:
 
 
 def detect_xliff_version(content: str) -> str:
-    """
-    Detect XLIFF version from content.
+    """Detect XLIFF version from content.
 
     Args:
         content: XLIFF file content
 
     Returns:
         '1.x', '2.0', or 'unknown'
+
     """
     if XLIFF_2_NS in content:
         return '2.0'
@@ -87,17 +85,17 @@ def detect_xliff_version(content: str) -> str:
     return 'unknown'
 
 
-def parse_xliff_1x(content: str) -> List[TranslationUnit]:
-    """
-    Parse XLIFF 1.x format using regex fallback.
+def parse_xliff_1x(content: str) -> list[TranslationUnit]:
+    """Parse XLIFF 1.x format using regex fallback.
 
     Args:
         content: XLIFF 1.x file content
 
     Returns:
         List of TranslationUnit objects
+
     """
-    units: List[TranslationUnit] = []
+    units: list[TranslationUnit] = []
 
     # Try translate-toolkit first if available
     xliff_1_parser = None
@@ -140,13 +138,13 @@ def parse_xliff_1x(content: str) -> List[TranslationUnit]:
                             unit_id=unit_id,
                             source_text=text_with_placeholders,
                             shield_map=shield_map,
-                            metadata={'source': 'translate-toolkit'}
+                            metadata={'source': 'translate-toolkit'},
                         ))
     else:
         # Regex fallback for XLIFF 1.x
         trans_unit_pattern = re.compile(
             r'<trans-unit[^>]*id="([^"]+)"[^>]*>(.*?)</trans-unit>',
-            re.DOTALL
+            re.DOTALL,
         )
         source_pattern = re.compile(r'<source[^>]*>(.*?)</source>', re.DOTALL)
 
@@ -163,15 +161,14 @@ def parse_xliff_1x(content: str) -> List[TranslationUnit]:
                     unit_id=unit_id,
                     source_text=text_with_placeholders,
                     shield_map=shield_map,
-                    metadata={'source': 'regex'}
+                    metadata={'source': 'regex'},
                 ))
 
     return units
 
 
-def parse_xliff_2(content: str) -> List[TranslationUnit]:
-    """
-    Parse XLIFF 2.0 format.
+def parse_xliff_2(content: str) -> list[TranslationUnit]:
+    """Parse XLIFF 2.0 format.
 
     XLIFF 2.0 structure: <unit><segment><source>...</source></segment></unit>
 
@@ -180,8 +177,9 @@ def parse_xliff_2(content: str) -> List[TranslationUnit]:
 
     Returns:
         List of TranslationUnit objects
+
     """
-    units: List[TranslationUnit] = []
+    units: list[TranslationUnit] = []
 
     # Try translate-toolkit for XLIFF 2.0 if available
     try:
@@ -205,17 +203,17 @@ def parse_xliff_2(content: str) -> List[TranslationUnit]:
                             unit_id=f"{unit_id}_{segment.get('id', '0')}",
                             source_text=text_with_placeholders,
                             shield_map=shield_map,
-                            metadata={'source': 'translate-toolkit', 'xliff_version': '2.0'}
+                            metadata={'source': 'translate-toolkit', 'xliff_version': '2.0'},
                         ))
     else:
         # Regex fallback for XLIFF 2.0
         unit_pattern = re.compile(
             r'<unit[^>]*id="([^"]+)"[^>]*>(.*?)</unit>',
-            re.DOTALL
+            re.DOTALL,
         )
         segment_pattern = re.compile(
             r'<segment[^>]*id="([^"]+)"[^>]*>(.*?)</segment>',
-            re.DOTALL
+            re.DOTALL,
         )
         source_pattern = re.compile(r'<source[^>]*>(.*?)</source>', re.DOTALL)
 
@@ -236,7 +234,7 @@ def parse_xliff_2(content: str) -> List[TranslationUnit]:
                         unit_id=f"{unit_id}_{seg_id}",
                         source_text=text_with_placeholders,
                         shield_map=shield_map,
-                        metadata={'source': 'regex', 'xliff_version': '2.0'}
+                        metadata={'source': 'regex', 'xliff_version': '2.0'},
                     ))
 
     return units
@@ -251,16 +249,15 @@ class XliffParser:
 
     def __init__(self):
         """Initialize XliffParser."""
-        self._version: Optional[str] = None
+        self._version: str | None = None
 
     @property
-    def version(self) -> Optional[str]:
+    def version(self) -> str | None:
         """Detected XLIFF version."""
         return self._version
 
-    def parse(self, path: str) -> List[TranslationUnit]:
-        """
-        Parse XLIFF file and return translation units.
+    def parse(self, path: str) -> list[TranslationUnit]:
+        """Parse XLIFF file and return translation units.
 
         Args:
             path: Path to XLIFF file (.xliff or .xlf)
@@ -271,6 +268,7 @@ class XliffParser:
         Raises:
             FileNotFoundError: If file does not exist
             ValueError: If file is not valid XLIFF
+
         """
         file_path = Path(path)
         if not file_path.exists():
@@ -291,15 +289,15 @@ class XliffParser:
         else:
             raise ValueError(f"Unsupported XLIFF version: {self._version}")
 
-    def parse_string(self, content: str) -> List[TranslationUnit]:
-        """
-        Parse XLIFF content from string.
+    def parse_string(self, content: str) -> list[TranslationUnit]:
+        """Parse XLIFF content from string.
 
         Args:
             content: XLIFF file content as string
 
         Returns:
             List of TranslationUnit objects
+
         """
         self._version = detect_xliff_version(content)
         if self._version == 'unknown':

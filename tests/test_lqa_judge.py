@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from ol_lqa.judge import JudgeService, EnsembleJudge
+import pytest
+
 from ol_core.dataclass import EvaluationResult
+from ol_lqa.judge import EnsembleJudge, JudgeService
 
 
 class TestJudgeService:

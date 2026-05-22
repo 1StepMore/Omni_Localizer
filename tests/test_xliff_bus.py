@@ -1,10 +1,10 @@
 """XLIFF bus tests for Omni-Localizer."""
-import pytest
 from pathlib import Path
+
 from ol_buses.xliff_bus import (
-    validate_xliff_structure,
-    load_xliff,
     iterate_trans_units,
+    load_xliff,
+    validate_xliff_structure,
 )
 from ol_buses.xliff_shield import (
     extract_tags,
@@ -12,6 +12,7 @@ from ol_buses.xliff_shield import (
     restore_tags,
 )
 from ol_core.dataclass import ChannelType
+
 
 class TestXLIFFBus:
     """Test XLIFF bus functionality."""

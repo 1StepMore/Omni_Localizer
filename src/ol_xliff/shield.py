@@ -1,8 +1,7 @@
 import re
-from typing import Dict, Tuple
 
 
-def shield_xliff(text: str) -> Tuple[str, Dict[str, str]]:
+def shield_xliff(text: str) -> tuple[str, dict[str, str]]:
     shield_map = {}
     result = text
 

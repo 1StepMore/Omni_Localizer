@@ -1,8 +1,10 @@
 """LLM Restorer interface tests for Omni-Localizer."""
 import pytest
+
+from ol_core.exceptions import RestoreFailedError
 from ol_core.interfaces import LLMRestorer, MockLLMRestorer
 from ol_md.repair.level3 import LiteLLMRestorer
-from ol_core.exceptions import RestoreFailedError
+
 
 class TestLLMRestorerInterface:
     """Test LLM restorer interface and implementations."""
@@ -21,7 +23,7 @@ class TestLLMRestorerInterface:
         result = mock.restore_placeholders(
             "Bonjour",
             "Hello {{_OL_TAG_1_}}",
-            {"tag1": "{{_OL_CODE_abc_}}"}
+            {"tag1": "{{_OL_CODE_abc_}}"},
         )
         assert result == "Bonjour"
 

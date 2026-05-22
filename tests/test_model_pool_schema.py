@@ -1,8 +1,10 @@
 """Tests for model pool schema validation."""
 import os
+
 import pytest
 from pydantic import ValidationError
-from ol_config.schema import LLMModelConfig, LLMPoolConfig, ProjectConfig, LLMModelRole
+
+from ol_config.schema import LLMModelConfig, LLMModelRole, LLMPoolConfig, ProjectConfig
 
 
 class TestLLMModelRole:
@@ -24,7 +26,7 @@ class TestLLMModelConfig:
             provider="openai",
             model="gpt-4o-mini",
             priority=1,
-            role=LLMModelRole.TRANSLATION
+            role=LLMModelRole.TRANSLATION,
         )
         assert config.provider == "openai"
         assert config.role == LLMModelRole.TRANSLATION
@@ -37,7 +39,7 @@ class TestLLMModelConfig:
             model="gpt-4",
             priority=1,
             api_key="${MY_API_KEY}",
-            role=LLMModelRole.TRANSLATION
+            role=LLMModelRole.TRANSLATION,
         )
         assert config.api_key == "${MY_API_KEY}"
         del os.environ["MY_API_KEY"]
@@ -60,7 +62,7 @@ class TestLLMPoolConfig:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         assert len(pool.translation) == 2
         assert len(pool.judging) == 2
@@ -76,7 +78,7 @@ class TestLLMPoolConfig:
                 judging=[
                     LLMModelConfig(provider="anthropic", model="claude-3-sonnet", priority=1, role=LLMModelRole.JUDGING),
                     LLMModelConfig(provider="anthropic", model="claude-3-opus", priority=2, role=LLMModelRole.JUDGING),
-                ]
+                ],
             )
         assert "translation" in str(exc_info.value)
         assert "at least 2 models" in str(exc_info.value)
@@ -89,7 +91,7 @@ class TestLLMPoolConfig:
                 judging=[
                     LLMModelConfig(provider="openai", model="gpt-4", priority=1, role=LLMModelRole.JUDGING),
                     LLMModelConfig(provider="openai", model="gpt-4", priority=2, role=LLMModelRole.JUDGING),
-                ]
+                ],
             )
 
 
@@ -110,13 +112,13 @@ class TestProjectConfigWithPool:
             restoration=[
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=1, role=LLMModelRole.RESTORATION),
                 LLMModelConfig(provider="openai", model="gpt-4o-mini", priority=2, role=LLMModelRole.RESTORATION),
-            ]
+            ],
         )
         config = ProjectConfig(
             project_id="test-project",
             source_lang="en",
             target_lang="zh",
-            llm_pool=pool
+            llm_pool=pool,
         )
         assert config.project_id == "test-project"
         assert len(config.llm_pool.translation) == 2

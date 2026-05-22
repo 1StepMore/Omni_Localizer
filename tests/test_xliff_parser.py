@@ -1,5 +1,6 @@
 """Tests for XLIFF parser functionality."""
 import pytest
+
 from ol_xliff.parser import XliffParser, detect_xliff_version, extract_inline_elements
 
 

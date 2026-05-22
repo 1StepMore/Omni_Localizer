@@ -1,6 +1,6 @@
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Tuple
 
 from ol_core.dataclass import EvaluationResult
 
@@ -10,8 +10,8 @@ class RetryResult:
     attempts: int
     final_score: float
     best_translation: str
-    warning: Optional[str]
-    attempt_history: List[Tuple[str, float]] = field(default_factory=list)
+    warning: str | None
+    attempt_history: list[tuple[str, float]] = field(default_factory=list)
 
 
 class RetryManager:
@@ -26,10 +26,10 @@ class RetryManager:
         translate_fn: Callable[[], str],
         judge_fn: Callable[[str, str, str], EvaluationResult],
     ) -> RetryResult:
-        attempt_history: List[Tuple[str, float]] = []
-        best_result: Optional[EvaluationResult] = None
+        attempt_history: list[tuple[str, float]] = []
+        best_result: EvaluationResult | None = None
         best_translation: str = ""
-        warning: Optional[str] = None
+        warning: str | None = None
 
         for attempt in range(self._max_retries + 1):
             translation = await translate_fn() if asyncio.iscoroutinefunction(translate_fn) else translate_fn()

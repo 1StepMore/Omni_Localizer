@@ -1,10 +1,8 @@
 """Unit tests for ol_lqa report module."""
-import os
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,12 +12,12 @@ if sys.platform == 'win32':
     sys.modules['fcntl'] = unittest.mock.MagicMock()
 
 from ol_lqa.report import (
-    WarningEntry,
     ModelCostEntry,
     ReportData,
-    generate_report,
-    create_warning_entry,
+    WarningEntry,
     create_model_cost_entry,
+    create_warning_entry,
+    generate_report,
 )
 
 
@@ -28,8 +26,11 @@ class TestReportModuleImport:
 
     def test_report_module_imports(self):
         """Test that all expected classes and functions are importable."""
-        from ol_lqa.report import WarningEntry, ModelCostEntry, ReportData
-        from ol_lqa.report import generate_report, create_warning_entry, create_model_cost_entry
+        from ol_lqa.report import (
+            ModelCostEntry,
+            ReportData,
+            WarningEntry,
+        )
         assert WarningEntry is not None
         assert ModelCostEntry is not None
         assert ReportData is not None
@@ -45,7 +46,7 @@ class TestReportModuleImport:
             cost=0.05,
             source_text="Hello",
             target_text="Bonjour",
-            reference="Heading 1"
+            reference="Heading 1",
         )
         assert entry.file_path == "test.md"
         assert entry.line_number == 10
@@ -62,7 +63,7 @@ class TestReportModuleImport:
             completion_tokens=50,
             total_tokens=150,
             cost_per_1k_tokens=0.01,
-            total_cost=0.0015
+            total_cost=0.0015,
         )
         assert entry.model_name == "gpt-4o"
         assert entry.prompt_tokens == 100
@@ -77,7 +78,7 @@ class TestReportModuleImport:
             warnings=[],
             model_costs={},
             total_warnings=0,
-            severity_breakdown={}
+            severity_breakdown={},
         )
         assert report.job_id == "test_job"
         assert report.has_warnings is False
@@ -87,12 +88,12 @@ class TestReportModuleImport:
         warnings = [WarningEntry(
             file_path="test.md", line_number=1,
             warning_type="OL_WARN", severity="high",
-            model="gpt-4o", cost=0.01
+            model="gpt-4o", cost=0.01,
         )]
         report = ReportData(
             job_id="test_job",
             generated_at=datetime.now(),
-            warnings=warnings
+            warnings=warnings,
         )
         assert report.has_warnings is True
 
@@ -105,13 +106,13 @@ class TestReportModuleImport:
                 completion_tokens=50,
                 total_tokens=150,
                 cost_per_1k_tokens=0.01,
-                total_cost=0.0015
-            )
+                total_cost=0.0015,
+            ),
         }
         report = ReportData(
             job_id="test_job",
             generated_at=datetime.now(),
-            model_costs=model_costs
+            model_costs=model_costs,
         )
         assert report.total_cost == 0.0015
 
@@ -124,13 +125,13 @@ class TestReportModuleImport:
                 completion_tokens=50,
                 total_tokens=150,
                 cost_per_1k_tokens=0.01,
-                total_cost=0.0015
-            )
+                total_cost=0.0015,
+            ),
         }
         report = ReportData(
             job_id="test_job",
             generated_at=datetime.now(),
-            model_costs=model_costs
+            model_costs=model_costs,
         )
         assert report.total_tokens == 150
 
@@ -149,7 +150,7 @@ class TestCreateFunctions:
             cost=0.05,
             source_text="Hello",
             target_text="Bonjour",
-            reference="Heading 1"
+            reference="Heading 1",
         )
         assert isinstance(entry, WarningEntry)
         assert entry.file_path == "test.md"
@@ -161,7 +162,7 @@ class TestCreateFunctions:
             model_name="gpt-4o",
             prompt_tokens=100,
             completion_tokens=50,
-            cost_per_1k_tokens=0.01
+            cost_per_1k_tokens=0.01,
         )
         assert isinstance(entry, ModelCostEntry)
         assert entry.model_name == "gpt-4o"
@@ -193,7 +194,7 @@ class TestHTMLReportGeneration:
                 cost=0.023,
                 source_text="Click the submit button",
                 target_text="Cliquez sur le bouton soumettre",
-                reference="Section 3.2"
+                reference="Section 3.2",
             ),
             WarningEntry(
                 file_path="docs/api.md",
@@ -204,7 +205,7 @@ class TestHTMLReportGeneration:
                 cost=0.012,
                 source_text="API response format",
                 target_text="Format de reponse API",
-                reference="trans-unit-42"
+                reference="trans-unit-42",
             ),
         ]
 
@@ -218,7 +219,7 @@ class TestHTMLReportGeneration:
                 completion_tokens=2500,
                 total_tokens=7500,
                 cost_per_1k_tokens=0.015,
-                total_cost=0.1125
+                total_cost=0.1125,
             ),
             "gpt-4o-mini": ModelCostEntry(
                 model_name="gpt-4o-mini",
@@ -226,7 +227,7 @@ class TestHTMLReportGeneration:
                 completion_tokens=1500,
                 total_tokens=4500,
                 cost_per_1k_tokens=0.003,
-                total_cost=0.0135
+                total_cost=0.0135,
             ),
         }
 
@@ -236,7 +237,7 @@ class TestHTMLReportGeneration:
             temp_output_dir,
             "test_job_001",
             warnings=mock_warnings,
-            model_costs=mock_model_costs
+            model_costs=mock_model_costs,
         )
 
         assert "html" in result
@@ -250,7 +251,7 @@ class TestHTMLReportGeneration:
             temp_output_dir,
             "test_job_002",
             warnings=mock_warnings,
-            model_costs=mock_model_costs
+            model_costs=mock_model_costs,
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -264,7 +265,7 @@ class TestHTMLReportGeneration:
             temp_output_dir,
             "test_job_003",
             warnings=mock_warnings,
-            model_costs=mock_model_costs
+            model_costs=mock_model_costs,
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -296,7 +297,7 @@ class TestCSVReportGeneration:
                 cost=0.008,
                 source_text="Original text",
                 target_text="Texte cible",
-                reference="Paragraph 5"
+                reference="Paragraph 5",
             ),
         ]
 
@@ -310,7 +311,7 @@ class TestCSVReportGeneration:
                 completion_tokens=500,
                 total_tokens=1500,
                 cost_per_1k_tokens=0.015,
-                total_cost=0.0225
+                total_cost=0.0225,
             ),
         }
 
@@ -320,7 +321,7 @@ class TestCSVReportGeneration:
             temp_output_dir,
             "csv_test_job",
             warnings=mock_warnings,
-            model_costs=mock_model_costs
+            model_costs=mock_model_costs,
         )
 
         assert "csv" in result
@@ -334,7 +335,7 @@ class TestCSVReportGeneration:
             temp_output_dir,
             "csv_format_test",
             warnings=mock_warnings,
-            model_costs=mock_model_costs
+            model_costs=mock_model_costs,
         )
 
         csv_content = Path(result["csv"]).read_text(encoding="utf-8")
@@ -363,7 +364,7 @@ class TestTemplateRendering:
             temp_output_dir,
             "empty_warnings_job",
             warnings=[],
-            model_costs={}
+            model_costs={},
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -381,10 +382,10 @@ class TestTemplateRendering:
                     warning_type="OL_WARN",
                     severity="high",
                     model="gpt-4o",
-                    cost=0.01
-                )
+                    cost=0.01,
+                ),
             ],
-            model_costs={}
+            model_costs={},
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -413,7 +414,7 @@ class TestBidirectionalTraceability:
             cost=0.05,
             source_text="Source text here",
             target_text="Target text here",
-            reference="Heading 2.1"
+            reference="Heading 2.1",
         )
         assert entry.source_text == "Source text here"
         assert entry.target_text == "Target text here"
@@ -431,7 +432,7 @@ class TestBidirectionalTraceability:
                 cost=0.035,
                 source_text="configuration setting",
                 target_text="parametrage",
-                reference="Section 4.1"
+                reference="Section 4.1",
             ),
         ]
 
@@ -439,7 +440,7 @@ class TestBidirectionalTraceability:
             temp_output_dir,
             "traceability_test",
             warnings=warnings,
-            model_costs={}
+            model_costs={},
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -465,7 +466,7 @@ class TestModelCostDashboard:
             model_name="gpt-4o",
             prompt_tokens=1000,
             completion_tokens=500,
-            cost_per_1k_tokens=0.02
+            cost_per_1k_tokens=0.02,
         )
         assert entry.total_tokens == 1500
         assert entry.total_cost == 0.03  # 1.5 * 0.02
@@ -479,7 +480,7 @@ class TestModelCostDashboard:
                 completion_tokens=1000,
                 total_tokens=3000,
                 cost_per_1k_tokens=0.015,
-                total_cost=0.045
+                total_cost=0.045,
             ),
             "claude-3-opus": ModelCostEntry(
                 model_name="claude-3-opus",
@@ -487,7 +488,7 @@ class TestModelCostDashboard:
                 completion_tokens=500,
                 total_tokens=1500,
                 cost_per_1k_tokens=0.05,
-                total_cost=0.075
+                total_cost=0.075,
             ),
         }
 
@@ -495,7 +496,7 @@ class TestModelCostDashboard:
             temp_output_dir,
             "cost_aggregation_test",
             warnings=[],
-            model_costs=model_costs
+            model_costs=model_costs,
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -511,7 +512,7 @@ class TestModelCostDashboard:
                 completion_tokens=250,
                 total_tokens=750,
                 cost_per_1k_tokens=0.015,
-                total_cost=0.01125
+                total_cost=0.01125,
             ),
         }
 
@@ -519,7 +520,7 @@ class TestModelCostDashboard:
             temp_output_dir,
             "dashboard_test",
             warnings=[],
-            model_costs=model_costs
+            model_costs=model_costs,
         )
 
         html_content = Path(result["html"]).read_text(encoding="utf-8")
@@ -543,7 +544,7 @@ class TestForceFlag:
         warnings = [WarningEntry(
             file_path="test.md", line_number=1,
             warning_type="OL_WARN", severity="high",
-            model="gpt-4o", cost=0.01
+            model="gpt-4o", cost=0.01,
         )]
 
         # Create first report
@@ -551,7 +552,7 @@ class TestForceFlag:
             temp_output_dir,
             "force_test",
             warnings=warnings,
-            model_costs={}
+            model_costs={},
         )
         assert Path(result1["html"]).exists()
 
@@ -559,14 +560,14 @@ class TestForceFlag:
         new_warnings = [WarningEntry(
             file_path="new.md", line_number=2,
             warning_type="OL_WARN", severity="low",
-            model="gpt-4o-mini", cost=0.005
+            model="gpt-4o-mini", cost=0.005,
         )]
         result2 = generate_report(
             temp_output_dir,
             "force_test",
             warnings=new_warnings,
             model_costs={},
-            force=True
+            force=True,
         )
         assert Path(result2["html"]).exists()
 
@@ -575,7 +576,7 @@ class TestForceFlag:
         warnings = [WarningEntry(
             file_path="test.md", line_number=1,
             warning_type="OL_WARN", severity="high",
-            model="gpt-4o", cost=0.01
+            model="gpt-4o", cost=0.01,
         )]
 
         # Create first report
@@ -583,7 +584,7 @@ class TestForceFlag:
             temp_output_dir,
             "exists_test",
             warnings=warnings,
-            model_costs={}
+            model_costs={},
         )
 
         # Try to create again without force
@@ -593,7 +594,7 @@ class TestForceFlag:
                 "exists_test",
                 warnings=warnings,
                 model_costs={},
-                force=False
+                force=False,
             )
 
     def test_force_flag_allows_new_report(self, temp_output_dir):
@@ -601,7 +602,7 @@ class TestForceFlag:
         warnings = [WarningEntry(
             file_path="test.md", line_number=1,
             warning_type="OL_WARN", severity="high",
-            model="gpt-4o", cost=0.01
+            model="gpt-4o", cost=0.01,
         )]
 
         result = generate_report(
@@ -609,7 +610,7 @@ class TestForceFlag:
             "new_report_force",
             warnings=warnings,
             model_costs={},
-            force=True
+            force=True,
         )
 
         assert Path(result["html"]).exists()

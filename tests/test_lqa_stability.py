@@ -1,6 +1,5 @@
 """Tests for LQA stability tracking."""
 
-import pytest
 
 from ol_lqa.stability import StabilityTracker
 

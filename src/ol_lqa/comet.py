@@ -1,6 +1,6 @@
 """COMETService for XCOMET reference-free quality scoring with MQM error detection."""
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ol_core.dataclass import EvaluationResult
 
@@ -11,7 +11,7 @@ class COMETService:
     def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
         self._model_name = model_name
         self._model = None
-        self._model_path: Optional[str] = None
+        self._model_path: str | None = None
 
     def _ensure_model(self) -> Any:
         if self._model is None:
@@ -41,7 +41,7 @@ class COMETService:
 
         return float(await loop.run_in_executor(None, _score_sync))
 
-    def get_mqm_spans(self, source: str, target: str) -> List[Dict[str, Any]]:
+    def get_mqm_spans(self, source: str, target: str) -> list[dict[str, Any]]:
         model = self._ensure_model()
 
         data = [{"src": source, "mt": target}]
@@ -58,7 +58,7 @@ class COMETService:
                         "text": span.get("text", ""),
                         "severity": span.get("severity", "minor"),
                         "confidence": span.get("confidence", 0.0),
-                    }
+                    },
                 )
 
         return error_spans

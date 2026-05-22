@@ -3,15 +3,14 @@
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from ol_batch.config import BatchConfig, BatchResult
-from ol_cli import _generate_frontmatter, _get_ol_version, _escape_yaml_value, _validate_lang_code
+from ol_cli import _generate_frontmatter, _get_ol_version, _validate_lang_code
 from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError
 from ol_logging.core import get_logger
-from ol_pool.router import ModelPool
-from ol_md.shield import shield_markdown, unshield_markdown
 from ol_md.pipeline import MDRepairPipeline
+from ol_md.shield import shield_markdown, unshield_markdown
+from ol_pool.router import ModelPool
 
 
 @dataclass
@@ -85,14 +84,14 @@ class BatchProcessor:
         self,
         input_path: Path,
         output_dir: Path,
-    ) -> Optional[Path]:
+    ) -> Path | None:
         self._logger.debug(f"Processing file: {input_path.name}")
         try:
             async with self._limiter.translation(timeout=self._config.timeout):
                 return await self._translate_file(input_path, output_dir)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise QueueTimeoutError(
-                f"Translation timed out for {input_path.name} after {self._config.timeout}s"
+                f"Translation timed out for {input_path.name} after {self._config.timeout}s",
             )
         except Exception as e:
             raise RuntimeError(f"Failed to process {input_path.name}: {e}")

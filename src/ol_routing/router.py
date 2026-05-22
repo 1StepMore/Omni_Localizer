@@ -1,6 +1,5 @@
 """Router module for file format-based channel routing."""
 from pathlib import Path
-from typing import Dict, List
 
 from ol_core.dataclass import ChannelType
 from ol_core.exceptions import FormatNotSupportedError
@@ -9,8 +8,7 @@ SUPPORTED_FORMATS = {".md", ".xliff", ".xlf"}
 
 
 def route_by_extension(path: str) -> ChannelType:
-    """
-    Route file to MD or XLIFF channel based on file extension.
+    """Route file to MD or XLIFF channel based on file extension.
 
     Args:
         path: Path to the file
@@ -21,6 +19,7 @@ def route_by_extension(path: str) -> ChannelType:
 
     Raises:
         FormatNotSupportedError: If format not supported or has double extension
+
     """
     p = Path(path)
     ext = p.suffix.lower()
@@ -37,14 +36,14 @@ def route_by_extension(path: str) -> ChannelType:
         raise FormatNotSupportedError(path)
 
 
-def route_batch(paths: List[str]) -> Dict[str, ChannelType]:
-    """
-    Route multiple files to their appropriate channels.
+def route_batch(paths: list[str]) -> dict[str, ChannelType]:
+    """Route multiple files to their appropriate channels.
 
     Args:
         paths: List of file paths
 
     Returns:
         Dictionary mapping file paths to their ChannelType
+
     """
     return {p: route_by_extension(p) for p in paths}

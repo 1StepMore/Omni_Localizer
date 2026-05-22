@@ -1,11 +1,9 @@
 """Level 1 regex cleaning for XLIFF placeholder whitespace."""
 import re
-from typing import Tuple
 
 
-def level1_regex_clean(text: str) -> Tuple[str, bool]:
-    """
-    Clean whitespace around XLIFF placeholders.
+def level1_regex_clean(text: str) -> tuple[str, bool]:
+    """Clean whitespace around XLIFF placeholders.
 
     - Removes leading whitespace before {{ (spaces before placeholder start)
     - Removes trailing whitespace after }} (spaces after placeholder end)
@@ -16,8 +14,8 @@ def level1_regex_clean(text: str) -> Tuple[str, bool]:
 
     Returns:
         Tuple of (cleaned_text, was_modified_bool)
+
     """
-    original = text
     count = 0
 
     text, n = re.subn(r'\s+\{\{', '{{', text, count=1)

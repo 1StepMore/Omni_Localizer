@@ -1,11 +1,17 @@
 """Custom exceptions for Omni-Localizer."""
 
-from ol_core.exceptions import OLBaseError, RestoreFailedError, FormatNotSupportedError, TranslationError
+from ol_core.exceptions import (
+    FormatNotSupportedError,
+    OLBaseError,
+    RestoreFailedError,
+    TranslationError,
+)
 
 
 class HashMismatchError(OLBaseError):
     """Raised when checkpoint hash doesn't match source file."""
+
     pass
 
 
-__all__ = ["OLBaseError", "HashMismatchError", "RestoreFailedError", "FormatNotSupportedError", "TranslationError"]
+__all__ = ["FormatNotSupportedError", "HashMismatchError", "OLBaseError", "RestoreFailedError", "TranslationError"]

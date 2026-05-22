@@ -5,9 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from ol_logging.constants import LOG_LEVEL_ENV, LOG_DIR_ENV, MAX_BYTES, INFO, DEBUG, WARNING
+from ol_logging.constants import DEBUG, INFO, LOG_LEVEL_ENV, MAX_BYTES, WARNING
 
 
 class TestLogFileCreation:
@@ -46,9 +44,10 @@ class TestLogRotation:
         """Test rotation occurs when log reaches MAX_BYTES."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
-            from ol_logging.handlers import get_file_handler
-            from ol_logging.constants import LOG_FILE_PATTERN
             from datetime import date
+
+            from ol_logging.constants import LOG_FILE_PATTERN
+            from ol_logging.handlers import get_file_handler
 
             handler = get_file_handler(log_dir, INFO)
             log_file = log_dir / LOG_FILE_PATTERN.format(date=date.today().isoformat())
@@ -73,9 +72,9 @@ class TestLogRotation:
         """Test BACKUP_COUNT limits number of rotated files."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
+
+            from ol_logging.constants import BACKUP_COUNT
             from ol_logging.handlers import get_file_handler
-            from ol_logging.constants import LOG_FILE_PATTERN, BACKUP_COUNT
-            from datetime import date
 
             handler = get_file_handler(log_dir, INFO)
 
@@ -175,9 +174,10 @@ class TestLogLevelEnv:
     def test_log_level_from_env_debug(self):
         """Test LOG_LEVEL_ENV=DEBUG sets DEBUG level."""
         with patch.dict(os.environ, {LOG_LEVEL_ENV: "DEBUG"}):
-            from ol_logging import constants
             # Re-read to pick up env var
             import importlib
+
+            from ol_logging import constants
             importlib.reload(constants)
 
             from ol_logging.core import get_logger
@@ -190,8 +190,9 @@ class TestLogLevelEnv:
     def test_log_level_from_env_info(self):
         """Test LOG_LEVEL_ENV=INFO sets INFO level."""
         with patch.dict(os.environ, {LOG_LEVEL_ENV: "INFO"}):
-            from ol_logging import constants
             import importlib
+
+            from ol_logging import constants
             importlib.reload(constants)
 
             from ol_logging.core import get_logger
@@ -203,8 +204,9 @@ class TestLogLevelEnv:
     def test_log_level_from_env_invalid(self):
         """Test invalid LOG_LEVEL_ENV falls back to default."""
         with patch.dict(os.environ, {LOG_LEVEL_ENV: "INVALID"}):
-            from ol_logging import constants
             import importlib
+
+            from ol_logging import constants
             importlib.reload(constants)
 
             # Should not crash, just use default

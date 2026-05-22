@@ -1,6 +1,4 @@
-import pytest
 import re
-from ol_md.repair.level1 import level1_regex_clean
 
 
 class TestMDTextIntegrity:

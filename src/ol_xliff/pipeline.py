@@ -1,5 +1,5 @@
 """XLIFF Repair Pipeline - orchestrates 4-layer repair cascade."""
-from typing import Dict
+
 from ol_xliff.repair.level1 import level1_regex_clean
 from ol_xliff.repair.level2 import level2_span_align
 from ol_xliff.repair.level3 import level3_llm_restore
@@ -25,10 +25,11 @@ class XLIFFRepairPipeline:
         Args:
             llm_restorer: Optional restorer object with restore_placeholders method.
                           If None, L3 is skipped in the cascade.
+
         """
         self.llm_restorer = llm_restorer
 
-    def is_complete(self, text: str, shield_map: Dict[str, str]) -> bool:
+    def is_complete(self, text: str, shield_map: dict[str, str]) -> bool:
         """Check if all placeholders from shield_map are present in text.
 
         Args:
@@ -37,16 +38,17 @@ class XLIFFRepairPipeline:
 
         Returns:
             True if all placeholders present or shield_map is empty, False otherwise.
+
         """
         if not shield_map:
             return True
-        for placeholder_id in shield_map.keys():
+        for placeholder_id in shield_map:
             placeholder_str = f'{{{{_OL_XTAG_{placeholder_id}_}}}}'
             if placeholder_str not in text and placeholder_id not in text:
                 return False
         return True
 
-    def repair(self, text: str, original: str, shield_map: Dict[str, str]) -> str:
+    def repair(self, text: str, original: str, shield_map: dict[str, str]) -> str:
         """Repair text through 4-layer cascade until complete.
 
         Args:
@@ -56,6 +58,7 @@ class XLIFFRepairPipeline:
 
         Returns:
             Repaired text with all placeholders restored
+
         """
         current_text = text
 

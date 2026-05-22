@@ -14,7 +14,7 @@ class TestMDWarningExtraction:
     @pytest.fixture
     def temp_md_with_warnings(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test Document\n\n")
             f.write("Some content here.\n\n")
@@ -57,7 +57,7 @@ class TestXLIFFWarningExtraction:
     @pytest.fixture
     def temp_xliff_with_warnings(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".xlf", delete=False
+            mode="w", suffix=".xlf", delete=False,
         ) as f:
             f.write('<?xml version="1.0" encoding="utf-8"?>\n')
             f.write('<xliff version="1.2">\n')
@@ -108,7 +108,7 @@ class TestPlainTextOL_WARNExtraction:
     @pytest.fixture
     def temp_plain_with_warnings(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
+            mode="w", suffix=".txt", delete=False,
         ) as f:
             f.write("Normal line without warning\n")
             f.write("OL_WARN: Tag_auto_appended\n")
@@ -149,7 +149,7 @@ class TestNoWarningsFound:
     @pytest.fixture
     def temp_clean_file(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Clean Document\n\n")
             f.write("No warnings here.\n\n")
@@ -194,7 +194,7 @@ class TestOutputFileCreation:
     @pytest.fixture
     def temp_md_with_warning(self):
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
+            mode="w", suffix=".md", delete=False,
         ) as f:
             f.write("# Test\n\n")
             f.write("Some content.\n\n")

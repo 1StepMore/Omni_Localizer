@@ -1,6 +1,6 @@
 """RepairContext tests for Omni-Localizer."""
-import pytest
 from ol_core.dataclass import RepairContext
+
 
 class TestRepairContext:
     """Test RepairContext dataclass."""
@@ -12,7 +12,7 @@ class TestRepairContext:
             shield_map={"tag1": "{{_OL_CODE_abc_}}"},
             original_text="Code block here",
             anchor_words=["Code"],
-            max_retries=3
+            max_retries=3,
         )
         assert rc.unit_id == "u1"
         assert rc.shield_map == {"tag1": "{{_OL_CODE_abc_}}"}
@@ -25,7 +25,7 @@ class TestRepairContext:
         rc = RepairContext(
             unit_id="u1",
             shield_map={},
-            original_text="text"
+            original_text="text",
         )
         assert rc.anchor_words == []
         assert rc.max_retries == 3
@@ -37,7 +37,7 @@ class TestRepairContext:
             shield_map={"code1": "```python```", "math1": "$x^2$"},
             original_text="Code and math",
             anchor_words=["Code", "math"],
-            max_retries=5
+            max_retries=5,
         )
         assert rc.unit_id == "test_unit"
         assert len(rc.shield_map) == 2

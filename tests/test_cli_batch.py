@@ -1,16 +1,13 @@
 """Integration tests for translate-batch CLI command."""
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from ol_cli import app
-from ol_batch.config import BatchResult
 from ol_pool.router import ModelPool
-
 
 runner = CliRunner()
 
@@ -51,7 +48,7 @@ class TestTranslateBatchFilesystem:
             xliff_file = Path(tmpdir) / "doc.xlf"
             xliff_file.write_text(
                 '<?xml version="1.0"?>\n<xliff version="1.2"><file></file></xliff>',
-                encoding="utf-8"
+                encoding="utf-8",
             )
 
             yield tmpdir
@@ -121,7 +118,7 @@ class TestTranslateBatchErrorAggregation:
             yield tmpdir
 
     def test_batch_processes_valid_files_despite_unsupported(
-        self, temp_input_dir_with_bad_file, temp_output_dir
+        self, temp_input_dir_with_bad_file, temp_output_dir,
     ):
         """Unsupported files should be skipped, valid files still processed."""
         with patch.object(ModelPool, "__init__", return_value=None):
