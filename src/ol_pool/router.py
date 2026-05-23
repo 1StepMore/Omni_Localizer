@@ -1,5 +1,6 @@
 import os
 import re
+from typing import Any
 
 from litellm import Router
 
@@ -53,16 +54,41 @@ class ModelPool:
 
     async def translate(
         self, text: str, source_lang: str, target_lang: str,
+        context: dict | str | None = None,
     ) -> str:
         _logger.debug(f"Translation request: {len(text)} chars, {source_lang}→{target_lang}")
         _logger.debug("Model selected: translation")
+
+        if isinstance(context, str):
+            prompt = context
+        else:
+            prompt_parts = [f"Translate from {source_lang} to {target_lang}: {text}"]
+            if context:
+                tm_matches = context.get("tm_matches", [])
+                glossary_terms = context.get("glossary_terms", [])
+                if tm_matches:
+                    top_tm = tm_matches[:3]
+                    tm_lines = "\n".join(
+                        f"- {m.get('source', '')} → {m.get('target', '')}"
+                        for m in top_tm
+                    )
+                    prompt_parts.insert(0, f"Translation Memory (top {len(top_tm)} matches):\n{tm_lines}")
+                if glossary_terms:
+                    top_glossary = glossary_terms[:5]
+                    glossary_lines = "\n".join(
+                        f"- {g.get('source', '')} → {g.get('target', '')}"
+                        for g in top_glossary
+                    )
+                    prompt_parts.insert(0, f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}")
+            prompt = "\n\n".join(prompt_parts)
+
         try:
             response = await self._router.acompletion(
                 model="translation",
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Translate from {source_lang} to {target_lang}: {text}",
+                        "content": prompt,
                     },
                 ],
                 temperature=0.0,
@@ -76,11 +102,16 @@ class ModelPool:
 
     async def judge(
         self, source: str, target: str, source_lang: str, target_lang: str,
+        glossary: dict[str, Any] | None = None,
     ) -> dict:
+        terminology_section = ""
+        if glossary:
+            terms = ", ".join(f"{k} → {v}" for k, v in glossary.items())
+            terminology_section = f"\nTerminology: {terms}"
         prompt = f"""Evaluate translation quality:
 
 Source ({source_lang}): {source}
-Target ({target_lang}): {target}
+Target ({target_lang}): {target}{terminology_section}
 
 Rate the translation on a scale of 0-100 for:
 - Accuracy (30%)

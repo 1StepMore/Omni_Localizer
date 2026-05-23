@@ -87,6 +87,80 @@ class TestJudgeService:
         expected = 10.0 * 0.35 + 10.0 * 0.30
         assert abs(weighted - expected) < 0.01
 
+    @pytest.mark.asyncio
+    async def test_judge_with_glossary(self):
+        """AC-4: JudgeService passes glossary to model_pool for terminology_consistency scoring."""
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "adequacy": 80,
+            "fluency": 80,
+            "terminology_consistency": 60,
+            "format_preservation": 80,
+            "score": 75,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+        glossary = {"Hello": "Bonjour", "world": "monde"}
+
+        result = await service.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+            glossary=glossary,
+        )
+
+        # Verify glossary was passed to model pool
+        mock_model_pool.judge.assert_called_once()
+        call_args = mock_model_pool.judge.call_args[0]
+        passed_glossary = call_args[4]
+        assert passed_glossary == glossary
+
+
+    @pytest.mark.asyncio
+    async def test_judge_without_glossary_still_works(self):
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "adequacy": 80,
+            "fluency": 80,
+            "terminology_consistency": 80,
+            "format_preservation": 80,
+            "score": 80,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+
+        result = await service.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+        )
+
+        assert isinstance(result, EvaluationResult)
+        assert result.unit_id == "u1"
+        assert "terminology_consistency" in result.judge_scores
+
+    @pytest.mark.asyncio
+    async def test_judge_glossary_passed_to_model_pool(self):
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "adequacy": 80,
+            "fluency": 80,
+            "terminology_consistency": 80,
+            "format_preservation": 80,
+            "score": 80,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+        glossary = {"API": "api", "SDK": "sdk"}
+
+        await service.judge(
+            source="API and SDK",
+            target="api et sdk",
+            unit_id="u1",
+            glossary=glossary,
+        )
+
+        call_args = mock_model_pool.judge.call_args[0]
+        passed_glossary = call_args[4]
+        assert passed_glossary == glossary
+
 
 class TestEnsembleJudge:
     @pytest.fixture
