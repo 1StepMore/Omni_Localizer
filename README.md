@@ -69,8 +69,11 @@ llm_pool:
 ## CLI Commands
 
 ```bash
-# Translate markdown
+# Translate markdown (single file)
 ol translate-md <file.md> -c <config.yaml> -s en -t zh -o output/
+
+# Translate markdown (batch)
+ol translate-batch <directory> -c <config.yaml> -s en -t zh -o output/
 
 # Translate XLIFF
 ol translate-xliff <file.xlf> -c <config.yaml> -s en -t zh -o output/
@@ -126,15 +129,26 @@ When translating XLIFF files, OL adds a header note with translation metadata:
 
 ### Batch Processing
 
-Batch translate supports the same frontmatter options (enabled by default):
+Batch translate multiple files with the `translate-batch` command:
 
 ```bash
-# With frontmatter (default)
+# Translate all markdown files in a directory (frontmatter enabled by default)
 ol translate-batch ./docs/ -s en -t zh -o output/
 
-# Without frontmatter
+# Disable frontmatter
 ol translate-batch ./docs/ -s en -t zh -o output/ --no-frontmatter
+
+# Control concurrency (default: 5)
+ol translate-batch ./docs/ -s en -t zh -o output/ --concurrency 10
+
+# Skip language detection (translate all files)
+ol translate-batch ./docs/ -s en -t zh -o output/ --no-detect-language
+
+# Machine-readable output for agents
+ol translate-batch ./docs/ -s en -t zh -o output/ --json
 ```
+
+**Language detection**: When `--detect-language` (default), files already in target language are skipped automatically with `skipped: true` frontmatter metadata.
 
 ## Key Features
 
@@ -269,12 +283,21 @@ ls src/.hermes/skills/ol-localizer/SKILL.md
 
 **Test JSON output (machine-readable for agents):**
 ```bash
+# Single file
 python -m ol_cli translate-md input.md -c config/default.yaml -s en -t zh -o output/ --json
+
+# Batch (agents can parse summary from output)
+python -m ol_cli translate-batch ./docs/ -c config/default.yaml -s en -t zh -o output/ --json
 ```
 
-Expected JSON output:
+Expected JSON output (single):
 ```json
 {"success": true, "input_file": "input.md", "output_file": "output/input.md", "source_lang": "en", "target_lang": "zh"}
+```
+
+Expected JSON output (batch):
+```json
+{"success": true, "duration_seconds": 12.5, "total_files": 10, "succeeded": 9, "failed": 1}
 ```
 
 **Run skill tests:**
