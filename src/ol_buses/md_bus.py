@@ -1,6 +1,7 @@
 """MD Token Stream bus for Omni-Localizer using markdown-it-py."""
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
 
@@ -16,11 +17,12 @@ def validate_md_structure(path: str) -> bool:
     except Exception:
         return False
 
-def load_md(path: str) -> TranslationContext:
+def load_md(path: str, glossary: dict[str, Any] | None = None) -> TranslationContext:
     """Load MD file and create TranslationContext.
 
     Args:
         path: Path to MD file
+        glossary: Optional glossary dict for terminology
 
     Returns:
         TranslationContext with channel_type=MD and units populated
@@ -37,7 +39,7 @@ def load_md(path: str) -> TranslationContext:
         channel_type=ChannelType.MD,
         original_full_text=original_text,
         units=units,
-        glossary={},
+        glossary=glossary or {},
         config={},
     )
 

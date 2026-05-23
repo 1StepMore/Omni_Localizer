@@ -145,6 +145,9 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --no-frontmatter
 | **4-Layer Repair** | Regex → Span alignment → LLM restoration → Safe fallback |
 | **Translation + Judging** | JudgeService evaluates quality (adequacy, fluency, terminology) |
 | **TM Integration** | hypomnema for translation memory lookups |
+| **TM/TB/SG Automation** | Pre-injection of TM matches + glossary terms for context-aware translation |
+| **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
+| **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
 ## Architecture
 
@@ -154,6 +157,77 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --no-frontmatter
 - **LQA**: openevalkit Scorer→Judge + COMET
 - **TM**: hypomnema (TMX)
 - **Alignment**: span-aligner + VectorAlign
+- **TM/TB/SG Automation**: Plan B pre-injection (query TM/glossary before translate(), inject into prompt)
+
+## TM/TB/SG Automation (MVP Phase 1)
+
+Omni-Localizer supports agent-native translation memory and terminology workflows for higher-quality, consistent translations.
+
+### Glossary Format
+
+JSON glossary with nested structure:
+
+```json
+{
+  "API endpoint": {
+    "translation": "API 端点",
+    "variants": {"API endpoint": "API 端点", "API endpoints": "API 端点"},
+    "confidence": 0.95
+  }
+}
+```
+
+### Translation Memory + Glossary Injection
+
+When `BatchProcessor` is initialized with a `tm_service` and `glossary`:
+
+1. TM lookup: `TMService.search()` queries source text against TMX translation memory
+2. Top-3 matches (threshold 0.85) are selected
+3. Relevant glossary terms are extracted via `get_relevant_terms()` (top-5, relevance-selected, not random)
+4. `build_translate_prompt()` pre-injects context into the LLM prompt
+
+### Terminology Extraction
+
+Auto-build glossary from source texts using KeyBERT (with sentence-transformers) or YAKE fallback:
+
+```python
+from ol_terminology.extractor import extract_terms
+terms = extract_terms(["source text 1", "source text 2"])
+# Returns dict[str, float]: term -> importance_score
+```
+
+### Term Disambiguation
+
+Resolve polysemous terms with LLM-based context understanding:
+
+```python
+from ol_terminology.disambiguator import disambiguate
+resolved = disambiguate(text, glossary, model_pool=model_pool)
+# Returns dict[str, str]: term -> resolved_translation
+```
+
+### QA Rules Subset
+
+Run a focused set of translate-toolkit pofilter checks:
+
+```python
+from ol_lqa.qa_rules import check_pair, QAWarning
+warnings = check_pair(source, target)
+# Selected rules: accelerators, brackets, printf, variables, xmltags
+```
+
+### Graceful Degradation
+
+If TM service or glossary is unavailable, translation proceeds without context injection—no blocking errors.
+
+### Dependencies
+
+TM/TB/SG features require additional packages:
+
+```bash
+pip install -e ".[ml]"  # sentence-transformers + torch
+pip install keybert>=0.9.0 yake>=0.5.0
+```
 
 ## Agent Usage
 

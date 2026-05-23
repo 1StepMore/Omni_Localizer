@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from ol_core.dataclass import EvaluationResult
 
@@ -22,9 +23,10 @@ class JudgeService:
         unit_id: str,
         source_lang: str = "en",
         target_lang: str = "en",
+        glossary: dict[str, Any] | None = None,
     ) -> EvaluationResult:
         if self._model_pool:
-            result = await self._model_pool.judge(source, target, source_lang, target_lang)
+            result = await self._model_pool.judge(source, target, source_lang, target_lang, glossary)
             judge_scores = {
                 "adequacy": result.get("adequacy", 50),
                 "fluency": result.get("fluency", 50),

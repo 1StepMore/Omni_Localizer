@@ -11,6 +11,8 @@ from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
+from ol_terminology.glossary import get_relevant_terms
+from ol_terminology.rag_injector import build_translate_prompt
 
 
 @dataclass
@@ -25,6 +27,8 @@ class BatchProcessor:
         add_frontmatter: bool = True,
         src_lang: str = "en",
         tgt_lang: str = "zh",
+        tm_service: "TMService | None" = None,
+        glossary: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._config = config
         self._pool = model_pool
@@ -32,6 +36,8 @@ class BatchProcessor:
         self.add_frontmatter = add_frontmatter
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+        self._tm_service = tm_service
+        self._glossary = glossary or {}
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
@@ -105,10 +111,29 @@ class BatchProcessor:
 
         shielded, shield_map = shield_markdown(original_text)
 
+        context = None
+        if self._tm_service:
+            tm_matches = self._tm_service.search(shielded, threshold=0.85)[:3]
+            if tm_matches:
+                # Convert TMMatch dataclass instances to dicts for build_translate_prompt
+                tm_match_dicts = [
+                    {"source": m.source, "target": m.target, "score": m.similarity}
+                    for m in tm_matches
+                ]
+                glossary_terms = get_relevant_terms(shielded, glossary=self._glossary, top_k=5)
+                context = build_translate_prompt(
+                    text=shielded,
+                    src_lang=self.src_lang,
+                    tgt_lang=self.tgt_lang,
+                    tm_matches=tm_match_dicts,
+                    glossary_terms=glossary_terms,
+                )
+
         translated = await self._pool.translate(
             shielded,
             self.src_lang,
             self.tgt_lang,
+            context,
         )
 
         if shield_map:

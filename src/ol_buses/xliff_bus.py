@@ -1,6 +1,7 @@
 """XLIFF bus for Omni-Localizer using translate-toolkit."""
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from ol_buses.xliff_shield import replace_tags_with_placeholders
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
@@ -18,11 +19,12 @@ def validate_xliff_structure(path: str) -> bool:
         return False
 
 
-def load_xliff(path: str) -> TranslationContext:
+def load_xliff(path: str, glossary: dict[str, Any] | None = None) -> TranslationContext:
     """Load XLIFF file and create TranslationContext.
 
     Args:
         path: Path to XLIFF file (.xliff or .xlf)
+        glossary: Optional glossary dict for terminology
 
     Returns:
         TranslationContext with channel_type=XLIFF and units populated
@@ -39,7 +41,7 @@ def load_xliff(path: str) -> TranslationContext:
         channel_type=ChannelType.XLIFF,
         original_full_text=original_text,
         units=units,
-        glossary={},
+        glossary=glossary or {},
         config={},
     )
 

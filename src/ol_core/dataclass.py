@@ -21,7 +21,8 @@ class TranslationContext:
     channel_type: ChannelType
     original_full_text: str
     units: list[TranslationUnit] = field(default_factory=list)
-    glossary: dict[str, str] = field(default_factory=dict)
+    # glossary: {term: {translation: str, variants: dict, confidence: float}}
+    glossary: dict[str, dict[str, Any]] = field(default_factory=dict)
     config: dict = field(default_factory=dict)
 
     def get_unit_by_id(self, unit_id: str) -> TranslationUnit | None:

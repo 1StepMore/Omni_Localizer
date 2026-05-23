@@ -1,0 +1,42 @@
+{
+  "API endpoint": {
+    "translation": "API 端点",
+    "variants": {
+      "API endpoint": "API 端点",
+      "API endpoints": "API 端点"
+    },
+    "confidence": 0.95
+  },
+  "batch processing": {
+    "translation": "批量处理",
+    "variants": {
+      "batch processing": "批量处理",
+      "batch": "批处理"
+    },
+    "confidence": 0.88
+  },
+  "translation memory": {
+    "translation": "翻译记忆库",
+    "variants": {
+      "translation memory": "翻译记忆库",
+      "TM": "翻译记忆"
+    },
+    "confidence": 0.92
+  },
+  "quality assurance": {
+    "translation": "质量保证",
+    "variants": {
+      "quality assurance": "质量保证",
+      "QA": "质量保证"
+    },
+    "confidence": 0.85
+  },
+  "source file": {
+    "translation": "源文件",
+    "variants": {
+      "source file": "源文件",
+      "source files": "源文件"
+    },
+    "confidence": 0.90
+  }
+}
