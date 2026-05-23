@@ -27,7 +27,7 @@ class TestFrontmatterFormat:
         assert "target_lang: zh" in fm
         assert "original_file: test.md" in fm
         assert 'processor: "OL"' in fm
-        assert 'version: "0.2.0"' in fm
+        assert f'version: "{_get_ol_version()}"' in fm
         assert "translated_at:" in fm
         assert lines[-2] == "---"
 

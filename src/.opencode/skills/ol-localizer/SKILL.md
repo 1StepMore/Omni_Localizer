@@ -13,6 +13,8 @@ Use this skill when you need to translate Markdown documents between languages. 
 - Converting technical docs to multiple languages
 
 ## Procedure
+
+### translate-md (Single File)
 1. Write the source text to a temporary `.md` file
 2. Invoke the CLI:
    ```
@@ -20,6 +22,15 @@ Use this skill when you need to translate Markdown documents between languages. 
    ```
 3. Parse the JSON output for success/error status
 4. If successful, read the translated file from `<output_dir>/<original_filename>`
+
+### translate-batch (Directory)
+1. Prepare a directory containing markdown files to translate
+2. Invoke the CLI:
+   ```
+   python -m ol_cli translate-batch <directory> -c config/default.yaml -s en -t zh -o output/ --json
+   ```
+3. Parse the JSON output for success/error status per file
+4. If successful, read translated files from `<output_dir>`
 
 ## Configuration
 Required environment variables:

@@ -1,4 +1,5 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
+
 import asyncio
 import re
 import signal
@@ -18,15 +19,17 @@ from ol_xliff.pipeline import XLIFFRepairPipeline
 
 def _escape_yaml_value(value: str) -> str:
     """Escape special characters in YAML string values to prevent injection."""
-    if any(c in value for c in ':#\n'):
-        return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    if any(c in value for c in ":#\n"):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return value
+
 
 def _validate_lang_code(code: str) -> str:
     """Validate ISO 639-1 language code."""
-    if not re.match(r'^[a-z]{2}(-[A-Z]{2})?$', code):
+    if not re.match(r"^[a-z]{2}(-[A-Z]{2})?$", code):
         raise ValueError(f"Invalid language code: {code}")
     return code
+
 
 def _escape_xml(value: str) -> str:
     """Escape special characters in XML using single-pass character-by-character approach.
@@ -36,26 +39,29 @@ def _escape_xml(value: str) -> str:
     """
     result = []
     for c in value:
-        if c == '&':
-            result.append('&amp;')
-        elif c == '<':
-            result.append('&lt;')
-        elif c == '>':
-            result.append('&gt;')
+        if c == "&":
+            result.append("&amp;")
+        elif c == "<":
+            result.append("&lt;")
+        elif c == ">":
+            result.append("&gt;")
         elif c == '"':
-            result.append('&quot;')
+            result.append("&quot;")
         elif c == "'":
-            result.append('&apos;')
+            result.append("&apos;")
         else:
             result.append(c)
-    return ''.join(result)
+    return "".join(result)
+
 
 def _generate_frontmatter(
     source_lang: str,
     target_lang: str,
     original_filename: str,
-    ol_version: str = "0.2.0",
+    ol_version: str | None = None,
 ) -> str:
+    if ol_version is None:
+        ol_version = _get_ol_version()
     """Generate YAML frontmatter header with translation metadata.
 
     Args:
@@ -76,7 +82,7 @@ def _generate_frontmatter(
     target_lang = _validate_lang_code(target_lang)
     escaped_filename = _escape_yaml_value(original_filename)
 
-    timestamp = datetime.now(UTC).isoformat(timespec='seconds').replace('+00:00', 'Z')
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
     frontmatter_lines = [
         "---",
@@ -92,24 +98,63 @@ def _generate_frontmatter(
 
     return "\n".join(frontmatter_lines)
 
+
+def _generate_skip_frontmatter(
+    source_lang: str,
+    target_lang: str,
+    original_filename: str,
+    ol_version: str | None = None,
+    detected_source_lang: str | None = None,
+) -> str:
+    if ol_version is None:
+        ol_version = _get_ol_version()
+    source_lang = _validate_lang_code(source_lang)
+    target_lang = _validate_lang_code(target_lang)
+    escaped_filename = _escape_yaml_value(original_filename)
+
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    frontmatter_lines = [
+        "---",
+        f"source_lang: {source_lang}",
+        f"target_lang: {target_lang}",
+        f"original_file: {escaped_filename}",
+        'processor: "OL"',
+        f'version: "{ol_version}"',
+        f"translated_at: {timestamp}",
+        "skipped: true",
+        'skip_reason: "already_in_target_language"',
+    ]
+    if detected_source_lang:
+        frontmatter_lines.append(f"detected_source_lang: {detected_source_lang}")
+
+    frontmatter_lines.append("---")
+    frontmatter_lines.append("")
+
+    return "\n".join(frontmatter_lines)
+
+
 def _get_ol_version() -> str:
     """Get OL version from module-level __version__."""
     # __version__ is defined at line 16 of ol_cli.py
     return __version__
 
+
 def _build_xliff_header_note(src_lang: str, tgt_lang: str) -> str:
     """Build XLIFF-compliant header note element."""
     validated_src = _validate_lang_code(src_lang)
     validated_tgt = _validate_lang_code(tgt_lang)
-    note_text = f'Translated from {validated_src} to {validated_tgt} by OL'
+    note_text = f"Translated from {validated_src} to {validated_tgt} by OL"
     return f'<header>\n    <note from="OL">{_escape_xml(note_text)}</note>\n  </header>'
+
 
 def _inject_xliff_header(repaired: str, header_note: str) -> str:
     """Inject header note into XLIFF output at correct position."""
     # Insert header after <xliff ...> opening tag, before <file> element
-    if '<file' in repaired:
-        return repaired.replace('<file', header_note + '\n  <file', 1)
+    if "<file" in repaired:
+        return repaired.replace("<file", header_note + "\n  <file", 1)
     return repaired  # No <file> element found, skip header injection
+
 
 __version__ = "0.2.3"
 
@@ -174,6 +219,7 @@ def output_json(
 ) -> None:
     """Output structured JSON to stdout."""
     import json
+
     result = {
         "success": success,
         "input_file": input_file,
@@ -208,6 +254,7 @@ async def _translate_md_async(
         translated = await pool.translate(shielded, src_lang, tgt_lang)
     else:
         from ol_config.loader import load_config
+
         cfg = load_config(config_path)
         src_lang = src_lang or cfg.source_lang
         tgt_lang = tgt_lang or cfg.target_lang
@@ -220,7 +267,7 @@ async def _translate_md_async(
     else:
         repaired = translated
 
-    if add_frontmatter and not repaired.strip().startswith('---'):
+    if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
         safe_tgt_lang = _validate_lang_code(tgt_lang)
 
@@ -245,10 +292,18 @@ def translate_md(
     input: str = typer.Argument(..., help="Input markdown file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
-    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
-    add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add YAML frontmatter to output file"),
+    source_lang: str | None = typer.Option(
+        None, "--source-lang", "-s", help="Source language (overrides config)"
+    ),
+    target_lang: str | None = typer.Option(
+        None, "--target-lang", "-t", help="Target language (overrides config)"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output JSON instead of human-readable text"
+    ),
+    add_frontmatter: bool = typer.Option(
+        True, "--frontmatter/--no-frontmatter", help="Add YAML frontmatter to output file"
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -273,6 +328,7 @@ def translate_md(
 
         if config:
             from ol_config.loader import load_config
+
             cfg = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
@@ -312,6 +368,7 @@ async def _translate_batch_async(
     tgt_lang: str,
     max_concurrent: int,
     add_frontmatter: bool = True,
+    detect_language: bool = True,
 ) -> tuple[int, int]:
     import time
 
@@ -345,7 +402,14 @@ async def _translate_batch_async(
 
     start_time = time.time()
     async with ProgressContext() as _:
-        result = await processor.process_batch(files, output_dir)
+        result = await processor.process_batch(
+            files,
+            output_dir,
+            add_frontmatter=add_frontmatter,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            detect_language=detect_language,
+        )
 
     duration = time.time() - start_time
     print_summary(result, duration)
@@ -358,11 +422,24 @@ def translate_batch(
     directory: str = typer.Argument(..., help="Input directory path"),
     output_dir: str | None = typer.Option(None, "--output-dir", "-o", help="Output directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
+    source_lang: str | None = typer.Option(
+        None, "--source-lang", "-s", help="Source language (overrides config)"
+    ),
+    target_lang: str | None = typer.Option(
+        None, "--target-lang", "-t", help="Target language (overrides config)"
+    ),
     concurrency: int = typer.Option(5, "--concurrency", "-j", help="Max concurrent translations"),
-    add_frontmatter: bool = typer.Option(True, "--frontmatter/--no-frontmatter", help="Add frontmatter to translated files"),
-    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
+    add_frontmatter: bool = typer.Option(
+        True, "--frontmatter/--no-frontmatter", help="Add frontmatter to translated files"
+    ),
+    detect_language: bool = typer.Option(
+        True,
+        "--detect-language/--no-detect-language",
+        help="Detect source language before translating",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output JSON instead of human-readable text"
+    ),
 ) -> int:
     try:
         input_path = Path(directory)
@@ -391,6 +468,7 @@ def translate_batch(
 
         if config:
             from ol_config.loader import load_config
+
             cfg = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
@@ -400,7 +478,16 @@ def translate_batch(
             tgt = tgt or "zh"
 
         succeeded, failed = asyncio.run(
-            _translate_batch_async(input_path, output_path, config, src, tgt, concurrency, add_frontmatter),
+            _translate_batch_async(
+                input_path,
+                output_path,
+                config,
+                src,
+                tgt,
+                concurrency,
+                add_frontmatter,
+                detect_language,
+            ),
         )
 
         if failed > 0:
@@ -429,9 +516,15 @@ def translate_xliff(
     input: str = typer.Argument(..., help="Input XLIFF file path"),
     output_dir: str = typer.Option("--output-dir", "-o", help="Output directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    source_lang: str | None = typer.Option(None, "--source-lang", "-s", help="Source language (overrides config)"),
-    target_lang: str | None = typer.Option(None, "--target-lang", "-t", help="Target language (overrides config)"),
-    json_output: bool = typer.Option(False, "--json", help="Output JSON instead of human-readable text"),
+    source_lang: str | None = typer.Option(
+        None, "--source-lang", "-s", help="Source language (overrides config)"
+    ),
+    target_lang: str | None = typer.Option(
+        None, "--target-lang", "-t", help="Target language (overrides config)"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output JSON instead of human-readable text"
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -455,6 +548,7 @@ def translate_xliff(
         tgt_lang = target_lang
         if config:
             from ol_config.loader import load_config
+
             cfg = load_config(config)
             src_lang = src_lang or cfg.source_lang
             tgt_lang = tgt_lang or cfg.target_lang
@@ -507,7 +601,7 @@ def extract_warnings(
         warnings = []
         import re
 
-        md_warn_pattern = re.compile(r'<!--\s*OL_WARN:\s*([^>]+)\s*-->')
+        md_warn_pattern = re.compile(r"<!--\s*OL_WARN:\s*([^>]+)\s*-->")
         for match in md_warn_pattern.finditer(content):
             warnings.append(f"MD: {match.group(0)}")
 
@@ -515,7 +609,7 @@ def extract_warnings(
         for match in xliff_warn_pattern.finditer(content):
             warnings.append(f"XLIFF: {match.group(0)}")
 
-        plain_warn_pattern = re.compile(r'OL_WARN:\s*(\w+)')
+        plain_warn_pattern = re.compile(r"OL_WARN:\s*(\w+)")
         for match in plain_warn_pattern.finditer(content):
             warnings.append(f"Plain: OL_WARN: {match.group(1)}")
 

@@ -18,7 +18,7 @@ classifiers = [
 keywords = ["localization", "translation", "llm", "ai", "markdown", "xliff", "i18n", "internationalization"]
 
 dependencies = [
-    "litellm>=1.84.0",
+    "litellm>=1.82.0",
     "translate-toolkit>=3.19.9",
     "markdown-it-py>=3.0.0",
     "pydantic>=2.0.0",

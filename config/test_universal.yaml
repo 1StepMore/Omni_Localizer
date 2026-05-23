@@ -5,18 +5,12 @@
 
 llm_pool:
   translation:
-    - provider: "minimax"
-      model: "MiniMax-M2.7"
+    - provider: "openai"
+      model: "gpt-4o-mini"
       priority: 1
+      api_key: "${OPENAI_API_KEY}"
+      base_url: null
       role: "translation"
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
-    - provider: "baidu"
-      model: "ernie-4.5-turbo-32k"
-      priority: 2
-      role: "translation"
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
   judging:
     - provider: "openai"
       model: "gpt-4o-mini"

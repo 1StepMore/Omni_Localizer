@@ -2,7 +2,7 @@
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_batch.discovery import discover_files, validate_directory
-from ol_batch.processor import BatchProcessor
+from ol_batch.processor import BatchProcessor, TranslationResult
 from ol_concurrency.scheduler import QueueTimeoutError
 
 __all__ = [
@@ -10,6 +10,7 @@ __all__ = [
     "BatchProcessor",
     "BatchResult",
     "QueueTimeoutError",
+    "TranslationResult",
     "discover_files",
     "validate_directory",
 ]

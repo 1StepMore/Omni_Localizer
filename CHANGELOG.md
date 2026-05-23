@@ -14,9 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added missing `Any` type import to `ol_batch/processor.py`
 - Moved 8 regex patterns to module-level constants in `ol_md/shield.py` for performance
 - Removed empty `test_ensemble_uses_median_aggregation` test stub
+- `_generate_frontmatter()` now uses `_get_ol_version()` instead of hardcoded `"0.2.0"`
+- `translate-batch` documentation added to OpenCode and Hermes SKILL.md files
+- `config/test_universal.yaml` now uses OpenAI instead of MINIMAX/BAIDU for translation provider
+
+### Added
+- Content-level language detection with `--detect-language` flag for `translate-batch` (enabled by default)
+- When content is detected as already being in the target language, `translate-batch` skips translation and copies the original file with `skipped: true` frontmatter metadata
 
 ### Changed
 - Test assertions updated to match actual `ModelPool` defaults (`num_retries=2`, `timeout=30`)
+- `pyproject.toml` litellm dependency lowered to `>=1.82.0` for broader compatibility
 
 ## [0.2.2] - 2026-05-22
 
