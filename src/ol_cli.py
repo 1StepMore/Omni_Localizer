@@ -245,21 +245,17 @@ async def _translate_md_async(
 ) -> str:
     from ol_pool.router import ModelPool
 
-    pool = ModelPool(config_path) if config_path else None
-    original_text = input_path.read_text(encoding="utf-8")
+    pool = ModelPool(config_path) if config_path else ModelPool()
 
-    shielded, shield_map = shield_markdown(original_text)
-
-    if pool:
-        translated = await pool.translate(shielded, src_lang, tgt_lang)
-    else:
+    if not config_path:
         from ol_config.loader import load_config
-
-        cfg = load_config(config_path)
+        cfg = load_config("config/default.yaml")
         src_lang = src_lang or cfg.source_lang
         tgt_lang = tgt_lang or cfg.target_lang
-        pool = ModelPool(config_path)
-        translated = await pool.translate(shielded, src_lang, tgt_lang)
+
+    original_text = input_path.read_text(encoding="utf-8")
+    shielded, shield_map = shield_markdown(original_text)
+    translated = await pool.translate(shielded, src_lang, tgt_lang)
 
     if shield_map:
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
@@ -393,9 +389,7 @@ async def _translate_batch_async(
     typer.echo(f"Found {len(files)} files to process")
 
     batch_config = BatchConfig(max_concurrent=max_concurrent)
-    pool = ModelPool(config_path) if config_path else None
-    if not pool:
-        raise RuntimeError("ModelPool initialization failed - check API credentials")
+    pool = ModelPool(config_path) if config_path else ModelPool()
 
     limiter = ConcurrencyLimiter(max_translation=max_concurrent)
     processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter)
