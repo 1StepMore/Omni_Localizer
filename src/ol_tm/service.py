@@ -1,12 +1,49 @@
+from contextlib import contextmanager
+from pathlib import Path
+
 import logging
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 _logger = logging.getLogger("tm")
 
 
+@contextmanager
+def _file_lock(lock_path: Path, exclusive: bool = True):
+    """Context manager for file locking.
+
+    Acquires lock on enter, releases on exit.
+    Works on both POSIX and Windows.
+
+    Args:
+        lock_path: Path to lock file
+        exclusive: True for write lock, False for read lock
+
+    Yields:
+        The lock file object (for reference, not needed for unlock)
+    """
+    if sys.platform == 'win32':
+        import msvcrt
+        lock_file = open(lock_path, 'w')
+        try:
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK if exclusive else msvcrt.LK_RLCK, 1)
+            yield lock_file
+        finally:
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            lock_file.close()
+    else:
+        import fcntl
+        lock_file = open(lock_path, 'w')
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            yield lock_file
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+
+
 def _acquire_lock(lock_path: Path) -> int:
+    """Deprecated: Use _file_lock context manager instead."""
     if sys.platform == 'win32':
         import msvcrt
         lock_file = open(lock_path, 'w')
@@ -19,6 +56,7 @@ def _acquire_lock(lock_path: Path) -> int:
 
 
 def _release_lock(lock_file_id: int, lock_path: Path) -> None:
+    """Deprecated: Use _file_lock context manager instead."""
     if sys.platform == 'win32':
         import msvcrt
         lock_file = open(lock_path, 'w')
@@ -79,14 +117,11 @@ class TMService:
     def _save(self) -> None:
         import hypomnema
         lock_path = self._tmx_path.with_suffix('.lock')
-        _acquire_lock(lock_path)
-        try:
+        with _file_lock(lock_path, exclusive=True):
             tmx = hypomnema.TMXFile(self._tmx_path)
             for entry in self._entries:
                 tmx.add_unit(entry.source, entry.target)
             tmx.write()
-        finally:
-            _release_lock(0, lock_path)
 
     def search(self, source_text: str, threshold: float = 0.85) -> list[TMMatch]:
         if not self._entries:

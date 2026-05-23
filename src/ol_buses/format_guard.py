@@ -1,19 +1,10 @@
 """Input format guard for Omni-Localizer."""
 from pathlib import Path
 
+from ol_core.exceptions import FormatNotSupportedError
+
 SUPPORTED_FORMATS: set[str] = {'.md', '.xliff', '.xlf'}
 
-class FormatNotSupportedError(Exception):
-    """Raised when input format is not supported."""
-
-    def __init__(self, file_path: str):
-        supported = ', '.join(SUPPORTED_FORMATS)
-        super().__init__(
-            f"Unsupported file format: {file_path}. "
-            f"Supported formats: {supported}",
-        )
-        self.file_path = file_path
-        self.supported_formats = SUPPORTED_FORMATS.copy()
 
 def is_supported(file_path: str) -> bool:
     """Check if file format is supported.

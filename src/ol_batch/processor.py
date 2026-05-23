@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ol_batch.config import BatchConfig, BatchResult
 from ol_cli import _generate_frontmatter, _get_ol_version, _validate_lang_code

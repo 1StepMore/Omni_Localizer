@@ -111,7 +111,7 @@ def _inject_xliff_header(repaired: str, header_note: str) -> str:
         return repaired.replace('<file', header_note + '\n  <file', 1)
     return repaired  # No <file> element found, skip header injection
 
-__version__ = "0.2.1"
+__version__ = "0.2.3"
 
 # Initialize logging
 init_logger()

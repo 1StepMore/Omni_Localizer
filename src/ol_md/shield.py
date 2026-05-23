@@ -2,6 +2,15 @@ import base64
 import re
 import uuid
 
+CODE_PATTERN = re.compile(r'(```[\w]*\n[\s\S]*?```)')
+INLINE_CODE_PATTERN = re.compile(r'`([^`]+)`')
+MATH_PATTERN = re.compile(r'\$\$([^$]+)\$\$|\$([^$]+)\$')
+LINK_PATTERN = re.compile(r'(?<!!)\[([^\]]*)\]\(([^\)]+)\)')
+IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^\)]+)\)')
+HTML_BLOCK_PATTERN = re.compile(r'<([a-zA-Z][a-zA-Z0-9]*)[^>]*>[\s\S]*?</\1>|<([a-zA-Z][a-zA-Z0-9]*)[^>]*/>')
+AUTOLINK_PATTERN = re.compile(r'<((https?|ftp|mailto):[^\s<>]+)>')
+PLACEHOLDER_PATTERN = re.compile(r'OL(B64|I|M|L|G|H|A)_([0-9a-fA-F]+)')
+
 
 def _b64_encode(content: str) -> str:
     return base64.b64encode(content.encode('utf-8')).decode('ascii')
@@ -20,50 +29,43 @@ def shield_markdown(md_text: str) -> tuple[str, dict[str, str]]:
     shield_map: dict[str, str] = {}
     text = md_text
 
-    code_pattern = re.compile(r'(```[\w]*\n[\s\S]*?```)')
-    matches = list(code_pattern.finditer(text))
+    matches = list(CODE_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('CODE')
         shield_map[marker] = _b64_encode(match.group(1))
         text = text[:match.start()] + marker + text[match.end():]
 
-    inline_code_pattern = re.compile(r'`([^`]+)`')
-    matches = list(inline_code_pattern.finditer(text))
+    matches = list(INLINE_CODE_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('ICODE')
         shield_map[marker] = _b64_encode(match.group(1))
         text = text[:match.start()] + marker + text[match.end():]
 
-    math_pattern = re.compile(r'\$\$([^$]+)\$\$|\$([^$]+)\$')
-    matches = list(math_pattern.finditer(text))
+    matches = list(MATH_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('MATH')
         shield_map[marker] = _b64_encode(match.group(0))
         text = text[:match.start()] + marker + text[match.end():]
 
-    link_pattern = re.compile(r'(?<!!)\[([^\]]*)\]\(([^\)]+)\)')
-    matches = list(link_pattern.finditer(text))
+    matches = list(LINK_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('LINK')
         shield_map[marker] = _b64_encode(match.group(0))
         text = text[:match.start()] + marker + text[match.end():]
 
-    image_pattern = re.compile(r'!\[([^\]]*)\]\(([^\)]+)\)')
-    matches = list(image_pattern.finditer(text))
+    matches = list(IMAGE_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('IMG')
         shield_map[marker] = _b64_encode(match.group(0))
         text = text[:match.start()] + marker + text[match.end():]
 
-    html_block_pattern = re.compile(r'<([a-zA-Z][a-zA-Z0-9]*)[^>]*>[\s\S]*?</\1>|<([a-zA-Z][a-zA-Z0-9]*)[^>]*/>')
-    matches = list(html_block_pattern.finditer(text))
+    matches = list(HTML_BLOCK_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('HTML')
         shield_map[marker] = _b64_encode(match.group(0))
         text = text[:match.start()] + marker + text[match.end():]
 
-    autolink_pattern = re.compile(r'<((https?|ftp|mailto):[^\s<>]+)>')
-    matches = list(autolink_pattern.finditer(text))
+    matches = list(AUTOLINK_PATTERN.finditer(text))
     for i, match in enumerate(reversed(matches)):
         marker = _make_marker('AUTO')
         shield_map[marker] = _b64_encode(match.group(0))
@@ -89,6 +91,5 @@ def unshield_markdown(translated_text: str, shield_map: dict[str, str]) -> str:
 
 
 def get_placeholders_in_text(text: str) -> list[str]:
-    pattern = re.compile(r'OL(B64|I|M|L|G|H|A)_([0-9a-fA-F]+)')
-    matches = pattern.findall(text)
+    matches = PLACEHOLDER_PATTERN.findall(text)
     return matches
