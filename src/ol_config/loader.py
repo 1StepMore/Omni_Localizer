@@ -52,5 +52,13 @@ def load_config(path: str | Path) -> ProjectConfig:
         raise
 
 def validate_config(config: ProjectConfig) -> bool:
-    """Validate config has required fields."""
-    return config.model_dump() is not None
+    """Validate config has required fields.
+
+    Note: Pydantic validation already occurs during ProjectConfig construction
+    in load_config(). This function exists for explicit validation calls if needed.
+    """
+    try:
+        cfg_dict = config.model_dump()
+        return cfg_dict is not None and cfg_dict.get("project_id") is not None
+    except Exception:
+        return False

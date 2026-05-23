@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-05-23
+
+### Fixed
+- TMService lock file handle leak: `_save()` now uses proper context manager for file locking
+- Duplicate `FormatNotSupportedError` removed from `ol_buses/format_guard.py`, now imports from `ol_core.exceptions`
+- `validate_config()` now performs actual validation instead of always returning True
+- Added missing `Any` type import to `ol_batch/processor.py`
+- Moved 8 regex patterns to module-level constants in `ol_md/shield.py` for performance
+- Removed empty `test_ensemble_uses_median_aggregation` test stub
+
+### Changed
+- Test assertions updated to match actual `ModelPool` defaults (`num_retries=2`, `timeout=30`)
+
 ## [0.2.2] - 2026-05-22
 
 ### Fixed

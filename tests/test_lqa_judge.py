@@ -235,6 +235,3 @@ class TestEnsembleJudge:
         results = await ensemble_judge.judge_batch([("Hello", "Bonjour", "u1")])
         assert len(results) == 1
         assert results[0].unit_id == "u1"
-
-    def test_ensemble_uses_median_aggregation(self, ensemble_judge):
-        pass
