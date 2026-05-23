@@ -2,8 +2,6 @@
 
 Tests the selected 5 pofilter rules: accelerators, brackets, printf, variables, xmltags.
 """
-import pytest  # noqa: F401 - used implicitly by pytest fixtures
-
 from ol_lqa.qa_rules import (
     QARulesChecker,
     QAWarning,
