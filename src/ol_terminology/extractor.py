@@ -43,7 +43,7 @@ def extract_terms(texts: list[str]) -> dict[str, float]:
             kw_model = KeyBERT()
             results = kw_model.extract_keywords(
                 combined_text,
-                keyphrase_ngrams=(1, 2),
+                keyphrase_ngram_range=(1, 2),
                 stop_words="english",
                 top_n=20,
             )

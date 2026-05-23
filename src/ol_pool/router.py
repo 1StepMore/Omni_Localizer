@@ -2,6 +2,12 @@ import os
 import re
 from typing import Any
 
+import litellm
+
+# Must be set before Router init — prevents litellm from lowercasing model names
+# (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
+litellm.disable_model_name_normalization = True
+
 from litellm import Router
 
 from ol_config.loader import load_config
