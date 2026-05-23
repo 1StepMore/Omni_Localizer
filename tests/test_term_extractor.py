@@ -17,19 +17,18 @@ class TestExtractTermsKeyBERTFallback:
     """Test KeyBERT to YAKE fallback behavior."""
 
     def test_extract_terms_keybert_fallback(self):
-        with patch("ol_terminology.extractor._KEYBERT_AVAILABLE", False):
-            with patch("ol_terminology.extractor._YAKE_AVAILABLE", True) as mock_yake:
-                mock_extractor = MagicMock()
-                mock_extractor.extract_keywords.return_value = [
-                    ("machine learning", 0.85),
-                    ("natural language processing", 0.78),
-                ]
-                with patch.dict("ol_terminology.extractor.__dict__", {"yake": MagicMock(KeywordExtractor=MagicMock(return_value=mock_extractor))}):
-                    import importlib
-                    import ol_terminology.extractor
-                    importlib.reload(ol_terminology.extractor)
+        """Test KeyBERT unavailable → YAKE fallback path."""
+        mock_extractor = MagicMock()
+        mock_extractor.extract_keywords.return_value = [
+            ("machine learning", 0.85),
+            ("natural language processing", 0.78),
+        ]
+        mock_yake_module = MagicMock(KeywordExtractor=MagicMock(return_value=mock_extractor))
 
-                    result = ol_terminology.extractor.extract_terms(["test text"])
+        with patch("ol_terminology.extractor._KEYBERT_AVAILABLE", False):
+            with patch("ol_terminology.extractor._YAKE_AVAILABLE", True):
+                with patch("ol_terminology.extractor.yake", mock_yake_module):
+                    result = extract_terms(["test text"])
 
                     assert result == {
                         "machine learning": 0.85,
