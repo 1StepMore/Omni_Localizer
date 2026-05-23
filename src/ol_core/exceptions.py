@@ -18,8 +18,13 @@ class RestoreFailedError(OLBaseError):
 class FormatNotSupportedError(OLBaseError):
     """Raised when input format is not supported."""
 
+    SUPPORTED_FORMATS: set[str] = {'.md', '.xliff', '.xlf'}
+
     def __init__(self, path: str):
-        super().__init__(f"Unsupported file format: {path}")
+        supported = ', '.join(self.SUPPORTED_FORMATS)
+        super().__init__(
+            f"Unsupported file format: {path}. Supported formats: {supported}",
+        )
 
 
 class TranslationError(OLBaseError):
