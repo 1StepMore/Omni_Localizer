@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - YAML frontmatter support for markdown translation output
 - XLIFF header note support for translation metadata
-- `--frontmatter` / `--no-frontmatter` CLI options for batch and single file translation
+- `--frontmatter` (default) / `--no-frontmatter` CLI options for batch and single file translation
 - OpenCode and Hermes skill documentation updated
 
 ## [0.1.0] - 2025-01-01

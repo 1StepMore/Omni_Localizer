@@ -83,7 +83,7 @@ ol extract-warnings <file> -o warnings.md
 
 ### YAML Frontmatter (Markdown)
 
-When translating Markdown files, OL automatically adds YAML frontmatter to the output:
+When translating Markdown files, OL automatically adds YAML frontmatter to the output by default:
 
 ```yaml
 ---
@@ -126,7 +126,7 @@ When translating XLIFF files, OL adds a header note with translation metadata:
 
 ### Batch Processing
 
-Batch translate supports the same frontmatter options:
+Batch translate supports the same frontmatter options (enabled by default):
 
 ```bash
 # With frontmatter (default)
