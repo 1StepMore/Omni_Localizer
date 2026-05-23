@@ -1,5 +1,4 @@
 """Unit tests for glossary loading and relevance-based term retrieval."""
-import json
 from pathlib import Path
 
 import pytest

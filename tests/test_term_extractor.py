@@ -1,8 +1,6 @@
 """Unit tests for ol_terminology.extractor module."""
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ol_terminology.extractor import extract_terms
 
 

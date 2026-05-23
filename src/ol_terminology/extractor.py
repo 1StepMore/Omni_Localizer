@@ -1,6 +1,4 @@
 """Term extraction using KeyBERT with YAKE fallback."""
-from typing import Any
-
 import logging
 
 logger = logging.getLogger(__name__)
