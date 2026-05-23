@@ -32,6 +32,19 @@ Common use cases:
 
 4. If successful, read the translated file from `<output_dir>/<original_filename>`
 
+### translate-batch
+
+1. Specify the source directory containing `.md` files
+
+2. Invoke the CLI:
+   ```
+   python -m ol_cli translate-batch <directory> -c config/default.yaml -s <source_lang> -t <target_lang> -o <output_dir> --json
+   ```
+
+3. Parse the JSON output for success/error status
+
+4. If successful, translated files are in `<output_dir>/` with the same relative paths as source files
+
 ## Installation
 
 Copy or symlink this directory to `~/.hermes/skills/ol-localizer/` to activate.
@@ -69,6 +82,17 @@ The CLI uses a config file to specify the LLM pool. See `config/default.yaml` fo
 | `--output-dir` | `-o` | Output directory for translated files |
 | `--json` | | Output JSON instead of human-readable text |
 | `--frontmatter` / `--no-frontmatter` | | Add YAML frontmatter to output (default: yes) |
+
+### translate-batch
+
+Batch translate all Markdown files in a directory.
+
+**Example:**
+```
+python -m ol_cli translate-batch <directory> -c config/default.yaml -s en -t zh -o output/ --json
+```
+
+Same CLI options as `translate-md` except the first argument is a directory instead of a file.
 
 ## Pitfalls
 

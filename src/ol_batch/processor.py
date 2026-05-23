@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from ol_batch.config import BatchConfig, BatchResult
-from ol_cli import _generate_frontmatter, _get_ol_version, _validate_lang_code
+from ol_cli import (
+    _generate_frontmatter,
+    _generate_skip_frontmatter,
+    _get_ol_version,
+    _validate_lang_code,
+)
 from ol_concurrency.scheduler import ConcurrencyLimiter, QueueTimeoutError
 from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
@@ -14,6 +19,16 @@ from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms
 from ol_terminology.rag_injector import build_translate_prompt
+
+
+@dataclass
+class TranslationResult:
+    """Result of a single file translation."""
+
+    output_path: Path
+    skipped: bool = False
+    skip_reason: str | None = None
+    detected_source_lang: str | None = None
 
 
 @dataclass
@@ -28,8 +43,9 @@ class BatchProcessor:
         add_frontmatter: bool = True,
         src_lang: str = "en",
         tgt_lang: str = "zh",
-        tm_service: "TMService | None" = None,
+        tm_service: Any = None,
         glossary: dict[str, dict[str, Any]] | None = None,
+        detect_language: bool = True,
     ) -> None:
         self._config = config
         self._pool = model_pool
@@ -39,6 +55,7 @@ class BatchProcessor:
         self.tgt_lang = tgt_lang
         self._tm_service = tm_service
         self._glossary = glossary or {}
+        self._detect_language = detect_language
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
@@ -48,10 +65,12 @@ class BatchProcessor:
         add_frontmatter: bool = True,
         src_lang: str = "en",
         tgt_lang: str = "zh",
+        detect_language: bool = True,
     ) -> BatchResult:
         self.add_frontmatter = add_frontmatter
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+        self._detect_language = detect_language
         self._logger.info(f"Batch processing started: {len(files)} files")
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -59,19 +78,21 @@ class BatchProcessor:
         failed: list[tuple[Path, str]] = []
 
         try:
-            tasks = [
-                self._process_single_file(file, output_dir)
-                for file in files
-            ]
+            tasks = [self._process_single_file(file, output_dir) for file in files]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for file, result in zip(files, results):
                 if isinstance(result, Exception):
-                    self._logger.error(f"File failed: {file.name} - {result}")
-                    failed.append((file, str(result)))
-                elif result is not None:
-                    succeeded.append(result)
+                    error_msg = str(result)
+                    # Unwrap ExceptionGroup if present
+                    if isinstance(result, ExceptionGroup):
+                        if result.exceptions:
+                            error_msg = str(result.exceptions[0])
+                    self._logger.error(f"File failed: {file.name} - {error_msg}")
+                    failed.append((file, error_msg))
+                elif isinstance(result, TranslationResult) and result is not None:
+                    succeeded.append(result.output_path)
                 else:
                     failed.append((file, "Unknown error"))
         except asyncio.CancelledError:
@@ -91,7 +112,7 @@ class BatchProcessor:
         self,
         input_path: Path,
         output_dir: Path,
-    ) -> Path | None:
+    ) -> TranslationResult | None:
         self._logger.debug(f"Processing file: {input_path.name}")
         try:
             async with self._limiter.translation(timeout=self._config.timeout):
@@ -107,8 +128,43 @@ class BatchProcessor:
         self,
         input_path: Path,
         output_dir: Path,
-    ) -> Path:
+    ) -> TranslationResult:
         original_text = input_path.read_text(encoding="utf-8")
+
+        # Optional language detection for early exit
+        if self._detect_language and input_path.suffix == ".md":
+            try:
+                from langdetect import detect
+
+                detected_source_lang = detect(original_text)
+                if detected_source_lang == self.tgt_lang:
+                    output_file = output_dir / input_path.name
+                    skipped_content = original_text
+
+                    if self.add_frontmatter and not original_text.strip().startswith("---"):
+                        safe_src = _validate_lang_code(detected_source_lang)
+                        safe_tgt = _validate_lang_code(self.tgt_lang)
+                        frontmatter = _generate_skip_frontmatter(
+                            source_lang=safe_src,
+                            target_lang=safe_tgt,
+                            original_filename=input_path.name,
+                            ol_version=_get_ol_version(),
+                            detected_source_lang=detected_source_lang,
+                        )
+                        skipped_content = frontmatter + original_text
+
+                    output_file.write_text(skipped_content, encoding="utf-8")
+                    return TranslationResult(
+                        output_path=output_file,
+                        skipped=True,
+                        skip_reason="already_in_target_language",
+                        detected_source_lang=detected_source_lang,
+                    )
+            except ImportError:
+                # langdetect not installed, proceed with translation
+                self._logger.warning("langdetect not available, skipping language detection")
+            except Exception as e:
+                self._logger.warning(f"Language detection failed: {e}, proceeding with translation")
 
         shielded, shield_map = shield_markdown(original_text)
 
@@ -142,7 +198,11 @@ class BatchProcessor:
 
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
 
-        if self.add_frontmatter and input_path.suffix == '.md' and not repaired.strip().startswith('---'):
+        if (
+            self.add_frontmatter
+            and input_path.suffix == ".md"
+            and not repaired.strip().startswith("---")
+        ):
             safe_src = _validate_lang_code(self.src_lang)
             safe_tgt = _validate_lang_code(self.tgt_lang)
             frontmatter = _generate_frontmatter(
@@ -156,4 +216,4 @@ class BatchProcessor:
         output_file = output_dir / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 
-        return output_file
+        return TranslationResult(output_path=output_file)
