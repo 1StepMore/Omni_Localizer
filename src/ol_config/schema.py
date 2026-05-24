@@ -30,6 +30,7 @@ class LLMModelConfig(BaseModel):
     api_key: str | None = Field(None, description="API key. Can also use env var ${VAR} syntax.")
     base_url: str | None = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
+    timeout: float | None = Field(60.0, description="Timeout in seconds for this model. Defaults to 60s.")
 
     @model_validator(mode='after')
     def validate_env_vars(self) -> 'LLMModelConfig':

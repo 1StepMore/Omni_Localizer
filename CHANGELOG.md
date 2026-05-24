@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `_translate_md_async` and `translate_batch` now use `ModelPool()` default when `--config` not provided (previously crashed with `TypeError: path must not be None`)
 
+## [0.2.5] - 2026-05-24
+
+### Changed
+- `LLMModelConfig.timeout` is now configurable per model (default: 60s, previously hardcoded 30s in Router)
+
 ## [0.2.3] - 2026-05-23
 
 ### Fixed
