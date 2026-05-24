@@ -67,18 +67,18 @@ class ModelPool:
     def _build_fallbacks(self, pool: LLMPoolConfig) -> list[dict]:
         """Build fallbacks list per role based on priority ordering.
 
-        litellm Router fallbacks format: [{"primary_model": ["fallback1", "fallback2"]}]
+        litellm Router fallbacks format: [{"model_group_name": ["fallback_model_id", ...]}]
+        key must be the model_name (role) passed to acompletion(), not the actual model ID.
         """
         fallbacks = []
         for role in ("translation", "judging", "restoration"):
             models = getattr(pool, role, [])
             sorted_models = sorted(models, key=lambda m: m.priority)
             if len(sorted_models) > 1:
-                primary_model = f"{sorted_models[0].provider}/{sorted_models[0].model}"
                 fallback_models = [
                     f"{m.provider}/{m.model}" for m in sorted_models[1:]
                 ]
-                fallbacks.append({primary_model: fallback_models})
+                fallbacks.append({role: fallback_models})
         return fallbacks
 
     async def translate(
