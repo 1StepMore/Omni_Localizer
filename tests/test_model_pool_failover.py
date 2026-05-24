@@ -64,7 +64,8 @@ class TestModelPool:
         call_kwargs = mock_router_class.call_args.kwargs
         assert call_kwargs["routing_strategy"] == "simple-shuffle"
         assert call_kwargs["num_retries"] == 2
-        assert call_kwargs["timeout"] == 30
+        assert call_kwargs["timeout"] == 120.0
+        assert "fallbacks" in call_kwargs
 
     @patch("src.ol_pool.router.load_config")
     def test_build_model_list_creates_correct_structure(self, mock_load_config, mock_config):
