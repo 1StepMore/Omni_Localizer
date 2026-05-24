@@ -140,7 +140,6 @@ Only return valid JSON, nothing else."""
         try:
             result = json.loads(content)
         except json.JSONDecodeError:
-            score = 50
-            reason = content[:200] if content else "Parse failed"
-            result = {"score": score, "reason": reason}
+            _logger.warning(f"Judge parse failed, using fallback score=50. Raw response: {content[:300]}")
+            result = {"score": 50, "reason": content[:200] if content else "Parse failed", "parse_failed": True}
         return result
