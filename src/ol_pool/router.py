@@ -49,6 +49,8 @@ class ModelPool:
                     litellm_params["api_key"] = _resolve_env_vars(model.api_key)
                 if model.base_url:
                     litellm_params["base_url"] = _resolve_env_vars(model.base_url)
+                if model.timeout is not None:
+                    litellm_params["timeout"] = model.timeout
                 model_list.append(
                     {
                         "model_name": role,
