@@ -243,6 +243,55 @@ pip install -e ".[ml]"  # sentence-transformers + torch
 pip install keybert>=0.9.0 yake>=0.5.0
 ```
 
+## Pipeline — Omni Localization Suite
+
+OL is **Step 2** of the Omni Localization Suite pipeline:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     OMNI LOCALIZATION SUITE                             │
+│                                                                        │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐               │
+│  │     OPP     │───▶│     OL      │───▶│     ORF      │               │
+│  │  (提取)     │    │   (翻译)    │    │   (回写)    │               │
+│  └─────────────┘    └─────────────┘    └─────────────┘               │
+│                                                                        │
+│  Step 1: OPP        Step 2: OL            Step 3: ORF                  │
+│  Extract →          Translate →           Backfill →                  │
+│  MD + XLIFF +       MD + XLIFF            DOCX/PPTX                   │
+│  skeleton.zip                                                    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Complete Workflow
+
+```bash
+# Step 1: OPP - Extract document to MD/XLIFF + skeleton.zip
+opp --target-format=both --source-lang=en --target-lang=zh document.docx
+
+# Step 2: OL - Translate to target language ← YOU ARE HERE
+ol translate-md document.md -s en -t zh -o translated/
+
+# Step 3: ORF - Backfill translated content to target format
+orf apply-xliff document.docx --xliff translated/document.xlf --output result.docx
+```
+
+## Related Projects
+
+- [OPP (Omni-Pre-Processor)](https://github.com/1StepMore/Omni_Pre_Processor) - **PREREQUISITE**. Produces MD/XLIFF that OL translates.
+- [ORF (Omni-Re-Formatter)](https://github.com/1StepMore/Omni_Re_Formatter) - **NEXT STEP**. Backfills OL's translated MD/XLIFF to DOCX/PPTX.
+
+## For AI Agents
+
+OL processes artifacts from OPP and outputs for ORF:
+
+| Input (from OPP) | Output (to ORF) |
+|------------------|-----------------|
+| `{name}.md` | `translated_{name}.md` (with YAML frontmatter) |
+| `{name}.xlf` | `translated_{name}.xlf` (with `<target>` filled) |
+
+**SKILL.md Available:** `src/.opencode/skills/ol-localizer/SKILL.md` for OpenCode agents.
+
 ## Agent Usage
 
 Omni-Localizer can be used as a **skill** by coding agents (OpenCode, Hermes). Agents read the SKILL.md file to understand how to invoke translation.
