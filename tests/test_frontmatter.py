@@ -61,7 +61,7 @@ target_lang: zh
 
 class TestVersionAccess:
     def test_version_access(self):
-        assert _get_ol_version() == "0.2.3"
+        assert _get_ol_version() == "0.2.5"
 
 
 class TestTranslateMdFrontmatter:
