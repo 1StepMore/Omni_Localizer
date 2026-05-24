@@ -156,7 +156,7 @@ def _inject_xliff_header(repaired: str, header_note: str) -> str:
     return repaired  # No <file> element found, skip header injection
 
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 
 # Initialize logging
 init_logger()
