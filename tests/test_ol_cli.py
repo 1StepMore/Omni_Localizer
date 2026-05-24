@@ -18,7 +18,7 @@ class TestCLICommandLoading:
         assert app is not None
 
     def test_version_constant(self):
-        assert __version__ == "0.2.5"
+        assert __version__ == "0.2.6"
 
 
 class TestVersionFlag:
