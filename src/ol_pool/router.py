@@ -31,11 +31,15 @@ def _resolve_env_vars(value: str) -> str:
 class ModelPool:
     def __init__(self, config_path: str = "config/default.yaml"):
         config = load_config(config_path)
+        global_timeout = max((m.timeout for role in ("translation", "judging", "restoration")
+                              for m in getattr(config.llm_pool, role, [])),
+                             default=180.0)
         self._router = Router(
             model_list=self._build_model_list(config.llm_pool),
             routing_strategy="simple-shuffle",
             num_retries=2,
-            timeout=30,
+            timeout=global_timeout,
+            fallbacks=self._build_fallbacks(config.llm_pool),
         )
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
@@ -59,6 +63,23 @@ class ModelPool:
                     },
                 )
         return model_list
+
+    def _build_fallbacks(self, pool: LLMPoolConfig) -> list[dict]:
+        """Build fallbacks list per role based on priority ordering.
+
+        litellm Router fallbacks format: [{"primary_model": ["fallback1", "fallback2"]}]
+        """
+        fallbacks = []
+        for role in ("translation", "judging", "restoration"):
+            models = getattr(pool, role, [])
+            sorted_models = sorted(models, key=lambda m: m.priority)
+            if len(sorted_models) > 1:
+                primary_model = f"{sorted_models[0].provider}/{sorted_models[0].model}"
+                fallback_models = [
+                    f"{m.provider}/{m.model}" for m in sorted_models[1:]
+                ]
+                fallbacks.append({primary_model: fallback_models})
+        return fallbacks
 
     async def translate(
         self, text: str, source_lang: str, target_lang: str,

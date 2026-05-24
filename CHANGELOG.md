@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-05-24
+
+### Fixed
+- `ModelPool` fallback mechanism was completely broken: `fallbacks=[]` was never passed to litellm Router, so priority 2/3 models were never used as failovers. Now `_build_fallbacks()` correctly constructs per-role fallback chains based on priority ordering.
+- `timeout=30` hardcoded in Router init overrode per-model `timeout` config. Now uses the maximum timeout across all configured models (default 180s).
+
+### Changed
+- `ModelPool` now passes `fallbacks=` and dynamic `timeout=` to litellm Router on initialization.
+
 ## [0.2.6] - 2026-05-24
 
 ### Changed
