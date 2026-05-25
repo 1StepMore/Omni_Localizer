@@ -32,6 +32,107 @@ Common use cases:
 
 4. If successful, read the translated file from `<output_dir>/<original_filename>`
 
+## MCP Tools (Recommended for Pipeline Use)
+
+For text-in/text-out translation without file I/O, use the MCP interface. This is the recommended approach for pipeline scenarios (batch chapter translation, smart chunking loops).
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `translate_md_text` | Translate markdown text directly (text-in/text-out) |
+| `judge_text` | Evaluate translation quality |
+| `load_glossary` | Load a JSON glossary file |
+| `get_relevant_terms` | Extract relevant terms from text against glossary |
+| `search_tm` | Search translation memory (.tmx file) |
+| `batch_translate_texts` | Batch translate multiple texts in parallel |
+
+### Quick Example
+
+```
+Tool: translate_md_text
+Parameters:
+  content: |
+    # Hello World
+
+    This is a test paragraph with `code` and [a link](url).
+  source_lang: "en"
+  target_lang: "zh"
+```
+
+Returns:
+```json
+{"success": true, "translated": "...", "warnings": [], "source_lang": "en", "target_lang": "zh"}
+```
+
+### Workflow: Translate with Glossary
+
+```python
+# 1. Load glossary (once, cache the result)
+Tool: load_glossary
+Parameters:
+  path: "/path/to/glossary.json"
+
+# 2. Translate with glossary context
+Tool: translate_md_text
+Parameters:
+  content: "Click the API endpoint to proceed"
+  source_lang: "en"
+  target_lang: "zh"
+  glossary_path: "/path/to/glossary.json"
+```
+
+### Workflow: Batch Chapter Translation
+
+```python
+Tool: batch_translate_texts
+Parameters:
+  texts: [
+    "Chapter 1 content here...",
+    "Chapter 2 content here...",
+    "Chapter 3 content here..."
+  ]
+  source_lang: "en"
+  target_lang: "zh"
+  glossary_path: "/path/to/glossary.json"
+  concurrency: 5
+```
+
+### Workflow: Quality Check
+
+```python
+Tool: judge_text
+Parameters:
+  source: "Click the button to continue"
+  target: "点击按钮继续"
+  source_lang: "en"
+  target_lang: "zh"
+```
+
+### MCP Server Setup
+
+The MCP server runs via stdio transport:
+
+```bash
+# Option 1: Direct
+python -m ol_mcp
+
+# Option 2: Via installed entry point (after pip install -e ".[mcp]")
+ol-mcp
+```
+
+Configure your agent to connect to this server process. The server communicates via JSON-RPC over stdin/stdout.
+
+### MCP vs CLI
+
+| Aspect | MCP Tools | CLI |
+|--------|--------|-----|
+| Interface | text-in/text-out | file-based |
+| File I/O | None | Read/write temp files |
+| Overhead | Low (direct call) | Higher (subprocess + file) |
+| Use case | Pipeline / chapter-by-chapter | Single file translation |
+| Tool count | 6 tools | 4 commands |
+
 ### translate-batch
 
 1. Specify the source directory containing `.md` files

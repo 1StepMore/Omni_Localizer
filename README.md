@@ -82,6 +82,39 @@ ol translate-xliff <file.xlf> -c <config.yaml> -s en -t zh -o output/
 ol extract-warnings <file> -o warnings.md
 ```
 
+## MCP Tools
+
+For agent-native text-in/text-out translation (no file I/O):
+
+```bash
+# Install with MCP support
+pip install -e ".[mcp]"
+
+# Run the MCP server (stdio transport)
+python -m ol_mcp
+# or
+ol-mcp
+```
+
+| Tool | Description |
+|------|-------------|
+| `translate_md_text` | Translate markdown text directly |
+| `judge_text` | Evaluate translation quality |
+| `load_glossary` | Load a JSON glossary file |
+| `get_relevant_terms` | Extract relevant terms from text |
+| `search_tm` | Search translation memory |
+| `batch_translate_texts` | Batch translate multiple texts in parallel |
+
+**Example usage** (in an MCP-capable agent):
+
+```
+Tool: translate_md_text
+Parameters:
+  content: "# Hello World\nThis is a test."
+  source_lang: "en"
+  target_lang: "zh"
+```
+
 ## Output Metadata
 
 ### YAML Frontmatter (Markdown)
