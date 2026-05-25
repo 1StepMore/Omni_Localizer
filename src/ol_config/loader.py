@@ -38,6 +38,7 @@ def load_config(path: str | Path) -> tuple[ProjectConfig, dict[str, Any]]:
     """
     if path is None:
         raise TypeError("load_config() path must not be None")
+    _load_env_file()
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")

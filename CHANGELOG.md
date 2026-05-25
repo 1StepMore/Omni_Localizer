@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - SKILL.md now recommends MCP interface over CLI for pipeline/chapter-by-chapter use cases.
 
+### Fixed
+- `_load_env_file()` was defined but never called, causing `.env` files to be completely ignored. API keys set via `.env` would fail validation with "environment variable not set". Now `_load_env_file()` is called at the start of `load_config()` before config validation.
+
 ## [0.2.8] - 2026-05-24
 
 ### Fixed
