@@ -41,6 +41,9 @@ ml = [
     "sentence-transformers>=3.0.0",
     "transformers>=4.41.0",
 ]
+mcp = [
+    "mcp>=1.0.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24.0",
@@ -57,6 +60,7 @@ Issues = "https://github.com/1StepMore/Omni_Localizer/issues"
 
 [project.scripts]
 ol = "ol_cli:main_entry"
+ol-mcp = "ol_mcp.server:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]

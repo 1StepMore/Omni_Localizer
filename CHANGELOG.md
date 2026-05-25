@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-25
+
+### Added
+- **MCP Server** (`src/ol_mcp/`): New package providing text-in/text-out MCP tools for agent-native localization without file I/O. 6 tools: `translate_md_text`, `judge_text`, `load_glossary`, `get_relevant_terms`, `search_tm`, `batch_translate_texts`.
+- **MCP entry point** (`ol-mcp`) via `pip install -e ".[mcp]"`. Server uses stdio transport.
+- **`mcp>=1.0.0`** added as optional dependency.
+- **Hermes SKILL.md** updated with MCP Tools section documenting the agent-friendly interface.
+
+### Changed
+- SKILL.md now recommends MCP interface over CLI for pipeline/chapter-by-chapter use cases.
+
 ## [0.2.8] - 2026-05-24
 
 ### Fixed
