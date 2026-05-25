@@ -32,7 +32,7 @@ def _resolve_env_vars(value: str) -> str:
 
 class ModelPool:
     def __init__(self, config_path: str = "config/default.yaml"):
-        config = load_config(config_path)
+        config, _ = load_config(config_path)
         global_timeout = max((m.timeout for role in ("translation", "judging", "restoration")
                               for m in getattr(config.llm_pool, role, [])),
                              default=180.0)

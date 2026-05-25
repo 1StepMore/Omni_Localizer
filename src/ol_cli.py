@@ -4,6 +4,7 @@ import asyncio
 import re
 import signal
 import sys
+from typing import Any
 
 # ========== OL Frontmatter Support ==========
 from datetime import UTC, datetime
@@ -249,7 +250,7 @@ async def _translate_md_async(
 
     if not config_path:
         from ol_config.loader import load_config
-        cfg = load_config("config/default.yaml")
+        cfg, _ = load_config("config/default.yaml")
         src_lang = src_lang or cfg.source_lang
         tgt_lang = tgt_lang or cfg.target_lang
 
@@ -325,7 +326,7 @@ def translate_md(
         if config:
             from ol_config.loader import load_config
 
-            cfg = load_config(config)
+            cfg, glossary = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
@@ -362,7 +363,8 @@ async def _translate_batch_async(
     config_path: str | None,
     src_lang: str,
     tgt_lang: str,
-    max_concurrent: int,
+    glossary: dict[str, Any] | None = None,
+    max_concurrent: int = 5,
     add_frontmatter: bool = True,
     detect_language: bool = True,
 ) -> tuple[int, int]:
@@ -392,7 +394,7 @@ async def _translate_batch_async(
     pool = ModelPool(config_path) if config_path else ModelPool()
 
     limiter = ConcurrencyLimiter(max_translation=max_concurrent)
-    processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter)
+    processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter, glossary=glossary)
 
     start_time = time.time()
     async with ProgressContext() as _:
@@ -463,7 +465,7 @@ def translate_batch(
         if config:
             from ol_config.loader import load_config
 
-            cfg = load_config(config)
+            cfg, glossary = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
@@ -478,6 +480,7 @@ def translate_batch(
                 config,
                 src,
                 tgt,
+                glossary,
                 concurrency,
                 add_frontmatter,
                 detect_language,
@@ -543,7 +546,7 @@ def translate_xliff(
         if config:
             from ol_config.loader import load_config
 
-            cfg = load_config(config)
+            cfg, _ = load_config(config)
             src_lang = src_lang or cfg.source_lang
             tgt_lang = tgt_lang or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
