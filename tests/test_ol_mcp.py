@@ -178,19 +178,16 @@ class TestToolInputValidation:
 class TestMcpServerModule:
     """Test that the MCP server module imports correctly."""
 
-class TestMcpServerModule:
-    """Test that the MCP server module imports correctly."""
-
     def test_tools_module_imports(self):
         """Verify all tool classes and MCP server import successfully."""
         from ol_mcp.tools import (
             mcp,
-            translate_md_text,
-            judge_text,
-            load_glossary,
-            get_relevant_terms,
-            search_tm,
-            batch_translate_texts,
+            translate_md_text,  # noqa: F401 - imported to verify existence
+            judge_text,  # noqa: F401 - imported to verify existence
+            load_glossary,  # noqa: F401 - imported to verify existence
+            get_relevant_terms,  # noqa: F401 - imported to verify existence
+            search_tm,  # noqa: F401 - imported to verify existence
+            batch_translate_texts,  # noqa: F401 - imported to verify existence
         )
         assert mcp is not None
 
