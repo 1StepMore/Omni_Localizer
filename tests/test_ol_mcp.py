@@ -1,7 +1,4 @@
 """Tests for OL MCP server and tools."""
-import json
-import pytest
-
 from ol_mcp.tools import (
     TranslateInput,
     JudgeInput,

@@ -5,8 +5,6 @@ Or install with pip install -e ".[mcp]" and run: ol-mcp
 """
 import asyncio
 
-from mcp.server.stdio import stdio_server
-
 from ol_mcp.tools import mcp
 
 __all__ = ["main"]
