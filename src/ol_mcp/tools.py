@@ -15,7 +15,7 @@ from ol_concurrency.scheduler import ConcurrencyLimiter
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
-from ol_terminology.glossary import get_relevant_terms, load_glossary_from_path
+from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_tm.service import TMService
 
@@ -107,7 +107,7 @@ async def _translate_single(
 
     context = None
     if glossary:
-        terms = get_relevant_terms(shielded, glossary=glossary, top_k=5)
+        terms = _get_relevant_terms(shielded, glossary=glossary, top_k=5)
         if terms:
             context = build_translate_prompt(
                 text=shielded,
@@ -306,7 +306,7 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
     import json
 
     try:
-        terms = get_relevant_terms(params.text, params.glossary, top_k=params.top_k)
+        terms = _get_relevant_terms(params.text, params.glossary, top_k=params.top_k)
         return json.dumps(
             {
                 "success": True,
