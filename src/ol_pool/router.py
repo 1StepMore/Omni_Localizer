@@ -1,8 +1,10 @@
+import asyncio
 import os
 import re
 from typing import Any
 
 import litellm
+from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
 
 # Must be set before Router init — prevents litellm from lowercasing model names
 # (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
@@ -111,23 +113,43 @@ class ModelPool:
                     prompt_parts.insert(0, f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}")
             prompt = "\n\n".join(prompt_parts)
 
-        try:
-            response = await self._router.acompletion(
-                model="translation",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
-                temperature=0.0,
-            )
-            translated = response.choices[0].message.content
-            _logger.debug(f"Translation response: {len(translated)} chars")
-            return translated
-        except Exception as e:
-            _logger.error(f"Translation failed: {e}")
-            raise
+        for attempt in range(4):  # 1 initial + 3 retries
+            try:
+                response = await self._router.acompletion(
+                    model="translation",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        },
+                    ],
+                    temperature=0.0,
+                )
+                translated = response.choices[0].message.content
+                _logger.debug(f"Translation response: {len(translated)} chars")
+                return translated
+            except Timeout as e:
+                if attempt < 3:
+                    wait = 2 ** attempt * 5
+                    _logger.warning(f"Timeout, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    await asyncio.sleep(wait)
+                else:
+                    _logger.error(f"Translation failed after 4 attempts: {e}")
+                    raise
+            except RateLimitError as e:
+                if attempt < 3:
+                    wait = 2 ** attempt * 10
+                    _logger.warning(f"RateLimitError, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    await asyncio.sleep(wait)
+                else:
+                    _logger.error(f"Translation failed after 4 attempts: {e}")
+                    raise
+            except AuthenticationError:
+                _logger.error("Translation failed: AuthenticationError (no retry)")
+                raise
+            except Exception as e:
+                _logger.error(f"Translation failed: {e}")
+                raise
 
     async def judge(
         self, source: str, target: str, source_lang: str, target_lang: str,
