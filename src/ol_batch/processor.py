@@ -213,6 +213,15 @@ class BatchProcessor:
             )
             repaired = frontmatter + repaired
 
+        if self._tm_service:
+            try:
+                self._tm_service.add(shielded, repaired, self.src_lang, self.tgt_lang)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"TM add failed for {input_path.name}, continuing"
+                )
+
         output_file = output_dir / input_path.name
         output_file.write_text(repaired, encoding="utf-8")
 

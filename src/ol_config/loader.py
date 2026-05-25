@@ -1,11 +1,13 @@
 """Config loader for Omni-Localizer."""
 import os
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 from ol_config.schema import ProjectConfig
 from ol_logging.core import get_logger
+from ol_terminology.glossary import load_glossary_from_path
 
 _logger = get_logger("config")
 
@@ -18,14 +20,15 @@ def _load_env_file() -> None:
                 k, _, v = line.partition("=")
                 os.environ.setdefault(k.strip(), v.strip())
 
-def load_config(path: str | Path) -> ProjectConfig:
+def load_config(path: str | Path) -> tuple[ProjectConfig, dict[str, Any]]:
     """Load and validate project configuration from YAML.
 
     Args:
         path: Path to YAML config file
 
     Returns:
-        Validated ProjectConfig instance
+        Tuple of (Validated ProjectConfig instance, glossary dict)
+        Returns ({},) if glossary_path is None or loading fails.
 
     Raises:
         ValidationError: If config is invalid or missing required fields
@@ -44,9 +47,20 @@ def load_config(path: str | Path) -> ProjectConfig:
         with open(path, encoding='utf-8') as f:
             data = yaml.safe_load(f)
 
-        cfg = ProjectConfig(**data)
-        _logger.info(f"Config loaded: {cfg.project_id}")
-        return cfg
+        config = ProjectConfig(**data)
+        _logger.info(f"Config loaded: {config.project_id}")
+
+        glossary: dict[str, Any] = {}
+        if config.glossary_path:
+            try:
+                glossary = load_glossary_from_path(
+                    config.glossary_path, config_dir=Path(path).parent
+                )
+            except Exception as e:
+                _logger.warning(f"Failed to load glossary, returning empty dict: {e}")
+                glossary = {}
+
+        return (config, glossary)
     except Exception as e:
         _logger.error(f"Failed to load config: {e}")
         raise

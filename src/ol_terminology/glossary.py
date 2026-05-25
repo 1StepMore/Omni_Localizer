@@ -60,6 +60,58 @@ def load_glossary(path: Path) -> dict[str, dict[str, Any]]:
     return glossary
 
 
+def load_glossary_from_path(path: str | Path, config_dir: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Load a JSON glossary file from a path, with optional config directory for relative paths.
+
+    Args:
+        path: Path to the JSON glossary file (str or Path).
+        config_dir: Optional base directory for resolving relative paths.
+
+    Returns:
+        Dictionary mapping terms to their metadata (same format as load_glossary).
+
+    Raises:
+        FileNotFoundError: If glossary file does not exist.
+        ValueError: If JSON is malformed.
+    """
+    import json
+
+    path = Path(path)
+
+    # Resolve relative paths: use config_dir if provided, otherwise CWD
+    if not path.is_absolute():
+        base_dir = config_dir if config_dir is not None else Path.cwd()
+        path = base_dir / path
+
+    if not path.exists():
+        raise FileNotFoundError(f"Glossary file not found: {path}")
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Malformed glossary JSON: {e}") from e
+
+    glossary: dict[str, dict[str, Any]] = {}
+
+    for term, data in raw.items():
+        if isinstance(data, dict):
+            glossary[term] = {
+                "translation": data.get("translation", ""),
+                "variants": data.get("variants", {}),
+                "confidence": data.get("confidence", 1.0),
+            }
+        else:
+            glossary[term] = {
+                "translation": str(data),
+                "variants": {},
+                "confidence": 1.0,
+            }
+
+    logger.info(f"Loaded {len(glossary)} terms from glossary: {path}")
+    return glossary
+
+
 def get_relevant_terms(
     text: str,
     glossary: dict[str, dict[str, Any]],
