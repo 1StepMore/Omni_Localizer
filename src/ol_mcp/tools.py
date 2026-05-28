@@ -18,6 +18,10 @@ from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_tm.service import TMService
+from ol_xliff.parser import XliffParser
+from ol_xliff.shield import shield_xliff
+from ol_xliff.pipeline import XLIFFRepairPipeline
+from ol_buses.xliff_shield import restore_tags
 
 # Create the MCP server
 mcp = FastMCP("omni-localizer")
@@ -79,6 +83,17 @@ class BatchTranslateInput(BaseModel):
     target_lang: str = Field(description="Target language code")
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary")
     concurrency: int = Field(default=5, description="Max parallel translations")
+
+
+class TranslateXliffInput(BaseModel):
+    """Input for translate_xliff."""
+
+    input_path: str = Field(description="Path to input XLIFF file")
+    output_path: str | None = Field(default=None, description="Path to output XLIFF file. None = overwrite source (with warning)")
+    source_lang: str = Field(default="zh", description="Source language code")
+    target_lang: str = Field(default="en", description="Target language code")
+    glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
+    config_path: str | None = Field(default=None, description="Path to LLM config")
 
 
 # ---------------------------------------------------------------------------
@@ -433,13 +448,127 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
             failed += 1
 
     return json.dumps(
-        {
-            "success": failed == 0,
-            "results": processed,
-            "total": len(params.texts),
-            "succeeded": succeeded,
-            "failed": failed,
-            "warnings": warnings,
-        },
-        ensure_ascii=False,
-    )
+            {
+                "success": failed == 0,
+                "results": processed,
+                "total": len(params.texts),
+                "succeeded": succeeded,
+                "failed": failed,
+                "warnings": warnings,
+                "assembled_document": "---".join([r["translated"] for r in processed]),
+            },
+            ensure_ascii=False,
+        )
+
+
+@mcp.tool()
+async def translate_xliff(params: TranslateXliffInput) -> str:
+    import json
+
+    warnings: list[str] = []
+    config_path = _get_config_path(params.config_path)
+
+    if params.output_path is None:
+        warnings.append("No output_path provided - overwriting source file")
+        output_path = params.input_path
+    else:
+        output_path = params.output_path
+
+    try:
+        glossary: dict[str, dict[str, Any]] | None = None
+        if params.glossary_path:
+            try:
+                glossary = load_glossary_from_path(
+                    params.glossary_path,
+                    config_dir=Path(params.glossary_path).parent if not Path(params.glossary_path).is_absolute() else None,
+                )
+            except Exception as e:
+                warnings.append(f"Glossary load failed: {e}")
+                glossary = None
+
+        parser = XliffParser()
+        units = parser.parse(params.input_path)
+        units_processed = len(units)
+
+        if units_processed == 0:
+            return json.dumps(
+                {
+                    "success": False,
+                    "output_path": output_path,
+                    "units_processed": 0,
+                    "warnings": warnings + ["No translation units found in XLIFF file"],
+                },
+                ensure_ascii=False,
+            )
+
+        pool = ModelPool(config_path)
+        repair_pipeline = XLIFFRepairPipeline()
+
+        for unit in units:
+            shielded_text, unit_shield_map = shield_xliff(unit.source_text)
+
+            context = None
+            if glossary:
+                terms = _get_relevant_terms(shielded_text, glossary=glossary, top_k=5)
+                if terms:
+                    context = build_translate_prompt(
+                        text=shielded_text,
+                        src_lang=params.source_lang,
+                        tgt_lang=params.target_lang,
+                        tm_matches=None,
+                        glossary_terms=terms,
+                    )
+
+            translated = await pool.translate(shielded_text, params.source_lang, params.target_lang, context)
+
+            if unit_shield_map:
+                unshielded = restore_tags(translated, unit_shield_map)
+                repaired = repair_pipeline.repair(unshielded, unit.source_text, unit_shield_map)
+            else:
+                repaired = translated
+
+            unit.target_text = repaired
+
+        from ol_buses.xliff_bus import write_target_back
+        from ol_core.dataclass import TranslationContext, ChannelType
+
+        ctx = TranslationContext(
+            file_path=params.input_path,
+            channel_type=ChannelType.XLIFF,
+            original_full_text=Path(params.input_path).read_text(encoding='utf-8'),
+            units=units,
+            glossary=glossary or {},
+            config={},
+        )
+        write_target_back(ctx, output_path)
+
+        return json.dumps(
+            {
+                "success": True,
+                "output_path": output_path,
+                "units_processed": units_processed,
+                "warnings": warnings,
+            },
+            ensure_ascii=False,
+        )
+
+    except FileNotFoundError as e:
+        return json.dumps(
+            {
+                "success": False,
+                "output_path": output_path,
+                "units_processed": 0,
+                "warnings": warnings + [f"File not found: {e}"],
+            },
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        return json.dumps(
+            {
+                "success": False,
+                "output_path": output_path,
+                "units_processed": 0,
+                "warnings": warnings + [str(e)],
+            },
+            ensure_ascii=False,
+        )

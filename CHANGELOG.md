@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-28
+
+### Added
+- **`translate_xliff` MCP tool**: New tool for translating XLIFF files through shield → translate → repair → unshield pipeline
+  - Preserves XLIFF inline elements (x, bx, ex, mrk, ph, alayout, g, ign tags) automatically
+  - Uses `XliffParser`, `XliffShield`, `XLIFFRepairPipeline`, and `ModelPool` infrastructure
+  - Supports `output_path` parameter — `None` = overwrite source with warning
+  - Returns `{"success", "output_path", "units_processed", "warnings"}`
+
+### Changed
+- **`batch_translate_texts` assembled_document**: Return now includes `assembled_document` field joining all translated texts with `---` separator for seamless chunk reassembly
+
 ## [0.3.0] - 2026-05-25
 
 ### Added
