@@ -7,6 +7,34 @@ from ol_buses.xliff_shield import replace_tags_with_placeholders
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
 
 
+def _ensure_target_tags(content: str) -> str:
+    """Inject empty <target></target> after </source> if not present.
+
+    OPP-generated XLIFF files only contain <source> elements without <target>.
+    write_target_back() requires <target>...</target> to exist for regex replacement.
+    This function pre-injects empty target tags to ensure write_target_back() works.
+
+    Args:
+        content: XLIFF file content as string
+
+    Returns:
+        Content with <target></target> injected after each </source> that lacks a target
+    """
+    import re
+
+    # Match trans-unit with source but NO target following
+    # Uses negative lookahead (?!\s*<target) to ensure no target comes after source
+    source_only_pattern = re.compile(
+        r'(<trans-unit[^>]*id="([^"]+)"[^>]*>.*?</source>)(?!\s*<target)',
+        re.DOTALL,
+    )
+
+    def insert_target(m: re.Match) -> str:
+        return m.group(1) + '<target></target>'
+
+    return source_only_pattern.sub(insert_target, content)
+
+
 def validate_xliff_structure(path: str) -> bool:
     """Validate XLIFF file has required structure."""
     path = Path(path)
@@ -32,6 +60,9 @@ def load_xliff(path: str, glossary: dict[str, Any] | None = None) -> Translation
     """
     path = Path(path)
     original_text = path.read_text(encoding='utf-8')
+
+    # Pre-inject target tags for OPP-generated XLIFF (which lacks <target> elements)
+    original_text = _ensure_target_tags(original_text)
 
     # Extract translation units from XLIFF
     units = list(iterate_trans_units(path))
@@ -91,9 +122,7 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
         output_path: Output file path
 
     """
-    # Read original file to preserve structure
-    original_path = Path(ctx.file_path)
-    content = original_path.read_text(encoding='utf-8')
+    content = ctx.original_full_text
 
     # Replace each unit's translation
     for unit in ctx.units:
