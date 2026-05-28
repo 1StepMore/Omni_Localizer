@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-05-28
+
+### Fixed
+- **`write_target_back()` target injection**: `load_xliff()` now pre-injects empty `<target></target>` tags for OPP-generated XLIFF files
+  - OPP XLIFF only contains `<source>` elements without `<target>`
+  - `write_target_back()` regex requires `<target>...</target>` to exist for replacement
+  - Added `_ensure_target_tags()` helper to inject targets before creating TranslationContext
+  - `write_target_back()` now reads from `ctx.original_full_text` (which has targets injected)
+
 ## [0.3.2] - 2026-05-28
 
 ### Added
