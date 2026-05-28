@@ -529,13 +529,16 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
 
             unit.target_text = repaired
 
-        from ol_buses.xliff_bus import write_target_back
+        from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
         from ol_core.dataclass import TranslationContext, ChannelType
+
+        original_text = Path(params.input_path).read_text(encoding='utf-8')
+        original_text = _ensure_target_tags(original_text)
 
         ctx = TranslationContext(
             file_path=params.input_path,
             channel_type=ChannelType.XLIFF,
-            original_full_text=Path(params.input_path).read_text(encoding='utf-8'),
+            original_full_text=original_text,
             units=units,
             glossary=glossary or {},
             config={},
