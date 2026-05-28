@@ -192,3 +192,179 @@ class TestMcpServerModule:
         """Verify package __init__ exports mcp."""
         from ol_mcp import mcp as pkg_mcp
         assert pkg_mcp is not None
+
+
+import inspect
+
+
+class TestChunking:
+    """Test _estimate_tokens and _chunk_text utilities."""
+
+    def test_estimate_tokens_cjk(self):
+        """CJK characters: 1 token ≈ 4 chars."""
+        from ol_mcp.tools import _estimate_tokens
+
+        # 4 CJK chars / 4 = 1 token
+        assert _estimate_tokens("你好世界") == 1
+        # 8 CJK chars / 4 = 2 tokens
+        assert _estimate_tokens("你好世界你好世界") == 2
+
+    def test_estimate_tokens_english(self):
+        """English: 1 token ≈ 5 chars."""
+        from ol_mcp.tools import _estimate_tokens
+
+        # 5 non-CJK chars / 5 = 1 token
+        assert _estimate_tokens("hello") == 1
+        # 10 chars / 5 = 2 tokens
+        assert _estimate_tokens("hello world") == 2
+
+    def test_estimate_tokens_mixed(self):
+        """Mixed CJK + English uses both formulas."""
+        from ol_mcp.tools import _estimate_tokens
+
+        # 4 CJK / 4 + 5 non-CJK / 5 = 2 tokens
+        result = _estimate_tokens("你好hello")
+        assert result == 2
+
+    def test_chunk_text_small(self):
+        """Text smaller than max_chars returns single chunk."""
+        from ol_mcp.tools import _chunk_text
+
+        result = _chunk_text("hello world", 100)
+        assert result == ["hello world"]
+
+    def test_chunk_text_paragraph_split(self):
+        """Splits on paragraph boundary (\\n\\n)."""
+        from ol_mcp.tools import _chunk_text
+
+        result = _chunk_text("a\n\nb\n\nc", 3)
+        assert result == ["a", "b", "c"]
+
+    def test_chunk_text_heading_split(self):
+        """Splits on markdown headings (# ## ###)."""
+        from ol_mcp.tools import _chunk_text
+
+        result = _chunk_text("# Intro\n\n## Chapter 1", 20)
+        # Should split around heading boundaries
+        assert len(result) >= 2
+
+    def test_chunk_text_horizontal_rule(self):
+        """Splits on --- (horizontal rules)."""
+        from ol_mcp.tools import _chunk_text
+
+        result = _chunk_text("intro\n\n---\n\nchapter1", 50)
+        assert "---" in result
+
+    def test_chunk_text_code_fence_preserved(self):
+        """Never splits inside code fences."""
+        from ol_mcp.tools import _chunk_text
+
+        code = "```\nprint('hello')\n```"
+        result = _chunk_text(code, 5)
+        # Should not split inside the code fence
+        assert len(result) >= 1
+
+    def test_chunk_text_hard_split_last_resort(self):
+        """Hard-split at max_chars when no boundaries found."""
+        from ol_mcp.tools import _chunk_text
+
+        # Long string with no natural boundaries
+        long_text = "a" * 100
+        result = _chunk_text(long_text, 30)
+        # Should have multiple chunks
+        assert len(result) > 1
+        # Each chunk should be <= max_chars
+        for chunk in result:
+            assert len(chunk) <= 30
+
+    def test_chunk_text_empty(self):
+        """Empty text returns empty list."""
+        from ol_mcp.tools import _chunk_text
+
+        result = _chunk_text("", 10)
+        assert result == []
+
+
+class TestTranslateMdTextFlatSchema:
+    """Verify tool functions have flat (non-wrapped) signatures."""
+
+    def test_translate_md_text_flat_signature(self):
+        """translate_md_text takes flat primitives, not params wrapper."""
+        from ol_mcp.tools import translate_md_text
+
+        sig = inspect.signature(translate_md_text)
+        params = list(sig.parameters.keys())
+        # Should NOT have 'params' as a parameter
+        assert "params" not in params
+        # Should have these flat parameters
+        assert "content" in params
+        assert "source_lang" in params
+        assert "target_lang" in params
+        assert "glossary_path" in params
+        assert "config_path" in params
+        assert "add_frontmatter" in params
+        assert "max_chars_per_chunk" in params
+
+    def test_judge_text_flat_signature(self):
+        """judge_text takes flat primitives."""
+        from ol_mcp.tools import judge_text
+
+        sig = inspect.signature(judge_text)
+        params = list(sig.parameters.keys())
+        assert "params" not in params
+        assert "source" in params
+        assert "target" in params
+        assert "source_lang" in params
+        assert "target_lang" in params
+
+    def test_load_glossary_flat_signature(self):
+        """load_glossary takes flat primitives."""
+        from ol_mcp.tools import load_glossary
+
+        sig = inspect.signature(load_glossary)
+        params = list(sig.parameters.keys())
+        assert "params" not in params
+        assert "path" in params
+        assert "config_dir" in params
+
+    def test_batch_translate_texts_flat_signature(self):
+        """batch_translate_texts takes texts as list[str], not params wrapper."""
+        from ol_mcp.tools import batch_translate_texts
+
+        sig = inspect.signature(batch_translate_texts)
+        params = list(sig.parameters.keys())
+        assert "params" not in params
+        assert "texts" in params
+        assert "source_lang" in params
+        assert "target_lang" in params
+        assert "glossary_path" in params
+        assert "concurrency" in params
+        assert "max_chars_per_chunk" in params
+
+
+class TestMaxCharsPerChunk:
+    """Verify max_chars_per_chunk parameter on chunking tools."""
+
+    def test_translate_md_text_has_max_chars_param(self):
+        """translate_md_text accepts max_chars_per_chunk parameter."""
+        from ol_mcp.tools import translate_md_text
+
+        sig = inspect.signature(translate_md_text)
+        params = list(sig.parameters.keys())
+        assert "max_chars_per_chunk" in params
+        # Check it's the last param
+        assert params[-1] == "max_chars_per_chunk"
+        # Check default is None
+        param = sig.parameters["max_chars_per_chunk"]
+        assert param.default is None
+
+    def test_batch_translate_texts_has_max_chars_param(self):
+        """batch_translate_texts accepts max_chars_per_chunk parameter."""
+        from ol_mcp.tools import batch_translate_texts
+
+        sig = inspect.signature(batch_translate_texts)
+        params = list(sig.parameters.keys())
+        assert "max_chars_per_chunk" in params
+        # Check default is None
+        param = sig.parameters["max_chars_per_chunk"]
+        assert param.default is None
