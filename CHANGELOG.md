@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-28
+
+### Fixed (OL MCP)
+
+- **`translate_md_text` and all 5 other MCP tools** now accept **flat parameters** instead of a `params` wrapper. Agents can call `translate_md_text(content="...", source_lang="en", target_lang="zh")` directly without nesting under a `params` key. Previously all 6 tools required wrapping all arguments under `{"params": {...}}`, causing `params Field required` validation errors for agents.
+- **Auto-chunking for large documents**: `translate_md_text` and `batch_translate_texts` now support `max_chars_per_chunk` parameter. When set, content exceeding the limit is automatically split at semantic boundaries (P0: `---` > P1: `# headings` > P2: code fences > P3: paragraphs > P4: sentence-end punctuation > P5: hard split) before translation. This prevents LLM API timeouts on documents approaching the ~200K token limit.
+- Added `_estimate_tokens(text)` utility using CJK/EN ratio formula (`cjk/4 + non_cjk/5`) for token budget estimation.
+- Added `_chunk_text(text, max_chars)` utility for priority-boundary text splitting.
+
+### Tests
+
+- Added `TestChunking` (11 tests): `_estimate_tokens` and `_chunk_text` utility tests.
+- Added `TestTranslateMdTextFlatSchema` (4 tests): verifies flat signatures on all 6 MCP tool functions.
+- Added `TestMaxCharsPerChunk` (2 tests): verifies `max_chars_per_chunk` parameter exists on `translate_md_text` and `batch_translate_texts`.
+
 ## [0.3.0] - 2026-05-25
 
 ### Added

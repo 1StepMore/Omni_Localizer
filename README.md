@@ -127,7 +127,7 @@ source_lang: en
 target_lang: zh
 original_file: input.md
 processor: "OL"
-version: "0.2.3"
+version: "0.3.1"
 translated_at: 2026-05-22T15:00:00Z
 ---
 
