@@ -134,8 +134,8 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
                 re.DOTALL,
             )
 
-            # Restore original tags in target
-            restored_target = unit.target_text
+            from ol_buses.xliff_shield import restore_tags
+            restored_target = restore_tags(unit.target_text, unit.shield_map) if unit.shield_map else unit.target_text
 
             content = target_pattern.sub(
                 lambda m: m.group(1) + f'<target>{restored_target}</target>' + m.group(2),

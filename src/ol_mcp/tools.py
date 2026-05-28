@@ -505,21 +505,21 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
         repair_pipeline = XLIFFRepairPipeline()
 
         for unit in units:
-            shielded_text, unit_shield_map = shield_xliff(unit.source_text)
+            unit_shield_map = unit.shield_map
 
             context = None
             if glossary:
-                terms = _get_relevant_terms(shielded_text, glossary=glossary, top_k=5)
+                terms = _get_relevant_terms(unit.source_text, glossary=glossary, top_k=5)
                 if terms:
                     context = build_translate_prompt(
-                        text=shielded_text,
+                        text=unit.source_text,
                         src_lang=params.source_lang,
                         tgt_lang=params.target_lang,
                         tm_matches=None,
                         glossary_terms=terms,
                     )
 
-            translated = await pool.translate(shielded_text, params.source_lang, params.target_lang, context)
+            translated = await pool.translate(unit.source_text, params.source_lang, params.target_lang, context)
 
             if unit_shield_map:
                 unshielded = restore_tags(translated, unit_shield_map)
