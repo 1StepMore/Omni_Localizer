@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - MCP tool was directly reading XLIFF file without target injection, bypassing `load_xliff()`
   - Fixed by applying `_ensure_target_tags()` to `original_text` in MCP tool path
 
+### Investigation
+- **Bug #MD-01: `translate_md_text` silent failure** (under investigation)
+  - Added logging to `_translate_single()` for exception tracing
+  - Added fallback to `type(e).__name__` when `str(e)` is empty
+  - `_translate_single` now has try/except to ensure exceptions propagate with context
+  - Root cause not yet confirmed - may be litellm or pydantic edge case
+
 ## [0.3.3] - 2026-05-28
 
 ### Fixed

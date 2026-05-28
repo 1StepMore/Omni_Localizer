@@ -4,9 +4,12 @@ All tools are async functions that wrap existing OL infrastructure.
 Each tool returns a dict with consistent success/warnings structure for agent-friendly error handling.
 """
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -118,30 +121,34 @@ async def _translate_single(
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
 
-    shielded, shield_map = shield_markdown(content)
+    try:
+        shielded, shield_map = shield_markdown(content)
 
-    context = None
-    if glossary:
-        terms = _get_relevant_terms(shielded, glossary=glossary, top_k=5)
-        if terms:
-            context = build_translate_prompt(
-                text=shielded,
-                src_lang=source_lang,
-                tgt_lang=target_lang,
-                tm_matches=None,
-                glossary_terms=terms,
-            )
+        context = None
+        if glossary:
+            terms = _get_relevant_terms(shielded, glossary=glossary, top_k=5)
+            if terms:
+                context = build_translate_prompt(
+                    text=shielded,
+                    src_lang=source_lang,
+                    tgt_lang=target_lang,
+                    tm_matches=None,
+                    glossary_terms=terms,
+                )
 
-    pool = ModelPool(config_path)
-    translated = await pool.translate(shielded, source_lang, target_lang, context)
+        pool = ModelPool(config_path)
+        translated = await pool.translate(shielded, source_lang, target_lang, context)
 
-    if shield_map:
-        unshielded = unshield_markdown(translated, shield_map)
-        repaired = MDRepairPipeline().repair(unshielded, content, shield_map)
-    else:
-        repaired = translated
+        if shield_map:
+            unshielded = unshield_markdown(translated, shield_map)
+            repaired = MDRepairPipeline().repair(unshielded, content, shield_map)
+        else:
+            repaired = translated
 
-    return repaired, warnings
+        return repaired, warnings
+    except Exception as e:
+        _logger.exception("translate_md_text failed: %s", e)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -208,11 +215,13 @@ async def translate_md_text(params: TranslateInput) -> str:
         )
 
     except Exception as e:
+        error_msg = str(e) if str(e) else type(e).__name__
+        _logger.error("translate_md_text failed: error=%s", error_msg, exc_info=True)
         return json.dumps(
             {
                 "success": False,
                 "translated": "",
-                "warnings": warnings + [str(e)],
+                "warnings": warnings + [error_msg],
                 "source_lang": params.source_lang,
                 "target_lang": params.target_lang,
             },
