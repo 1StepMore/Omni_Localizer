@@ -5,9 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.4] - 2026-05-28
+## [0.3.4] - 2026-05-29
 
 ### Fixed
+- **`translate_xliff` double-shielding bug**: Removed redundant `shield_xliff()` call that was overwriting the shield map from parsing
+  - `XliffParser.parse()` already calls `extract_inline_elements()` which shields tags and populates `unit.shield_map`
+  - Calling `shield_xliff(unit.source_text)` again found no tags (already shielded) → empty shield map → `{{_OL_XTAG_*}}` placeholders not restored
+  - Fix: use `unit.shield_map` directly from parsing instead of re-shielding
+- **`write_target_back()` missing restore_tags call**: `unit.target_text` now passed through `restore_tags()` before writing
+  - Without this call, `{{_OL_XTAG_*}}` placeholders from translation leak into final XLIFF output
+  - Fix: call `restore_tags(unit.target_text, unit.shield_map)` on line 138 of xliff_bus.py
 - **`translate_xliff` MCP tool bypass fix**: MCP tool now also calls `_ensure_target_tags()` before creating TranslationContext
   - MCP tool was directly reading XLIFF file without target injection, bypassing `load_xliff()`
   - Fixed by applying `_ensure_target_tags()` to `original_text` in MCP tool path
