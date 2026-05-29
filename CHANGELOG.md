@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ModelPool.__init__` now raises `NotImplementedError`
   - `ModelPool.get_instance(config_path)` returns cached instance per config path
   - Updated all callers: MCP tools, CLI commands, repair pipelines
+- **`translate_xliff` CLI missing LLM call** (E2E-04): CLI `translate_xliff` command only ran XLIFFRepairPipeline and never called ModelPool LLM
+  - Fix: CLI `translate_xliff` command now uses `_translate_xliff_async()` which calls `pool.translate()` + `write_target_back()`
+  - Fix: `_load_env_for_cli()` added to load `.env` before `ModelPool.get_instance()`
+- **E2E-05: LITELLM_OFFLINE**: OL CLI and MCP server set `LITELLM_OFFLINE=true` and `LITELLM_DISABLE_MODEL_LIST_AUTO_UPDATE=true`
+  - liteLLM 1.86.0 Router initialization fetches `model_prices_and_context_window.json` from GitHub; when network is unreachable, falls back to `bert-base-multilingual-cased` (no api_key) → HuggingFace network error
+  - Fix: set `LITELLM_OFFLINE=true` to prevent auto-model-list behavior
 
 ### Investigation
 - **Bug #MD-01: `translate_md_text` silent failure** (under investigation)
