@@ -309,6 +309,11 @@ def _load_env_for_cli() -> None:
     sys.stderr.write(f"[OL CLI] _load_env_for_cli loaded from={loaded}, vars={vals}\n")
     sys.stderr.flush()
 
+    # E2E-05 fix: prevent liteLLM from auto-adding unconfigured embedding models
+    # when network is unreachable (prevents "bert-base-multilingual-cased" fallback)
+    os.environ.setdefault("LITELLM_OFFLINE", "true")
+    os.environ.setdefault("LITELLM_DISABLE_MODEL_LIST_AUTO_UPDATE", "true")
+
 
 def _load_dotenv(env_path: Path) -> None:
     """Parse and export .env file without blocking on missing keys."""
