@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`translate_xliff` MCP tool bypass fix**: MCP tool now also calls `_ensure_target_tags()` before creating TranslationContext
   - MCP tool was directly reading XLIFF file without target injection, bypassing `load_xliff()`
   - Fixed by applying `_ensure_target_tags()` to `original_text` in MCP tool path
+- **`translate_xliff` MCP output_path default**: When `output_path=None` (default), now generates `input_translated.xlf` instead of overwriting source file
+  - Fix: use `Path.with_stem(f"{input_p.stem}_translated")` to create output filename
+- **`ModelPool` OOM prevention**: Changed `ModelPool` to singleton pattern via `get_instance()` to prevent creating new litellm Router per MCP call
+  - `ModelPool.__init__` now raises `NotImplementedError`
+  - `ModelPool.get_instance(config_path)` returns cached instance per config path
+  - Updated all callers: MCP tools, CLI commands, repair pipelines
 
 ### Investigation
 - **Bug #MD-01: `translate_md_text` silent failure** (under investigation)
