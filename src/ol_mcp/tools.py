@@ -136,7 +136,7 @@ async def _translate_single(
                     glossary_terms=terms,
                 )
 
-        pool = ModelPool(config_path)
+        pool = ModelPool.get_instance(config_path)
         translated = await pool.translate(shielded, source_lang, target_lang, context)
 
         if shield_map:
@@ -242,7 +242,7 @@ async def judge_text(params: JudgeInput) -> str:
 
     try:
         config_path = _get_config_path(None)
-        pool = ModelPool(config_path)
+        pool = ModelPool.get_instance(config_path)
         result = await pool.judge(
             params.source,
             params.target,
@@ -478,8 +478,8 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     config_path = _get_config_path(params.config_path)
 
     if params.output_path is None:
-        warnings.append("No output_path provided - overwriting source file")
-        output_path = params.input_path
+        input_p = Path(params.input_path)
+        output_path = str(input_p.with_stem(f"{input_p.stem}_translated").with_suffix(".xlf"))
     else:
         output_path = params.output_path
 
@@ -510,7 +510,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 ensure_ascii=False,
             )
 
-        pool = ModelPool(config_path)
+        pool = ModelPool.get_instance(config_path)
         repair_pipeline = XLIFFRepairPipeline()
 
         for unit in units:

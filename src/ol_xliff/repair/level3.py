@@ -20,7 +20,7 @@ class LiteLLMRestorer(LLMRestorer):
     def __init__(self, model_pool=None, temperature: float = 0.0):
         if model_pool is None:
             from ol_pool.router import ModelPool
-            model_pool = ModelPool()
+            model_pool = ModelPool.get_instance()
         self._model_pool = model_pool
         self._temperature = temperature
 

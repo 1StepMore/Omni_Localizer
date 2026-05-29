@@ -246,7 +246,7 @@ async def _translate_md_async(
 ) -> str:
     from ol_pool.router import ModelPool
 
-    pool = ModelPool(config_path) if config_path else ModelPool()
+    pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     if not config_path:
         from ol_config.loader import load_config
@@ -391,7 +391,7 @@ async def _translate_batch_async(
     typer.echo(f"Found {len(files)} files to process")
 
     batch_config = BatchConfig(max_concurrent=max_concurrent)
-    pool = ModelPool(config_path) if config_path else ModelPool()
+    pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     limiter = ConcurrencyLimiter(max_translation=max_concurrent)
     processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter, glossary=glossary)

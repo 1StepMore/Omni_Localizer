@@ -18,6 +18,8 @@ from ol_logging.core import get_logger
 
 _logger = get_logger("pool")
 
+_pool_cache: dict[str, "ModelPool"] = {}
+
 
 def _resolve_env_vars(value: str) -> str:
     if value is None:
@@ -31,18 +33,30 @@ def _resolve_env_vars(value: str) -> str:
 
 
 class ModelPool:
+    _instance: "ModelPool | None" = None
+
     def __init__(self, config_path: str = "config/default.yaml"):
-        config, _ = load_config(config_path)
-        global_timeout = max((m.timeout for role in ("translation", "judging", "restoration")
-                              for m in getattr(config.llm_pool, role, [])),
-                             default=180.0)
-        self._router = Router(
-            model_list=self._build_model_list(config.llm_pool),
-            routing_strategy="simple-shuffle",
-            num_retries=2,
-            timeout=global_timeout,
-            fallbacks=self._build_fallbacks(config.llm_pool),
-        )
+        raise NotImplementedError("Use ModelPool.get_instance() instead")
+
+    @classmethod
+    def get_instance(cls, config_path: str = "config/default.yaml") -> "ModelPool":
+        if config_path not in _pool_cache:
+            config, _ = load_config(config_path)
+            global_timeout = max(
+                (m.timeout for role in ("translation", "judging", "restoration")
+                 for m in getattr(config.llm_pool, role, [])),
+                default=180.0,
+            )
+            self = cls.__new__(cls)
+            self._router = Router(
+                model_list=self._build_model_list(config.llm_pool),
+                routing_strategy="simple-shuffle",
+                num_retries=2,
+                timeout=global_timeout,
+                fallbacks=self._build_fallbacks(config.llm_pool),
+            )
+            _pool_cache[config_path] = self
+        return _pool_cache[config_path]
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
         model_list = []
