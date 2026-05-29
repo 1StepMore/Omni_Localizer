@@ -1,0 +1,83 @@
+# Book Localization 模型池配置
+# Translation: MiniMax M2.7 (primary) → ernie-4.5-turbo-32k (backup) → ernie-4.5-turbo-128k (fallback)
+# Restoration: deepseek-v3.1-250821
+#
+# 环境变量（通过 ${VAR} 注入）：
+#   MINIMAX_CN_API_KEY=sk-cp-CAPjdmwYi7mVzEjlbnCpHfGAi2h07_EUM3vb7mPj84WqG5urhqFzPfbMBbY5T5eQGn7JDU5ThPr7wzc799yN3TsIkF2l0vN-STeXi0YDxrH8mMnvu-Jrpbw
+#   MINIMAX_CN_BASE_URL=https://api.minimaxi.com/v1
+#   BAIDU_QIANFAN_KEY=bce-v3/ALTAK-TxQXA9aqHZYbcg9FDXsNa/491ea5eaa48b124f595501b88736fb9db2a8c606
+#   BAIDU_QIANFAN_BASE_URL=https://qianfan.baidubce.com/v2
+
+llm_pool:
+  translation:
+    # Primary: MiniMax M2.7 — 快速，便宜
+    - provider: "openai"
+      model: "MiniMax-M2.7"
+      priority: 1
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
+      role: "translation"
+      timeout: 300.0
+      max_tokens: 12000
+
+    # Backup: 百度千帆 ernie-4.5-turbo-32k
+    - provider: "openai"
+      model: "ernie-4.5-turbo-32k"
+      priority: 2
+      api_key: "${BAIDU_QIANFAN_KEY}"
+      base_url: "${BAIDU_QIANFAN_BASE_URL}"
+      role: "translation"
+      timeout: 300.0
+      max_tokens: 12000
+
+    # Final fallback: 百度千帆 ernie-4.5-turbo-128k
+    - provider: "openai"
+      model: "ernie-4.5-turbo-128k"
+      priority: 3
+      api_key: "${BAIDU_QIANFAN_KEY}"
+      base_url: "${BAIDU_QIANFAN_BASE_URL}"
+      role: "translation"
+      timeout: 180.0
+      max_tokens: 12000
+
+  restoration:
+    # Primary: DeepSeek V3.1 — 用于翻译后格式修复
+    - provider: "openai"
+      model: "deepseek-v3.1-250821"
+      priority: 1
+      api_key: "${BAIDU_QIANFAN_KEY}"
+      base_url: "${BAIDU_QIANFAN_BASE_URL}"
+      role: "restoration"
+      timeout: 120.0
+      max_tokens: 12000
+
+    # Backup: MiniMax M2.7
+    - provider: "openai"
+      model: "MiniMax-M2.7"
+      priority: 2
+      api_key: "${MINIMAX_CN_API_KEY}"
+      base_url: "${MINIMAX_CN_BASE_URL}"
+      role: "restoration"
+      timeout: 120.0
+      max_tokens: 16000
+
+  judging:
+    # Judging 用 MiniMax M2.7
+    - provider: "openai"
+      model: "MiniMax-M2.7"
+      priority: 1
+      api_key: "${MINIMAX_CN_API_KEY}"
+      base_url: "${MINIMAX_CN_BASE_URL}"
+      role: "judging"
+      timeout: 60.0
+      max_tokens: 16000
+
+    # Backup judging
+    - provider: "openai"
+      model: "deepseek-v3.1-250821"
+      priority: 2
+      api_key: "${BAIDU_QIANFAN_KEY}"
+      base_url: "${BAIDU_QIANFAN_BASE_URL}"
+      role: "judging"
+      timeout: 60.0
+      max_tokens: 12000

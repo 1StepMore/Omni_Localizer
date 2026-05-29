@@ -31,6 +31,7 @@ class LLMModelConfig(BaseModel):
     base_url: str | None = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
     timeout: float | None = Field(60.0, description="Timeout in seconds for this model. Defaults to 60s.")
+    max_tokens: int | None = Field(None, description="Max tokens for model output. If None, litellm queries context window from HuggingFace.")
 
     @model_validator(mode='after')
     def validate_env_vars(self) -> 'LLMModelConfig':

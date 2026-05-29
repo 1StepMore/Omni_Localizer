@@ -3,6 +3,13 @@ import os
 import re
 from typing import Any
 
+# E2E-05 fix: Must be set BEFORE importing litellm.
+# liteLLM imports submodules on `import litellm`, which can trigger HuggingFace
+# network access for model metadata (e.g. bert-base-multilingual-cased) before
+# LITELLM_OFFLINE is read. Setting this here prevents that.
+os.environ.setdefault("LITELLM_OFFLINE", "true")
+os.environ.setdefault("LITELLM_DISABLE_MODEL_LIST_AUTO_UPDATE", "true")
+
 import litellm
 from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
 
@@ -71,6 +78,8 @@ class ModelPool:
                     litellm_params["base_url"] = _resolve_env_vars(model.base_url)
                 if model.timeout is not None:
                     litellm_params["timeout"] = model.timeout
+                if model.max_tokens is not None:
+                    litellm_params["max_tokens"] = model.max_tokens
                 model_list.append(
                     {
                         "model_name": role,
