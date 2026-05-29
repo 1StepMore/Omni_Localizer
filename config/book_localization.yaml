@@ -5,7 +5,7 @@
 # 环境变量（通过 ${VAR} 注入）：
 #   MINIMAX_CN_API_KEY=your_api_key_here
 #   MINIMAX_CN_BASE_URL=https://api.minimaxi.com/v1
-#   BAIDU_QIANFAN_KEY=bce-v3/ALTAK-TxQXA9aqHZYbcg9FDXsNa/491ea5eaa48b124f595501b88736fb9db2a8c606
+#   BAIDU_QIANFAN_KEY=your_api_key_here
 #   BAIDU_QIANFAN_BASE_URL=https://qianfan.baidubce.com/v2
 
 llm_pool:
