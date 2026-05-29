@@ -136,9 +136,13 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
 
             from ol_buses.xliff_shield import restore_tags
             restored_target = restore_tags(unit.target_text, unit.shield_map) if unit.shield_map else unit.target_text
+            # E2E-05 part-B fix: escape XML special chars in translated text
+            # so & → &amp; < → &lt; > → &gt; don't break the XLIFF output
+            from xml.sax.saxutils import escape as _xml_escape
+            escaped_target = _xml_escape(restored_target, {'"': '&quot;'})
 
             content = target_pattern.sub(
-                lambda m: m.group(1) + f'<target>{restored_target}</target>' + m.group(2),
+                lambda m: m.group(1) + f'<target>{escaped_target}</target>' + m.group(2),
                 content,
             )
 
