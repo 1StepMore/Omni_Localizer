@@ -3,7 +3,7 @@
 # Restoration: deepseek-v3.1-250821
 #
 # 环境变量（通过 ${VAR} 注入）：
-#   MINIMAX_CN_API_KEY=sk-cp-CAPjdmwYi7mVzEjlbnCpHfGAi2h07_EUM3vb7mPj84WqG5urhqFzPfbMBbY5T5eQGn7JDU5ThPr7wzc799yN3TsIkF2l0vN-STeXi0YDxrH8mMnvu-Jrpbw
+#   MINIMAX_CN_API_KEY=your_api_key_here
 #   MINIMAX_CN_BASE_URL=https://api.minimaxi.com/v1
 #   BAIDU_QIANFAN_KEY=bce-v3/ALTAK-TxQXA9aqHZYbcg9FDXsNa/491ea5eaa48b124f595501b88736fb9db2a8c606
 #   BAIDU_QIANFAN_BASE_URL=https://qianfan.baidubce.com/v2
