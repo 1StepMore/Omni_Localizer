@@ -284,6 +284,122 @@ async def _translate_md_async(
     return str(output_file)
 
 
+def _load_env_for_cli() -> None:
+    """Load .env file for CLI commands that call LLM APIs.
+
+    Searches in order: suite-level .env, parent OL repo .env.
+    """
+    import os, sys
+    from pathlib import Path
+
+    possible_envs = [
+        Path("/mnt/d/Hermes-Workspace/01-Projects/e2e-test-suite/.env"),
+        Path("/mnt/d/Hermes-Workspace/01-Projects/Omni_Localizer/.env"),
+    ]
+    loaded = None
+    for env_path in possible_envs:
+        if env_path.exists():
+            _load_dotenv(env_path)
+            loaded = str(env_path)
+            break
+
+    # Debug: print loaded vars so we can trace in logs
+    key_vars = ["MINIMAX_API_KEY", "MINIMAX_BASE_URL", "OL_CONFIG_PATH"]
+    vals = {k: os.environ.get(k, "NOT SET") for k in key_vars}
+    sys.stderr.write(f"[OL CLI] _load_env_for_cli loaded from={loaded}, vars={vals}\n")
+    sys.stderr.flush()
+
+
+def _load_dotenv(env_path: Path) -> None:
+    """Parse and export .env file without blocking on missing keys."""
+    import os
+    try:
+        content = env_path.read_text()
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and value:
+                os.environ.setdefault(key, value)
+    except Exception:
+        pass
+
+
+async def _translate_xliff_async(
+    input_path: Path,
+    output_path: Path,
+    config_path: str | None,
+    src_lang: str,
+    tgt_lang: str,
+) -> str:
+    import os
+    from ol_pool.router import ModelPool
+    from ol_xliff.parser import XliffParser
+    from ol_xliff.pipeline import XLIFFRepairPipeline
+    from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
+    from ol_core.dataclass import TranslationContext, ChannelType
+
+    pool = ModelPool.get_instance(
+        config_path if config_path else os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
+    )
+
+    parser = XliffParser()
+    units = parser.parse(str(input_path))
+
+    if len(units) == 0:
+        raise RuntimeError("No translation units found in XLIFF file")
+
+    repair_pipeline = XLIFFRepairPipeline()
+
+    for unit in units:
+        unit_shield_map = unit.shield_map
+
+        translated = await pool.translate(
+            unit.source_text, src_lang, tgt_lang, context=None
+        )
+
+        if unit_shield_map:
+            from ol_buses.xliff_shield import restore_tags
+
+            unshielded = restore_tags(translated, unit_shield_map)
+            repaired = repair_pipeline.repair(unshielded, unit.source_text, unit_shield_map)
+        else:
+            repaired = translated
+
+        unit.target_text = repaired
+
+    import sys as _sys, tempfile as _tempfile
+    _debug_file = open(_tempfile.gettempdir() + "/ol_cli_debug.log", "w")
+    _debug_file.write(f"[OL CLI] Translated {len(units)} units. "
+        f"unit.target_text values: {[u.target_text[:20] if u.target_text else None for u in units]}\n")
+    _debug_file.flush()
+
+    original_text = input_path.read_text(encoding="utf-8")
+    _debug_file.write(f"[OL CLI] original_text has <target>: {'<target>' in original_text}\n")
+    _debug_file.flush()
+    original_text = _ensure_target_tags(original_text)
+    _debug_file.write(f"[OL CLI] after _ensure_target_tags has <target>: {'<target>' in original_text}\n")
+    _debug_file.flush()
+
+    ctx = TranslationContext(
+        file_path=str(input_path),
+        channel_type=ChannelType.XLIFF,
+        original_full_text=original_text,
+        units=units,
+        glossary={},
+        config={},
+    )
+    write_target_back(ctx, str(output_path / input_path.name))
+    _debug_file.write(f"[OL CLI] after write_target_back\n")
+    _debug_file.flush()
+    _debug_file.close()
+
+    return str(output_path / input_path.name)
+
+
 @app.command()
 def translate_md(
     input: str = typer.Argument(..., help="Input markdown file path"),
@@ -543,6 +659,8 @@ def translate_xliff(
     try:
         src_lang = source_lang
         tgt_lang = target_lang
+        config_path = config
+
         if config:
             from ol_config.loader import load_config
 
@@ -551,18 +669,15 @@ def translate_xliff(
             tgt_lang = tgt_lang or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
         else:
-            src_lang = src_lang or "en"
-            tgt_lang = tgt_lang or "zh"
+            src_lang = src_lang or "zh"
+            tgt_lang = tgt_lang or "en"
 
-        original_text = input_path.read_text(encoding="utf-8")
-        pipeline = XLIFFRepairPipeline()
-        repaired = pipeline.repair(original_text, original_text, {})
-        xliff_header = _build_xliff_header_note(src_lang, tgt_lang)
-        repaired = _inject_xliff_header(repaired, xliff_header)
+        # Load .env to get MINIMAX_API_KEY etc. before calling LLM
+        _load_env_for_cli()
 
-        output_file = output_path / input_path.name
-        output_file.write_text(repaired, encoding="utf-8")
+        asyncio.run(_translate_xliff_async(Path(input), output_path, config_path, src_lang, tgt_lang))
 
+        output_file = output_path / Path(input).name
         if json_output:
             output_json(True, str(input_path), str(output_file), src_lang, tgt_lang)
         else:
