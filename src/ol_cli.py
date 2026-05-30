@@ -1,6 +1,7 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
 
 import asyncio
+import base64
 import re
 import signal
 import sys
@@ -16,6 +17,36 @@ from ol_logging.core import get_logger, init_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
+
+# E2E-14/E2E-17: Base64 image dedup support (also used by translate_md CLI)
+_BASE64_IMG_PATTERN = re.compile(
+    r'!\[Image (\d+)\]\(([A-Za-z0-9+/=]{20,})\.(png|jpg|jpeg|gif)\)')
+_IMG_REF_PATTERN = re.compile(r'!\[Image (\d+)\]\(([^)]+)\)')
+_DEDUP_WARMED_UP = False
+
+
+def _try_decode_b64_image(s: str) -> str:
+    try:
+        decoded = base64.b64decode(s.encode('ascii')).decode('utf-8', errors='strict')
+        if decoded.startswith('![Image ') and '](' in decoded:
+            return decoded
+    except Exception:
+        pass
+    return s
+
+
+def _dedup_b64_image_refs(text: str) -> str:
+    existing_refs = set(_IMG_REF_PATTERN.findall(text))
+    def replacer(m: re.Match) -> str:
+        img_num, b64_data, ext = m.group(1), m.group(2), m.group(3)
+        decoded = _try_decode_b64_image(b64_data)
+        key = (img_num, decoded.split('](', 1)[1].rstrip(')'))
+        already_exists = key in existing_refs or any(
+            n == img_num and decoded.split('](', 1)[1].rstrip(')') in ref
+            for n, ref in existing_refs
+        )
+        return '' if already_exists else m.group(0)
+    return _BASE64_IMG_PATTERN.sub(replacer, text)
 
 
 def _escape_yaml_value(value: str) -> str:
@@ -263,6 +294,10 @@ async def _translate_md_async(
         repaired = unshield_markdown(repaired, shield_map)
     else:
         repaired = translated
+
+    # E2E-14/E2E-17: remove base64 image lines whose decoded content is
+    # already present as a standard ref — must run before frontmatter prepend
+    repaired = _dedup_b64_image_refs(repaired)
 
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
