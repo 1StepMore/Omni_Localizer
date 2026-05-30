@@ -120,6 +120,7 @@ async def _translate_single(
 ) -> tuple[str, list[str]]:
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
+    import re
 
     try:
         shielded, shield_map = shield_markdown(content)
@@ -141,6 +142,11 @@ async def _translate_single(
 
         if shield_map:
             unshielded = unshield_markdown(translated, shield_map)
+            # E2E-14 fix: strip Python bytes literals that LLM sometimes emits
+            # e.g. "b'![Image 23](./source_images/...')" — these are not valid markdown
+            # and cause the repair pipeline to produce garbled image references
+            unshielded = re.sub(r"b'[^']*'", lambda m: m.group(0)[2:-1], unshielded)
+            unshielded = re.sub(r'b"[^"]*"', lambda m: m.group(0)[2:-1], unshielded)
             repaired = MDRepairPipeline().repair(unshielded, content, shield_map)
         else:
             repaired = translated
