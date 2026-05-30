@@ -1,5 +1,6 @@
 """XLIFF tag extraction and restoration for Omni-Localizer."""
 import re
+from xml.sax.saxutils import unescape
 
 
 def extract_tags(source_xml: str) -> dict[str, str]:
@@ -43,7 +44,12 @@ def restore_tags(target_text: str, tag_map: dict[str, str]) -> str:
         Text with tags restored
 
     """
-    result = target_text
+    # E2E-12 fix: if text has been XML-escaped (e.g., &lt;bx instead of <bx),
+    # unescape first so placeholder replacement works correctly
+    # Note: xml.sax.saxutils.escape escapes &, <, >, and " (when mapping {'"': '&quot;'} is passed)
+    # but unescape only handles &amp; &lt; &gt; by default, so we must also handle &quot;
+    result = unescape(target_text, {'&quot;': '"'})
+
     for placeholder, tag in tag_map.items():
         result = result.replace(f'{{{{_OL_XTAG_{placeholder}_}}}}', tag)
     return result
