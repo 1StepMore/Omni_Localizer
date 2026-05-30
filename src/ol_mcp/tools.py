@@ -12,10 +12,12 @@ test (``tests/mcp/test_minimal_stdio.py``) verified works.
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -263,10 +265,50 @@ async def _translate_single(
         else:
             repaired = translated
 
+        # E2E-14 residual fix: deduplicate base64-encoded image refs.
+        # OPP may emit base64 data URIs for images; the LLM can re-encode
+        # already-unshielded image refs as fresh base64 lines. These decode
+        # to the same standard refs already present in the text and must be
+        # dropped to avoid polluting the output.
+        repaired = _dedup_b64_image_refs(repaired)
+
         return repaired, warnings
     except Exception as e:
         _logger.exception("translate_md_text failed: %s", e)
         raise
+
+
+# Pattern matches base64-encoded image references: "![Image N](base64encoded)"
+_BASE64_IMG_PATTERN = re.compile(
+    r'!\[Image (\d+)\]\(([A-Za-z0-9+/=]{20,})\.(png|jpg|jpeg|gif)\)'
+)
+_IMG_REF_PATTERN = re.compile(r'!\[Image (\d+)\]\(([^)]+)\)')
+
+
+def _try_decode_b64_image(s: str) -> str:
+    """Try to decode a string as base64; return original if it decodes to an image ref."""
+    try:
+        decoded = base64.b64decode(s.encode('ascii')).decode('utf-8', errors='strict')
+        if decoded.startswith('![Image ') and '](' in decoded:
+            return decoded
+    except Exception:
+        pass
+    return s
+
+
+def _dedup_b64_image_refs(text: str) -> str:
+    """Remove base64 image lines whose decoded content is already in text as a standard ref."""
+    existing_refs = set(_IMG_REF_PATTERN.findall(text))
+    def replacer(m: re.Match) -> str:
+        img_num, b64_data, ext = m.group(1), m.group(2), m.group(3)
+        decoded = _try_decode_b64_image(b64_data)
+        key = (img_num, decoded.split('](', 1)[1].rstrip(')'))
+        already_exists = key in existing_refs or any(
+            n == img_num and decoded.split('](', 1)[1].rstrip(')') in ref
+            for n, ref in existing_refs
+        )
+        return '' if already_exists else m.group(0)
+    return _BASE64_IMG_PATTERN.sub(replacer, text)
 
 
 # ---------------------------------------------------------------------------
