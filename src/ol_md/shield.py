@@ -9,7 +9,7 @@ LINK_PATTERN = re.compile(r'(?<!!)\[([^\]]*)\]\(([^\)]+)\)')
 IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^\)]+)\)')
 HTML_BLOCK_PATTERN = re.compile(r'<([a-zA-Z][a-zA-Z0-9]*)[^>]*>[\s\S]*?</\1>|<([a-zA-Z][a-zA-Z0-9]*)[^>]*/>')
 AUTOLINK_PATTERN = re.compile(r'<((https?|ftp|mailto):[^\s<>]+)>')
-PLACEHOLDER_PATTERN = re.compile(r'OL(B64|I|M|L|G|H|A)_([0-9a-fA-F]+)')
+PLACEHOLDER_PATTERN = re.compile(r'OL([A-Z0-9]+)_([0-9a-fA-F]+)')
 
 
 def _b64_encode(content: str) -> str:
