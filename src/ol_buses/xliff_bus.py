@@ -23,9 +23,9 @@ def _ensure_target_tags(content: str) -> str:
     import re
 
     # Match trans-unit with source but NO target following
-    # Uses negative lookahead (?!\s*<target) to ensure no target comes after source
+    # Uses negative lookahead (?!\\s*<target) to ensure no target comes after source
     source_only_pattern = re.compile(
-        r'(<trans-unit[^>]*id="([^"]+)"[^>]*>.*?</source>)(?!\s*<target)',
+        r'(<trans-unit[^>]*id="([^"]+)"[^>]*>.*?</source>)(?!\\s*<target)',
         re.DOTALL,
     )
 
@@ -136,10 +136,27 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
 
             from ol_buses.xliff_shield import restore_tags
             restored_target = restore_tags(unit.target_text, unit.shield_map) if unit.shield_map else unit.target_text
-            # E2E-05 part-B fix: escape XML special chars in translated text
-            # so & → &amp; < → &lt; > → &gt; don't break the XLIFF output
-            from xml.sax.saxutils import escape as _xml_escape
-            escaped_target = _xml_escape(restored_target, {'"': '&quot;'})
+
+            # E2E-32 fix: don't XML-escape inline tags like <bx/>, <ex/>
+            # Temporarily protect tags, escape only text content, then restore tags
+            _tags_pattern = re.compile(r'<[^>]+/>|<[^>]+>[^<]*</[^>]+>')
+
+            def _escape_except_tags(text):
+                # Find all tags and protect them
+                tags = []
+                def _protect(m):
+                    tags.append(m.group(0))
+                    return f'\x00TAG{len(tags)}\x00'
+                protected = _tags_pattern.sub(_protect, text)
+                # Escape the protected text (text parts only)
+                from xml.sax.saxutils import escape as _xml_escape
+                escaped = _xml_escape(protected, {'"': '&quot;'})
+                # Restore tags
+                for i, tag in enumerate(tags):
+                    escaped = escaped.replace(f'\x00TAG{i}\x00', tag)
+                return escaped
+
+            escaped_target = _escape_except_tags(restored_target)
 
             content = target_pattern.sub(
                 lambda m: m.group(1) + f'<target>{escaped_target}</target>' + m.group(2),
