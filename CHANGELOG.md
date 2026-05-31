@@ -8,14 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.5] - 2026-05-31
 
 ### Fixed
+- **E2E-65 CRITICAL prompt injection** (E2E-65): LLM echoed `CRITICAL: Output ONLY...` instruction in target output (46/101 units)
+  - Fix: Changed prompt from "CRITICAL:" to "IMPORTANT:" in router.py; added post-processing regex in `level1_regex_clean()` to strip any remaining `CRITICAL/IMPORTANT/NOTE: Output ONLY...` patterns from LLM output
 - **`_escape_except_tags()` off-by-one in tag placeholder indexing** (new bug from E2E-32): `_protect()` used 1-based `len(tags)` but restore loop used 0-based `enumerate(tags)`, causing `TAG1` to map to wrong tag and `TAG2+` to leak into output as `\x00TAG2\x00` literal bytes → XML parse failure
   - Fix: use `len(tags)-1` in `_protect()` to produce 0-based placeholders
 - **`XLIFFRepairPipeline.is_complete()` placeholder check** (E2E-64): `is_complete()` now checks for actual XML tag presence instead of only placeholder string/ID
   - Problem: `restore_tags()` correctly replaced `{{_OL_XTAG_bx_1_}}` with `<bx id="1" type="bold"/>`, but `is_complete()` checked for `'bx_1'` in text (not found) → returned `False` → triggered `level4_safe_fallback()` → appended duplicate tags + `<note>` → XLIFF target extraction failed → SKIPPED units
   - Fix: when `placeholder_str` not in text, check if `original_tag` (the actual XML tag) is in text as fallback before returning `False`
-- **`ModelPool.translate()` prompt reinforcement**: Enhanced translation prompt to prevent LLM from echoing source text
-  - Added explicit "CRITICAL: Output ONLY the {target_lang} translation" instruction
-  - Changed prompt format from single-line to structured multi-part with labeled Source section
 - **`ModelPool` rate-limit error handling**: Added `RouterRateLimitError` to retry-able exceptions alongside `RateLimitError`
   - MiniMax API may return `RouterRateLimitError` under load; now properly caught and retried with backoff
 
