@@ -118,8 +118,8 @@ class ModelPool:
             prompt = context
         else:
             prompt_parts = [
-                f"You are a professional translator. Translate the following {source_lang} text to {target_lang}. "
-                f"CRITICAL: Output ONLY the {target_lang} translation. Never output text in {source_lang} or any other language.",
+                f"You are a professional translator. Translate the following {source_lang} text to {target_lang}. ",
+                f"IMPORTANT: Provide only the {target_lang} translation. Do not include any instructions, explanations, or text in any other language.",
                 f"Source ({source_lang}): {text}",
             ]
             if context:
