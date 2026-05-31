@@ -34,7 +34,13 @@ class XLIFFRepairPipeline:
             return True
         for placeholder_id in shield_map:
             placeholder_str = f'{{{{_OL_XTAG_{placeholder_id}_}}}}'
-            if placeholder_str not in text and placeholder_id not in text:
+            if placeholder_str not in text:
+                # placeholder consumed — verify actual tag replaced it
+                original_tag = shield_map[placeholder_id]
+                if original_tag not in text:
+                    return False
+            elif placeholder_id not in text:
+                # placeholder present but id consumed by wrong content
                 return False
         if not strict:
             return True
