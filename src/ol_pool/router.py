@@ -12,6 +12,7 @@ os.environ.setdefault("LITELLM_DISABLE_MODEL_LIST_AUTO_UPDATE", "true")
 
 import litellm
 from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
+from litellm.types.router import RouterRateLimitError
 
 # Must be set before Router init — prevents litellm from lowercasing model names
 # (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
@@ -116,7 +117,11 @@ class ModelPool:
         if isinstance(context, str):
             prompt = context
         else:
-            prompt_parts = [f"Translate from {source_lang} to {target_lang}: {text}"]
+            prompt_parts = [
+                f"You are a professional translator. Translate the following {source_lang} text to {target_lang}. "
+                f"CRITICAL: Output ONLY the {target_lang} translation. Never output text in {source_lang} or any other language.",
+                f"Source ({source_lang}): {text}",
+            ]
             if context:
                 tm_matches = context.get("tm_matches", [])
                 glossary_terms = context.get("glossary_terms", [])
@@ -159,10 +164,10 @@ class ModelPool:
                 else:
                     _logger.error(f"Translation failed after 4 attempts: {e}")
                     raise
-            except RateLimitError as e:
+            except (RateLimitError, RouterRateLimitError) as e:
                 if attempt < 3:
                     wait = 2 ** attempt * 10
-                    _logger.warning(f"RateLimitError, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    _logger.warning(f"RateLimitError/RouterRateLimitError, retrying in {wait}s (attempt {attempt + 1}/4): {e}")
                     await asyncio.sleep(wait)
                 else:
                     _logger.error(f"Translation failed after 4 attempts: {e}")
