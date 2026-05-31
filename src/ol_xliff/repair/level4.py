@@ -2,7 +2,11 @@ import re
 
 
 def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
+    # E2E-37 fix: never return source language as fallback
+    # If no placeholders missing AND text is unchanged (source language present), return marker
     if not missing_placeholders:
+        if re.search(r'[\u4e00-\u9fff]', text):
+            return '[TRANSLATION_FAILED]'  # Signal that translation failed
         return text
 
     placeholder_strings = []
