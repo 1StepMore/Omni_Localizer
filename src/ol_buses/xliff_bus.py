@@ -146,7 +146,7 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
                 tags = []
                 def _protect(m):
                     tags.append(m.group(0))
-                    return f'\x00TAG{len(tags)}\x00'
+                    return f'\x00TAG{len(tags)-1}\x00'
                 protected = _tags_pattern.sub(_protect, text)
                 # Escape the protected text (text parts only)
                 from xml.sax.saxutils import escape as _xml_escape
