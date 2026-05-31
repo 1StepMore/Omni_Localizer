@@ -54,6 +54,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-LLM nightly test was failing with `lxml.etree.XMLSyntaxError: xmlParseEntityRef: no name`**: LLM-produced XLIFF target text occasionally contains unescaped `&` (e.g., `R&D`, `AT&T`) which broke XML serialization on round-trip
   - Fix: `write_target_back()` now applies `_escape_xml_entities()` to the LLM target text **before** restoring placeholders, so `&` becomes `&amp;` and `lxml` can reparse the file
   - Unblocks the real-LLM nightly test (Test 3 LQA judge path)
+## [0.3.5] - 2026-05-31
+
+### Fixed
+- **`XLIFFRepairPipeline.is_complete()` placeholder check** (E2E-64): `is_complete()` now checks for actual XML tag presence instead of only placeholder string/ID
+  - Problem: `restore_tags()` correctly replaced `{{_OL_XTAG_bx_1_}}` with `<bx id="1" type="bold"/>`, but `is_complete()` checked for `'bx_1'` in text (not found) → returned `False` → triggered `level4_safe_fallback()` → appended duplicate tags + `<note>` → XLIFF target extraction failed → SKIPPED units
+  - Fix: when `placeholder_str` not in text, check if `original_tag` (the actual XML tag) is in text as fallback before returning `False`
+- **`ModelPool.translate()` prompt reinforcement**: Enhanced translation prompt to prevent LLM from echoing source text
+  - Added explicit "CRITICAL: Output ONLY the {target_lang} translation" instruction
+  - Changed prompt format from single-line to structured multi-part with labeled Source section
+- **`ModelPool` rate-limit error handling**: Added `RouterRateLimitError` to retry-able exceptions alongside `RateLimitError`
+  - MiniMax API may return `RouterRateLimitError` under load; now properly caught and retried with backoff
+
+### Changed
+- **`translate_xliff` CLI now requires explicit `--source-lang`/`--target-lang`**: When `--config` is provided, CLI language params must still be passed explicitly to override config defaults
+  - Config schema defaults to `source_lang=en, target_lang=zh`; OL CLI was omitting language params and falling through to config defaults
+  - Fix: always pass `--source-lang zh --target-lang en` in test harness
 
 ## [0.3.4] - 2026-05-29
 
