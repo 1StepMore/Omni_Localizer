@@ -73,3 +73,8 @@ uv.lock
 
 # Output directory
 output/
+
+# Env backups (contain API keys, never track)
+.env.backup
+.env.bak
+*.env.bak
