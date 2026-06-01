@@ -154,6 +154,10 @@ class ModelPool:
                     temperature=0.0,
                 )
                 translated = response.choices[0].message.content
+                # Strip thinking tags if present (MiniMax extended thinking)
+                import re as _re
+                _think_pattern = _re.compile(r'<think>.*?</think>', _re.DOTALL | _re.IGNORECASE)
+                translated = _think_pattern.sub('', translated).strip()
                 _logger.debug(f"Translation response: {len(translated)} chars")
                 return translated
             except Timeout as e:
