@@ -86,6 +86,19 @@ Only return the restored translation, nothing else."""
             target_lang="en",
         )
 
+        # E2E-37 follow-up: detect Chinese residue in restored text
+        # This indicates the LLM restoration itself failed (mixed Chinese into EN output)
+        # If found, fall back to unrestored translation and let the quality gate catch it
+        import re
+        _chinese_re = re.compile(r'[\u4e00-\u9fff]')
+        chinese_chars = _chinese_re.findall(result)
+        if chinese_chars:
+            _logger.warning(
+                f"LLM restoration produced Chinese characters, marking as failed restoration: "
+                f"{len(chinese_chars)} chars"
+            )
+            return translated_text
+
         return result
 
 
