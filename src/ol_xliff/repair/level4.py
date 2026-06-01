@@ -21,9 +21,11 @@ def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
     if match:
         insert_pos = match.start()
         text = text[:insert_pos] + ' ' + placeholder_str + ' ' + text[insert_pos:]
-        text = text + ' <note from="OL">Warning: Tag auto-appended at end, manual check needed</note>'
     else:
         text = text.rstrip() + ' ' + placeholder_str
-        text = text + ' <note from="OL">Warning: Tag auto-appended at end, manual check needed</note>'
 
+    # E2E-69: removed `<note from="OL">Warning:...</note>` append.
+    # `<note>` is XLIFF 1.2 metadata (sibling of `<target>`, not child of `<target>`).
+    # Writing it inside `<target>` lets ORF `itertext()` extract the warning string
+    # and leak it into result.docx paragraphs.
     return text
