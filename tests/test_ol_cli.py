@@ -88,7 +88,19 @@ class TestTranslateXliff:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".xlf", delete=False,
         ) as f:
-            f.write('<?xml version="1.0"?>\n<xliff version="1.2"><file></file></xliff>')
+            f.write(
+                '<?xml version="1.0"?>\n'
+                '<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">\n'
+                '  <file source-language="en" target-language="zh" original="test" datatype="plaintext">\n'
+                '    <body>\n'
+                '      <trans-unit id="tu1">\n'
+                '        <source>Hello world</source>\n'
+                '        <target></target>\n'
+                '      </trans-unit>\n'
+                '    </body>\n'
+                '  </file>\n'
+                '</xliff>\n'
+            )
             path = f.name
         yield path
         os.unlink(path)
@@ -99,11 +111,19 @@ class TestTranslateXliff:
             yield tmpdir
 
     def test_translate_xliff_valid_input(self, temp_xliff, temp_output_dir):
-        result = runner.invoke(
-            app,
-            ["translate-xliff", temp_xliff, "-o", temp_output_dir],
+        async def mock_translate(self, text, src_lang, tgt_lang, context=None):
+            return f"[translated:{text}]"
+
+        with patch("ol_pool.router.ModelPool.translate", new=mock_translate), \
+             patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                ["translate-xliff", temp_xliff, "-o", temp_output_dir],
+            )
+        assert result.exit_code == 0, (
+            f"exit_code={result.exit_code}, output={result.output!r}, "
+            f"exception={result.exception!r}"
         )
-        assert result.exit_code == 0
         assert "Translated" in result.output
 
     def test_translate_xliff_file_not_found(self):

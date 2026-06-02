@@ -287,27 +287,34 @@ async def _translate_md_async(
 def _load_env_for_cli() -> None:
     """Load .env file for CLI commands that call LLM APIs.
 
-    Searches in order: suite-level .env, parent OL repo .env.
+    Search order:
+      1. $OL_DOTENV env var (explicit override)
+      2. ./.env (current working directory)
+      3. Walk up parent directories looking for .env
+      4. ~/.config/ol/.env (user-level fallback)
+
+    If no .env is found, the function returns silently. The LLM call
+    downstream will fail loudly at the auth layer if required keys are
+    missing — no silent fallback.
     """
-    import os, sys
+    import os
     from pathlib import Path
 
-    possible_envs = [
-        Path("/mnt/d/Hermes-Workspace/01-Projects/e2e-test-suite/.env"),
-        Path("/mnt/d/Hermes-Workspace/01-Projects/Omni_Localizer/.env"),
-    ]
-    loaded = None
-    for env_path in possible_envs:
-        if env_path.exists():
-            _load_dotenv(env_path)
-            loaded = str(env_path)
-            break
+    search_paths: list[Path] = []
+    explicit = os.environ.get("OL_DOTENV")
+    if explicit:
+        search_paths.append(Path(explicit))
+    search_paths.append(Path.cwd() / ".env")
+    for parent in Path.cwd().resolve().parents:
+        candidate = parent / ".env"
+        if candidate not in search_paths:
+            search_paths.append(candidate)
+    search_paths.append(Path.home() / ".config" / "ol" / ".env")
 
-    # Debug: print loaded vars so we can trace in logs
-    key_vars = ["MINIMAX_API_KEY", "MINIMAX_BASE_URL", "OL_CONFIG_PATH"]
-    vals = {k: os.environ.get(k, "NOT SET") for k in key_vars}
-    sys.stderr.write(f"[OL CLI] _load_env_for_cli loaded from={loaded}, vars={vals}\n")
-    sys.stderr.flush()
+    for env_path in search_paths:
+        if env_path.exists() and env_path.is_file():
+            _load_dotenv(env_path)
+            return
 
 
 def _load_dotenv(env_path: Path) -> None:
@@ -371,18 +378,10 @@ async def _translate_xliff_async(
 
         unit.target_text = repaired
 
-    import sys as _sys, tempfile as _tempfile
-    _debug_file = open(_tempfile.gettempdir() + "/ol_cli_debug.log", "w")
-    _debug_file.write(f"[OL CLI] Translated {len(units)} units. "
-        f"unit.target_text values: {[u.target_text[:20] if u.target_text else None for u in units]}\n")
-    _debug_file.flush()
+    logger.debug(f"Translated {len(units)} units")
 
     original_text = input_path.read_text(encoding="utf-8")
-    _debug_file.write(f"[OL CLI] original_text has <target>: {'<target>' in original_text}\n")
-    _debug_file.flush()
     original_text = _ensure_target_tags(original_text)
-    _debug_file.write(f"[OL CLI] after _ensure_target_tags has <target>: {'<target>' in original_text}\n")
-    _debug_file.flush()
 
     ctx = TranslationContext(
         file_path=str(input_path),
@@ -393,9 +392,6 @@ async def _translate_xliff_async(
         config={},
     )
     write_target_back(ctx, str(output_path / input_path.name))
-    _debug_file.write(f"[OL CLI] after write_target_back\n")
-    _debug_file.flush()
-    _debug_file.close()
 
     return str(output_path / input_path.name)
 
@@ -669,8 +665,8 @@ def translate_xliff(
             tgt_lang = tgt_lang or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
         else:
-            src_lang = src_lang or "zh"
-            tgt_lang = tgt_lang or "en"
+            src_lang = src_lang or "en"
+            tgt_lang = tgt_lang or "zh"
 
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
