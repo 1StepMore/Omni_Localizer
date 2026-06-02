@@ -64,11 +64,19 @@ class TestTranslateMD:
             yield tmpdir
 
     def test_translate_md_valid_input(self, temp_md, temp_output_dir):
-        result = runner.invoke(
-            app,
-            ["translate-md", temp_md, "-o", temp_output_dir],
+        async def mock_translate(self, text, src_lang, tgt_lang, context=None):
+            return f"[translated:{text}]"
+
+        with patch("ol_pool.router.ModelPool.translate", new=mock_translate), \
+             patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                ["translate-md", temp_md, "-o", temp_output_dir],
+            )
+        assert result.exit_code == 0, (
+            f"exit_code={result.exit_code}, output={result.output!r}, "
+            f"exception={result.exception!r}"
         )
-        assert result.exit_code == 0
         assert "Translated" in result.output
 
     def test_translate_md_file_not_found(self):
