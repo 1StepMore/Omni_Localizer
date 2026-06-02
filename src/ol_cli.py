@@ -717,21 +717,18 @@ def extract_warnings(
         for match in xliff_warn_pattern.finditer(content):
             warnings.append(f"XLIFF: {match.group(0)}")
 
-        plain_warn_pattern = re.compile(r"OL_WARN:\s*(\w+)")
-        for match in plain_warn_pattern.finditer(content):
-            warnings.append(f"Plain: OL_WARN: {match.group(1)}")
-
         if output:
             output_path = Path(output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_content = "\n".join(warnings) if warnings else "# No warnings found"
             output_path.write_text(output_content, encoding="utf-8")
-            typer.echo(f"Warnings extracted to: {output}")
+            typer.echo(f"Extracted {len(warnings)} warnings to: {output}")
         elif warnings:
+            typer.echo(f"Found {len(warnings)} warnings:")
             for w in warnings:
                 typer.echo(w)
         else:
-            typer.echo("# No warnings found")
+            typer.echo("# No warnings found (0 warnings)")
 
         logger.info(f"Completed: extract_warnings {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
