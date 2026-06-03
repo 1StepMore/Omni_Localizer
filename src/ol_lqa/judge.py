@@ -41,7 +41,7 @@ class JudgeService:
                 unit_id=unit_id,
                 scorer_scores={},
                 judge_scores=judge_scores,
-                format_preserved=True,
+                format_preserved=False,
                 format_errors=[],
                 warnings=warnings,
             )
@@ -55,7 +55,7 @@ class JudgeService:
         )
 
         warnings: list[str] = []
-        overall = self._compute_weighted_score(scores)
+        overall = self._compute_overall_score(scores)
         if overall < self._pass_threshold:
             warnings.append(f"Judge score {overall:.1f} below threshold {self._pass_threshold}")
 
@@ -63,7 +63,7 @@ class JudgeService:
             unit_id=unit_id,
             scorer_scores={},
             judge_scores=scores,
-            format_preserved=True,
+            format_preserved=False,
             format_errors=[],
             warnings=warnings,
         )
@@ -113,14 +113,10 @@ class JudgeService:
             return 7.0
         return 8.5
 
-    def _compute_weighted_score(self, scores: dict[str, float]) -> float:
+    def _compute_overall_score(self, scores: dict[str, float]) -> float:
         if not scores:
             return 0.0
-        total = sum(
-            scores.get(criterion, 0.0) * weight
-            for criterion, weight in self.RUBRIC_WEIGHTS.items()
-        )
-        return total
+        return sum(scores.values()) / len(scores)
 
     async def judge_batch(
         self,
@@ -135,7 +131,7 @@ class JudgeService:
         return await asyncio.gather(*tasks)
 
     def is_acceptable(self, scores: dict[str, float]) -> bool:
-        return self._compute_weighted_score(scores) >= self._pass_threshold
+        return self._compute_overall_score(scores) >= self._pass_threshold
 
     @property
     def pass_threshold(self) -> float:
@@ -180,7 +176,7 @@ class EnsembleJudge:
             unit_id=unit_id,
             scorer_scores={},
             judge_scores=aggregated,
-            format_preserved=True,
+            format_preserved=False,
             format_errors=[],
             warnings=warnings,
         )

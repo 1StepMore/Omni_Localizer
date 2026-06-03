@@ -181,30 +181,72 @@ class ModelPool:
         if glossary:
             terms = ", ".join(f"{k} → {v}" for k, v in glossary.items())
             terminology_section = f"\nTerminology: {terms}"
-        prompt = f"""Evaluate translation quality:
+        prompt = f"""Evaluate translation quality.
 
 Source ({source_lang}): {source}
 Target ({target_lang}): {target}{terminology_section}
 
-Rate the translation on a scale of 0-100 for:
-- Accuracy (30%)
-- Fluency (30%)
-- Adequacy (40%)
+Score the translation on a scale of 0-100 for each dimension:
+- accuracy (30%): does the target convey the same meaning as the source?
+- fluency (30%): is the target natural and grammatical in {target_lang}?
+- adequacy (40%): is the target a complete translation with no missing or added content?
 
-Return a JSON object with:
-{{"score": <int 0-100>, "reason": "<brief explanation>"}}
-Only return valid JSON, nothing else."""
+Return a JSON object with exactly these four fields and nothing else:
+{{"accuracy": <int 0-100>, "fluency": <int 0-100>, "adequacy": <int 0-100>, "score": <int 0-100>}}
+"score" is the overall judgment on the same 0-100 scale (you may compute it as a weighted average of the three dimensions).
+
+Anti-leakage rules — violations MUST score 0 on every dimension:
+1. The target must not contain meta-commentary, clarifications, apologies, notes to the reader, or any text that is not the translation itself (e.g. "I cannot translate this", "As an AI...", "[untranslated]").
+2. The target must not include system tags, role markers, or prompt fragments (e.g. "<|im_start|>", "<system>", "### Instruction:").
+3. The target must not be in the source language when the source is in a different language.
+4. The target must not be empty or whitespace-only.
+
+Return only valid JSON. Do not wrap it in markdown fences or add any prose outside the JSON object."""
+
+        system_message = (
+            "You are a strict translation quality evaluator. Score honestly: "
+            "a translation that is missing, contains meta-commentary, or leaks "
+            "system content must receive 0 on the affected dimensions. Never give "
+            "the benefit of the doubt to a translation that violates the anti-leakage rules."
+        )
 
         response = await self._router.acompletion(
             model="judging",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
             temperature=0.0,
         )
         import json
         content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         try:
             result = json.loads(content)
         except json.JSONDecodeError:
-            _logger.warning(f"Judge parse failed, using fallback score=50. Raw response: {content[:300]}")
-            result = {"score": 50, "reason": content[:200] if content else "Parse failed", "parse_failed": True}
+            _logger.error(
+                f"Judge parse failed, returning score=0 (fail-closed). Raw response: {content[:300]}"
+            )
+            return {
+                "accuracy": 0,
+                "fluency": 0,
+                "adequacy": 0,
+                "score": 0,
+                "reason": content[:200] if content else "Parse failed",
+                "parse_failed": True,
+            }
+        for required in ("accuracy", "fluency", "adequacy", "score"):
+            if required not in result:
+                _logger.error(
+                    f"Judge response missing required field '{required}': {result}"
+                )
+                return {
+                    "accuracy": 0,
+                    "fluency": 0,
+                    "adequacy": 0,
+                    "score": 0,
+                    "reason": f"Missing field: {required}",
+                    "incomplete": True,
+                }
         return result
