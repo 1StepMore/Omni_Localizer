@@ -513,6 +513,8 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
         pool = ModelPool.get_instance(config_path)
         repair_pipeline = XLIFFRepairPipeline()
 
+        warnings_per_unit: dict[str, list[str]] = {}
+
         for unit in units:
             unit_shield_map = unit.shield_map
 
@@ -532,7 +534,11 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
 
             if unit_shield_map:
                 unshielded = restore_tags(translated, unit_shield_map)
-                repaired = repair_pipeline.repair(unshielded, unit.source_text, unit_shield_map)
+                repaired, unit_warnings = repair_pipeline.repair(
+                    unshielded, unit.source_text, unit_shield_map
+                )
+                if unit_warnings:
+                    warnings_per_unit[unit.unit_id] = unit_warnings
             else:
                 repaired = translated
 
@@ -551,8 +557,9 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             units=units,
             glossary=glossary or {},
             config={},
+            warnings_per_unit=warnings_per_unit,
         )
-        write_target_back(ctx, output_path)
+        write_target_back(ctx, output_path, warnings_per_unit=warnings_per_unit)
 
         return json.dumps(
             {

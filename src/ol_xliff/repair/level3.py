@@ -34,29 +34,31 @@ class LiteLLMRestorer(LLMRestorer):
             return translated_text
 
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                is_async = True
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                is_async = False
-            try:
-                if is_async:
-                    restored = loop.run_until_complete(
-                        self._call_llm(translated_text, original_text, shield_map),
-                    )
-                else:
-                    asyncio.set_event_loop(loop)
-                    restored = loop.run_until_complete(
-                        self._call_llm(translated_text, original_text, shield_map),
-                    )
-                return restored
-            finally:
-                if not is_async:
-                    loop.close()
+            loop = asyncio.get_running_loop()
+            is_async = True
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            is_async = False
+        try:
+            if is_async:
+                restored = loop.run_until_complete(
+                    self._call_llm(translated_text, original_text, shield_map),
+                )
+            else:
+                asyncio.set_event_loop(loop)
+                restored = loop.run_until_complete(
+                    self._call_llm(translated_text, original_text, shield_map),
+                )
+            return restored
         except Exception as e:
-            _logger.warning(f"LLM restoration failed: {e}, returning original text")
-            return translated_text
+            _logger.error(
+                f"LLM restoration failed for unit (raising so L4 can fall back): {e}",
+                exc_info=True,
+            )
+            raise
+        finally:
+            if not is_async:
+                loop.close()
 
     async def _call_llm(
         self,
@@ -64,21 +66,32 @@ class LiteLLMRestorer(LLMRestorer):
         original_text: str,
         shield_map: dict[str, str],
     ) -> str:
-        placeholder_list = ", ".join(shield_map.values())
+        placeholder_list = "\n".join(f"- {tag}" for tag in shield_map.values())
+        placeholder_tokens = list(shield_map.keys())
+        token_list = ", ".join(placeholder_tokens)
 
-        prompt = f"""Restore these placeholders to their exact positions in the translation.
+        prompt = f"""You are restoring inline XLIFF/HTML tags to their correct positions in a translated text.
 
-Original text with placeholders:
+ORIGINAL text (with inline tags intact):
 {original_text}
 
-Current translation (placeholders may be missing or moved):
+TRANSLATED text (some tags may have been lost or displaced during translation):
 {translated_text}
 
-Placeholders to restore:
+INLINE TAGS to restore (use the {{_OL_XTAG_*_}} token form, NOT the raw tag):
 {placeholder_list}
 
-Return the translation with all placeholders restored to their correct positions.
-Only return the restored translation, nothing else."""
+Rules:
+1. Each placeholder is encoded as {{_OL_XTAG_<key>_}} where <key> is one of: {token_list}.
+2. Insert the EXACT placeholder token at the position where the original tag appeared. Do not modify the surrounding translation.
+3. If a tag wraps content in the original (e.g. <em>...</em>), restore the opening token where the opening tag was and the closing token where the closing tag was.
+4. Preserve whitespace, punctuation, and any characters outside the tags.
+5. Return ONLY the translated text with placeholders restored. No commentary, no code fences, no explanations.
+
+Example:
+Original: Click <x id="1"/> here to continue.
+Translated: 单击 这里 继续。
+Output: 单击 {{_OL_XTAG_x_1_}} 这里 继续。"""
 
         result = await self._model_pool.translate(
             text=prompt,

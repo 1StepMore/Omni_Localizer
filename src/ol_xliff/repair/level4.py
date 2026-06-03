@@ -1,9 +1,9 @@
 import re
 
 
-def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
+def level4_safe_fallback(text: str, missing_placeholders: dict) -> tuple[str, list[str]]:
     if not missing_placeholders:
-        return text
+        return text, []
 
     placeholder_strings = []
     for p_id, original_tag in missing_placeholders.items():
@@ -17,9 +17,12 @@ def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
     if match:
         insert_pos = match.start()
         text = text[:insert_pos] + ' ' + placeholder_str + ' ' + text[insert_pos:]
-        text = text + ' <note from="OL">Warning: Tag auto-appended at end, manual check needed</note>'
     else:
         text = text.rstrip() + ' ' + placeholder_str
-        text = text + ' <note from="OL">Warning: Tag auto-appended at end, manual check needed</note>'
 
-    return text
+    warnings = [
+        f"Tag auto-appended at end, manual check needed: {p_id}"
+        for p_id in missing_placeholders
+    ]
+
+    return text, warnings

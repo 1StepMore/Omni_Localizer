@@ -4,6 +4,9 @@ from pathlib import Path
 
 from ol_core.dataclass import TranslationUnit
 
+HEADER_NOTE_UNIT_ID = '__xliff_header_note__'
+FILE_ORIGINAL_UNIT_ID = '__xliff_file_original__'
+
 # Regex patterns for inline element extraction
 # XLIFF 1.x inline elements: x, bx, ex, ph, alayout
 INLINE_PATTERNS = [
@@ -85,6 +88,58 @@ def detect_xliff_version(content: str) -> str:
     return 'unknown'
 
 
+def _extract_metadata_units(content: str) -> list[TranslationUnit]:
+    """Extract <header><note> and <file original="..."> as synthetic translation units.
+
+    These metadata elements are skipped by the main trans-unit loop but are
+    legitimate translatable content in many XLIFF 1.x workflows. They get
+    sentinel unit_ids (HEADER_NOTE_UNIT_ID, FILE_ORIGINAL_UNIT_ID) so the
+    writer can update the original elements in place.
+    """
+    metadata: list[TranslationUnit] = []
+
+    header_note_pattern = re.compile(
+        r'<header\b[^>]*>.*?<note\b[^>]*>(.*?)</note>.*?</header>',
+        re.DOTALL,
+    )
+    note_match = header_note_pattern.search(content)
+    if note_match:
+        note_text = _unescape_xliff_text(note_match.group(1).strip())
+        if note_text:
+            metadata.append(TranslationUnit(
+                unit_id=HEADER_NOTE_UNIT_ID,
+                source_text=note_text,
+                shield_map={},
+                metadata={'source': 'header-note'},
+            ))
+
+    file_tag_pattern = re.compile(
+        r'<file\b[^>]*\boriginal\s*=\s*"([^"]+)"',
+    )
+    file_match = file_tag_pattern.search(content)
+    if file_match:
+        original_name = file_match.group(1).strip()
+        if original_name:
+            metadata.append(TranslationUnit(
+                unit_id=FILE_ORIGINAL_UNIT_ID,
+                source_text=original_name,
+                shield_map={},
+                metadata={'source': 'file-original'},
+            ))
+
+    return metadata
+
+
+def _unescape_xliff_text(text: str) -> str:
+    return (
+        text.replace('&amp;', '&')
+        .replace('&lt;', '<')
+        .replace('&gt;', '>')
+        .replace('&quot;', '"')
+        .replace('&apos;', "'")
+    )
+
+
 def parse_xliff_1x(content: str) -> list[TranslationUnit]:
     """Parse XLIFF 1.x format using regex fallback.
 
@@ -96,6 +151,7 @@ def parse_xliff_1x(content: str) -> list[TranslationUnit]:
 
     """
     units: list[TranslationUnit] = []
+    units.extend(_extract_metadata_units(content))
 
     # Try translate-toolkit first if available
     xliff_1_parser = None

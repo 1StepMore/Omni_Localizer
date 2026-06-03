@@ -26,16 +26,18 @@ class TestFormatPreservation:
         pipeline = XLIFFRepairPipeline()
         original = '<em id="e1">Hello</em> world <x id="1"/>'
         shield_map = {'em_e1': '<em id="e1">Hello</em>', 'x_1': '<x id="1"/>'}
-        result = pipeline.repair(original, original, shield_map)
+        result, warnings = pipeline.repair(original, original, shield_map)
         assert '{{_OL_XTAG_em_e1_}}' in result or '<em' in result
+        assert isinstance(warnings, list)
 
     def test_missing_placeholder_detected(self):
         """Test that missing placeholders are detected."""
         pipeline = XLIFFRepairPipeline()
         original = '<em id="e1">Hello</em>'
         shield_map = {'em_e1': '<em id="e1">Hello</em>', 'x_1': '<x id="1"/>'}
-        result = pipeline.repair(original, original, shield_map)
+        result, warnings = pipeline.repair(original, original, shield_map)
         assert 'x_1' not in result or 'x_1' in result
+        assert isinstance(warnings, list)
 
     def test_nested_inline_elements_preserved(self):
         """Test nested inline elements are preserved correctly."""

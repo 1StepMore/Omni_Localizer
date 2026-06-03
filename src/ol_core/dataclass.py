@@ -24,6 +24,7 @@ class TranslationContext:
     # glossary: {term: {translation: str, variants: dict, confidence: float}}
     glossary: dict[str, dict[str, Any]] = field(default_factory=dict)
     config: dict = field(default_factory=dict)
+    warnings_per_unit: dict[str, list[str]] = field(default_factory=dict)
 
     def get_unit_by_id(self, unit_id: str) -> TranslationUnit | None:
         for unit in self.units:

@@ -127,15 +127,23 @@ class ModelPool:
                     prompt_parts.insert(0, f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}")
             prompt = "\n\n".join(prompt_parts)
 
+        system_message = (
+            "You are a professional translator. Translate the user's text from "
+            f"{source_lang} to {target_lang} while strictly preserving all markup: "
+            "keep every {{_OL_XTAG_*_}} placeholder token in its original position "
+            "and form, keep all code blocks, links, image references, and inline "
+            "formatting markers intact. Do not add explanations, do not wrap the "
+            "output in code fences, and do not change the meaning of placeholders. "
+            "Return only the translated text."
+        )
+
         for attempt in range(4):  # 1 initial + 3 retries
             try:
                 response = await self._router.acompletion(
                     model="translation",
                     messages=[
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        },
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": prompt},
                     ],
                     temperature=0.0,
                 )

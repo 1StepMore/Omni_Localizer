@@ -145,40 +145,78 @@ def iterate_trans_units(path: Path) -> Iterator[TranslationUnit]:
             )
 
 
-def write_target_back(ctx: TranslationContext, output_path: str) -> None:
+def write_target_back(
+    ctx: TranslationContext,
+    output_path: str,
+    warnings_per_unit: dict[str, list[str]] | None = None,
+) -> None:
     """Write translated content back to XLIFF format.
 
     Args:
         ctx: TranslationContext with translated units
         output_path: Output file path
+        warnings_per_unit: Optional dict mapping unit_id to a list of warning
+            strings. Each warning is injected as a ``<note from="OL">...</note>``
+            sibling of the unit's ``<target>`` (i.e., as a direct child of
+            ``<trans-unit>``, not nested inside ``<target>``). When omitted,
+            falls back to ``ctx.warnings_per_unit`` if present.
 
     """
+    if warnings_per_unit is None:
+        warnings_per_unit = ctx.warnings_per_unit
+    warnings_per_unit = warnings_per_unit or {}
+
     content = ctx.original_full_text
 
-    # Replace each unit's translation
+    from ol_xliff.parser import HEADER_NOTE_UNIT_ID, FILE_ORIGINAL_UNIT_ID
+
     for unit in ctx.units:
-        if unit.target_text is not None:
-            # Find and replace the target element for this unit
-            import re
-            target_pattern = re.compile(
-                rf'(<trans-unit[^>]*id="{re.escape(unit.unit_id)}"[^>]*>.*?)<target[^>]*>.*?</target>(.*?</trans-unit>)',
+        if unit.target_text is None:
+            continue
+
+        if unit.unit_id == HEADER_NOTE_UNIT_ID:
+            header_note_pattern = re.compile(
+                r'(<header\b[^>]*>.*?<note\b[^>]*>)(.*?)(</note>.*?</header>)',
                 re.DOTALL,
             )
-
-            from ol_buses.xliff_shield import restore_tags
-            # Escape LLM-produced text BEFORE restoring placeholders to XML tags,
-            # so the surrounding text becomes valid XML element content while
-            # the restored tags remain as live markup.
-            escaped_target = _escape_xml_entities(unit.target_text)
-            restored_target = (
-                restore_tags(escaped_target, unit.shield_map)
-                if unit.shield_map
-                else escaped_target
-            )
-
-            content = target_pattern.sub(
-                lambda m: m.group(1) + f'<target>{restored_target}</target>' + m.group(2),
+            content = header_note_pattern.sub(
+                lambda m: m.group(1) + _escape_xml_entities(unit.target_text) + m.group(3),
                 content,
             )
+            continue
+
+        if unit.unit_id == FILE_ORIGINAL_UNIT_ID:
+            file_pattern = re.compile(
+                r'(<file\b[^>]*\boriginal\s*=\s*")[^"]*(")',
+            )
+            content = file_pattern.sub(
+                lambda m: m.group(1) + _escape_xml_entities(unit.target_text) + m.group(2),
+                content,
+            )
+            continue
+
+        target_pattern = re.compile(
+            rf'(<trans-unit[^>]*id="{re.escape(unit.unit_id)}"[^>]*>.*?)<target[^>]*>.*?</target>(.*?</trans-unit>)',
+            re.DOTALL,
+        )
+
+        from ol_buses.xliff_shield import restore_tags
+        escaped_target = _escape_xml_entities(unit.target_text)
+        restored_target = (
+            restore_tags(escaped_target, unit.shield_map)
+            if unit.shield_map
+            else escaped_target
+        )
+
+        unit_warnings = warnings_per_unit.get(unit.unit_id, [])
+        notes_xml = ''.join(
+            f'<note from="OL">{_escape_xml_entities(w)}</note>'
+            for w in unit_warnings
+        )
+
+        content = target_pattern.sub(
+            lambda m: m.group(1) + f'<target>{restored_target}</target>' + notes_xml + m.group(2),
+            content,
+        )
 
     Path(output_path).write_text(content, encoding='utf-8')

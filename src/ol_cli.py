@@ -404,6 +404,8 @@ async def _translate_xliff_async(
 
     repair_pipeline = XLIFFRepairPipeline()
 
+    warnings_per_unit: dict[str, list[str]] = {}
+
     for unit in units:
         unit_shield_map = unit.shield_map
 
@@ -415,7 +417,11 @@ async def _translate_xliff_async(
             from ol_buses.xliff_shield import restore_tags
 
             unshielded = restore_tags(translated, unit_shield_map)
-            repaired = repair_pipeline.repair(unshielded, unit.source_text, unit_shield_map)
+            repaired, unit_warnings = repair_pipeline.repair(
+                unshielded, unit.source_text, unit_shield_map
+            )
+            if unit_warnings:
+                warnings_per_unit[unit.unit_id] = unit_warnings
         else:
             repaired = translated
 
@@ -433,10 +439,18 @@ async def _translate_xliff_async(
         units=units,
         glossary={},
         config={},
+        warnings_per_unit=warnings_per_unit,
     )
-    write_target_back(ctx, str(output_path / input_path.name))
+    output_file = str(output_path / input_path.name)
+    write_target_back(ctx, output_file, warnings_per_unit=warnings_per_unit)
 
-    return str(output_path / input_path.name)
+    output_path_obj = Path(output_file)
+    translated_text = output_path_obj.read_text(encoding="utf-8")
+    header_note = _build_xliff_header_note(src_lang, tgt_lang)
+    translated_text = _inject_xliff_header(translated_text, header_note)
+    output_path_obj.write_text(translated_text, encoding="utf-8")
+
+    return output_file
 
 
 @app.command()

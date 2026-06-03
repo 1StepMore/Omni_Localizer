@@ -36,7 +36,8 @@ class TestXLIFFPipelineE2E:
         assert sample_path.exists()
 
         parser = XliffParser()
-        units = parser.parse(str(sample_path))
+        all_units = parser.parse(str(sample_path))
+        units = [u for u in all_units if not u.unit_id.startswith("__xliff_")]
 
         assert len(units) == 2
         assert units[0].unit_id == "1"
@@ -45,13 +46,14 @@ class TestXLIFFPipelineE2E:
         pipeline = XLIFFRepairPipeline(llm_restorer=mock_llm_restorer)
 
         for unit in units:
-            repaired = pipeline.repair(
+            repaired, warnings = pipeline.repair(
                 unit.source_text,
                 unit.source_text,
                 unit.shield_map,
             )
             assert isinstance(repaired, str)
             assert len(repaired) > 0
+            assert isinstance(warnings, list)
 
         output_path = os.path.join(temp_dir, "output.xliff")
         with open(output_path, "w", encoding="utf-8") as f:
@@ -93,7 +95,8 @@ class TestXLIFFPipelineE2E:
         assert review_path.exists()
 
         parser = XliffParser()
-        units = parser.parse(str(review_path))
+        all_units = parser.parse(str(review_path))
+        units = [u for u in all_units if not u.unit_id.startswith("__xliff_")]
 
         assert len(units) == 4
 
@@ -105,9 +108,9 @@ class TestXLIFFPipelineE2E:
         warnings_found = []
         for unit in units:
             translated = unit.source_text
-            repaired = pipeline.repair(translated, unit.source_text, unit.shield_map)
+            repaired, warnings = pipeline.repair(translated, unit.source_text, unit.shield_map)
 
-            if "OL_WARN" in repaired or "Warning" in repaired:
+            if warnings or "OL_WARN" in repaired or "Warning" in repaired:
                 warnings_found.append(unit.unit_id)
 
         assert len(warnings_found) >= 0
@@ -130,20 +133,22 @@ class TestXLIFFPipelineE2E:
 
         pipeline = XLIFFRepairPipeline(llm_restorer=mock_llm_restorer)
 
-        result = pipeline.repair("", "", {})
+        result, warnings = pipeline.repair("", "", {})
         assert result == ""
+        assert warnings == []
 
-        result = pipeline.repair("Simple text without placeholders", "original", {})
+        result, warnings = pipeline.repair("Simple text without placeholders", "original", {})
         assert isinstance(result, str)
         assert len(result) > 0
+        assert isinstance(warnings, list)
 
         text = "translated text without placeholder"
         original = "original text with <x id='1'/> placeholder"
         shield_map = {'x_1': '<x id="1"/>'}
 
-        result = pipeline.repair(text, original, shield_map)
+        result, warnings = pipeline.repair(text, original, shield_map)
         assert isinstance(result, str)
-        assert "OL_WARN" in result or "placeholder" in result.lower() or len(result) > 0
+        assert warnings or "OL_WARN" in result or "placeholder" in result.lower() or len(result) > 0
 
     def test_pipeline_with_real_translated_text(self, fixtures_dir, mock_llm_restorer):
         from ol_xliff.parser import XliffParser
@@ -158,7 +163,7 @@ class TestXLIFFPipelineE2E:
         for unit in units:
             translated = unit.source_text.replace("{{_OL_XTAG_", "[TAG_").replace("_}}", "_]")
 
-            repaired = pipeline.repair(translated, unit.source_text, unit.shield_map)
+            repaired, warnings = pipeline.repair(translated, unit.source_text, unit.shield_map)
 
             assert isinstance(repaired, str)
-            assert "<note from=" in repaired or "{{_OL_XTAG_" in repaired or "_OL_XTAG_" in repaired or len(repaired) > 0
+            assert warnings or "<note from=" in repaired or "{{_OL_XTAG_" in repaired or "_OL_XTAG_" in repaired or len(repaired) > 0

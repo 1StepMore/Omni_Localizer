@@ -44,7 +44,7 @@ class XLIFFRepairPipeline:
                 return False
         return True
 
-    def repair(self, text: str, original: str, shield_map: dict[str, str]) -> str:
+    def repair(self, text: str, original: str, shield_map: dict[str, str]) -> tuple[str, list[str]]:
         """Repair text through 4-layer cascade until complete.
 
         Args:
@@ -53,24 +53,27 @@ class XLIFFRepairPipeline:
             shield_map: Dict mapping placeholder_id -> original_tag
 
         Returns:
-            Repaired text with all placeholders restored
+            Tuple of (repaired_text, warnings_list). Warnings are non-fatal
+            issues encountered during repair (e.g., placeholders that had to
+            be auto-appended at end of unit by L4 safe fallback).
 
         """
         current_text = text
+        warnings: list[str] = []
 
         cleaned, modified = level1_regex_clean(current_text)
         if modified:
             current_text = cleaned
 
         if self.is_complete(current_text, shield_map):
-            return current_text
+            return current_text, warnings
 
         aligned = level2_span_align(current_text, shield_map, original)
         if aligned != current_text:
             current_text = aligned
 
         if self.is_complete(current_text, shield_map):
-            return current_text
+            return current_text, warnings
 
         if self.llm_restorer:
             restored = level3_llm_restore(current_text, original, shield_map, self.llm_restorer)
@@ -78,13 +81,14 @@ class XLIFFRepairPipeline:
                 current_text = restored
 
         if self.is_complete(current_text, shield_map):
-            return current_text
+            return current_text, warnings
 
         missing = {
             k: v for k, v in shield_map.items()
             if f'{{{{_OL_XTAG_{k}_}}}}' not in current_text
         }
         if missing:
-            current_text = level4_safe_fallback(current_text, missing)
+            current_text, l4_warnings = level4_safe_fallback(current_text, missing)
+            warnings.extend(l4_warnings)
 
-        return current_text
+        return current_text, warnings
