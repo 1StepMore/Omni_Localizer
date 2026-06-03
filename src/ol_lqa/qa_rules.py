@@ -6,11 +6,14 @@ accelerators, xmltags, variables, printf, brackets.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from translate.filters.checks import CheckerConfig, FilterFailure, SeriousFilterFailure, StandardChecker
+
+_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     pass
@@ -186,7 +189,12 @@ class QARulesChecker:
                         target_segment=target,
                     )
                 )
-            except Exception:
+            except Exception as e:
+                _logger.warning(
+                    "QA rule %s raised on source=%r target=%r: %s",
+                    rule_id, source[:80], target[:80], e,
+                    exc_info=True,
+                )
                 continue
 
         return warnings
