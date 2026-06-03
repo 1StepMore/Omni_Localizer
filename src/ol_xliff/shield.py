@@ -1,6 +1,46 @@
 import re
 
 
+def _shield_bx_ex_pairs(text: str) -> tuple[str, dict[str, str]]:
+    """Shield bx/ex as conceptual begin/end pairs.
+
+    XLIFF 1.x bx and ex are self-closing markers that together wrap a
+    span. Shielding them individually (as the self_closing pass does)
+    loses the pairing — if the LLM drops one half, the placeholder set
+    looks complete but the span is broken. By collapsing matched pairs
+    into a single placeholder, L4's missing-placeholder detector can
+    catch the case where exactly one half is restored.
+    """
+    shield_map: dict[str, str] = {}
+
+    bx_re = re.compile(r'<bx[^>]*\bid="([^"]+)"[^>]*/>')
+    ex_re = re.compile(r'<ex[^>]*\bid="([^"]+)"[^>]*/>')
+
+    bx_by_id: dict[str, re.Match] = {}
+    for m in bx_re.finditer(text):
+        bx_by_id.setdefault(m.group(1), m)
+
+    ex_by_id: dict[str, re.Match] = {}
+    for m in ex_re.finditer(text):
+        ex_by_id.setdefault(m.group(1), m)
+
+    pairs: list[tuple[int, int, int, str]] = []
+    for tag_id, bx in bx_by_id.items():
+        ex = ex_by_id.get(tag_id)
+        if ex is not None and ex.start() > bx.end():
+            pairs.append((bx.start(), ex.end(), bx.end() - bx.start(), tag_id))
+
+    pairs.sort(key=lambda p: p[0], reverse=True)
+
+    for bx_start, ex_end, _span, tag_id in pairs:
+        key = f'bx_ex_{tag_id}'
+        placeholder = f'{{{{_OL_XTAG_{key}_}}}}'
+        shield_map[key] = text[bx_start:ex_end]
+        text = text[:bx_start] + placeholder + text[ex_end:]
+
+    return text, shield_map
+
+
 def _shield_paired_tag(text: str, tag_type: str) -> tuple[str, dict[str, str]]:
     """Shield paired tags (mrk, em, ph, alayout) handling nesting correctly."""
     shield_map = {}
@@ -57,7 +97,13 @@ def shield_xliff(text: str) -> tuple[str, dict[str, str]]:
     shield_map = {}
     result = text
 
-    # Self-closing tags: x, bx, ex - use simple regex
+    # Conceptual begin/end pairs (bx/ex are self-closing but pair up by id).
+    # Run first so paired halves collapse into a single placeholder before the
+    # self_closing pass shields them individually.
+    result, bx_ex_map = _shield_bx_ex_pairs(result)
+    shield_map.update(bx_ex_map)
+
+    # Self-closing tags: x, plus any unpaired bx/ex that didn't match a partner.
     self_closing = [
         ('x', r'<x[^>]*id="([^"]+)"[^>]*/>'),
         ('bx', r'<bx[^>]*id="([^"]+)"[^>]*/>'),

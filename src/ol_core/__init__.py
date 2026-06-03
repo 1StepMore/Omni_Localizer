@@ -12,14 +12,13 @@ from ol_core.exceptions import (
     RestoreFailedError,
     TranslationError,
 )
-from ol_core.interfaces import LLMRestorer, MockLLMRestorer
+from ol_core.interfaces import LLMRestorer
 
 __all__ = [
     "ChannelType",
     "EvaluationResult",
     "FormatNotSupportedError",
     "LLMRestorer",
-    "MockLLMRestorer",
     "OLBaseError",
     "RepairContext",
     "RestoreFailedError",
