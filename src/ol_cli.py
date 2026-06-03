@@ -268,7 +268,7 @@ async def _translate_md_async(
     if cfg.enable_lqa:
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(pass_threshold=cfg.lqa_threshold)
+        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
