@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-03
+
+### Added
+- **LQA auto-invoke in CLI**: `_translate_md_async` and `_translate_xliff_async` in `ol_cli` now wrap `pool.translate` in a `RetryManager` with `JudgeService` when `config.enable_lqa` is true
+  - Judges the translation result against the source; if the score falls below `lqa_threshold`, the translation is retried up to `lqa_max_retries` times
+  - Opt-in via config flags; existing tests and configs are unchanged
+- **LQA config fields** in `ProjectConfig` (`ol_config/schema.py`):
+  - `enable_lqa: bool = False` — master switch for LQA auto-invoke
+  - `lqa_threshold: float = 7.0` — minimum acceptable quality score (1-10)
+  - `lqa_max_retries: int = 2` — max retry attempts when score is below threshold
+- **`_escape_xml_entities()` helper** in `src/ol_buses/xliff_bus.py` for sanitizing LLM-produced XLIFF target text
+  - Escapes `&`, `<`, `>`, `"`, and `'` before placeholders are restored into the `<target>` element
+- **`.gitignore`**: ignore `config/local.yaml`, `config/local.*.yaml`, `config/secret.yaml`, and `config/production.yaml` so real LLM config files are never committed
+
+### Fixed
+- **Real-LLM nightly test was failing with `lxml.etree.XMLSyntaxError: xmlParseEntityRef: no name`**: LLM-produced XLIFF target text occasionally contains unescaped `&` (e.g., `R&D`, `AT&T`) which broke XML serialization on round-trip
+  - Fix: `write_target_back()` now applies `_escape_xml_entities()` to the LLM target text **before** restoring placeholders, so `&` becomes `&amp;` and `lxml` can reparse the file
+  - Unblocks the real-LLM nightly test (Test 3 LQA judge path)
+
 ## [0.3.4] - 2026-05-29
 
 ### Fixed

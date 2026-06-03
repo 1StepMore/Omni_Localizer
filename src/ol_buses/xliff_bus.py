@@ -1,10 +1,41 @@
 """XLIFF bus for Omni-Localizer using translate-toolkit."""
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from ol_buses.xliff_shield import replace_tags_with_placeholders
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
+
+
+# Matches a bare `&` that is NOT already the start of a known XML entity.
+# Negative lookahead skips `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`,
+# numeric character refs `&#NNN;` and hex refs `&#xHH;` so we never
+# double-escape inputs that are already entity-encoded.
+_BARE_AMP_RE = re.compile(
+    r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)'
+)
+
+
+def _escape_xml_entities(text: str) -> str:
+    """Escape XML special characters in LLM-produced text.
+
+    The XLIFF writer concatenates LLM target text into ``<target>`` element
+    content via f-strings, so unescaped ``&``, ``<`` or ``>`` would produce
+    invalid XLIFF and trip ``lxml.etree.XMLSyntaxError: xmlParseEntityRef:
+    no name`` on the next parse.
+
+    The escape is idempotent on already-escaped input: ``&amp;`` stays
+    ``&amp;`` rather than becoming ``&amp;amp;``.
+
+    Order matters: ``&`` is escaped first (so we don't accidentally rewrite
+    ``&lt;`` produced by the subsequent step), then ``<``/``>``.
+    """
+    if not text:
+        return text
+    text = _BARE_AMP_RE.sub('&amp;', text)
+    text = text.replace('<', '&lt;').replace('>', '&gt;')
+    return text
 
 
 def _ensure_target_tags(content: str) -> str:
@@ -135,7 +166,15 @@ def write_target_back(ctx: TranslationContext, output_path: str) -> None:
             )
 
             from ol_buses.xliff_shield import restore_tags
-            restored_target = restore_tags(unit.target_text, unit.shield_map) if unit.shield_map else unit.target_text
+            # Escape LLM-produced text BEFORE restoring placeholders to XML tags,
+            # so the surrounding text becomes valid XML element content while
+            # the restored tags remain as live markup.
+            escaped_target = _escape_xml_entities(unit.target_text)
+            restored_target = (
+                restore_tags(escaped_target, unit.shield_map)
+                if unit.shield_map
+                else escaped_target
+            )
 
             content = target_pattern.sub(
                 lambda m: m.group(1) + f'<target>{restored_target}</target>' + m.group(2),

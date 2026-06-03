@@ -196,6 +196,20 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --json
 | **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
 | **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
+## Quality Assurance & Robustness
+
+Omni-Localizer now ships with **automatic LQA (Linguistic Quality Assurance)** in the CLI pipeline. When enabled via config, every translation produced by `translate-md` or `translate-xliff` is judged by a `JudgeService` against the original source; if the score falls below `lqa_threshold` (default `7.0` on a 1-10 scale), the translation is retried up to `lqa_max_retries` times (default `2`) through a `RetryManager`. This makes the CLI self-correcting on the common "LLM produced a low-quality first pass" failure mode without requiring manual review.
+
+Opt-in via three new fields on `ProjectConfig` (see `config/default.yaml` for an example):
+
+```yaml
+enable_lqa: true        # master switch (default: false)
+lqa_threshold: 7.0      # minimum acceptable score
+lqa_max_retries: 2      # max retry attempts
+```
+
+Robustness against **real LLM output quirks**: `write_target_back()` in the XLIFF bus now applies an `_escape_xml_entities()` helper to LLM-produced target text **before** placeholder restoration. Real LLMs occasionally emit unescaped `&`, `<`, or `>` (e.g., `R&D`, `AT&T`) that would otherwise cause `lxml.etree.XMLSyntaxError: xmlParseEntityRef: no name` on round-trip. This change unblocks the real-LLM nightly test that was previously crashing on the LQA judge path.
+
 ## Architecture
 
 - **MD Channel**: Token Stream + 4-layer semantic repair

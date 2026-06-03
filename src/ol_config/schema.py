@@ -64,3 +64,6 @@ class ProjectConfig(BaseModel):
     target_lang: str = Field("zh", description="Target language code: zh, en, ja, etc.")
     glossary_path: str | None = Field(None, description="Path to glossary file (CSV/TBX)")
     llm_pool: LLMPoolConfig = Field(..., description="LLM model pool configuration")
+    enable_lqa: bool = Field(False, description="Auto-invoke LQA judge with retry in main pipeline")
+    lqa_threshold: float = Field(7.0, description="LQA judge pass threshold (0-10)")
+    lqa_max_retries: int = Field(2, description="Max LQA retries (best-of-N strategy)")

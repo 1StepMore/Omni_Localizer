@@ -60,6 +60,14 @@ logs/
 .env.local
 .env.*.local
 
+# Per-user/per-machine config overrides (real values).
+# `default.yaml` is tracked as a TEMPLATE — never put real keys/endpoints in it.
+# Use `local.yaml` and pass `--config Omni_Localizer/config/local.yaml` to CLI.
+config/local.yaml
+config/local.*.yaml
+config/secret.yaml
+config/production.yaml
+
 # Local scripts (template versions tracked, secrets set via env vars)
 test_en_to_zh.bat
 test_zh_to_en.bat

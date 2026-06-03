@@ -244,19 +244,53 @@ async def _translate_md_async(
     tgt_lang: str,
     add_frontmatter: bool = True,
 ) -> str:
-    from ol_pool.router import ModelPool
+    import os
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        import sys
+        from pathlib import Path as _SeamPath
+        _suite_root = _SeamPath(__file__).resolve().parents[2]
+        if str(_suite_root) not in sys.path:
+            sys.path.insert(0, str(_suite_root))
+        from tests.test_e2e_pipeline_fixtures import _FakeModelPool
+        pool = _FakeModelPool()
+    else:
+        from ol_pool.router import ModelPool
+        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
-    pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
-
-    if not config_path:
-        from ol_config.loader import load_config
-        cfg, _ = load_config("config/default.yaml")
-        src_lang = src_lang or cfg.source_lang
-        tgt_lang = tgt_lang or cfg.target_lang
+    from ol_config.loader import load_config
+    cfg, _ = load_config(config_path or "config/default.yaml")
+    src_lang = src_lang or cfg.source_lang
+    tgt_lang = tgt_lang or cfg.target_lang
 
     original_text = input_path.read_text(encoding="utf-8")
     shielded, shield_map = shield_markdown(original_text)
-    translated = await pool.translate(shielded, src_lang, tgt_lang)
+
+    if cfg.enable_lqa:
+        from ol_lqa.judge import JudgeService
+        from ol_retry.retry import RetryManager
+        judge = JudgeService(pass_threshold=cfg.lqa_threshold)
+        retry_mgr = RetryManager(
+            max_retries=cfg.lqa_max_retries,
+            pass_threshold=cfg.lqa_threshold,
+        )
+
+        async def translate_fn():
+            return await pool.translate(shielded, src_lang, tgt_lang)
+
+        async def judge_fn(source, translation, unit_id):
+            return judge.judge(
+                source, translation, unit_id,
+                source_lang=src_lang, target_lang=tgt_lang,
+            )
+
+        retry_result = await retry_mgr.execute_with_retry(
+            "md_main", shielded, translate_fn, judge_fn,
+        )
+        translated = retry_result.best_translation
+        if retry_result.warning:
+            logger.warning(f"LQA auto-retry: {retry_result.warning}")
+    else:
+        translated = await pool.translate(shielded, src_lang, tgt_lang)
 
     if shield_map:
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
@@ -343,15 +377,24 @@ async def _translate_xliff_async(
     tgt_lang: str,
 ) -> str:
     import os
-    from ol_pool.router import ModelPool
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        import sys
+        from pathlib import Path as _SeamPath
+        _suite_root = _SeamPath(__file__).resolve().parents[2]
+        if str(_suite_root) not in sys.path:
+            sys.path.insert(0, str(_suite_root))
+        from tests.test_e2e_pipeline_fixtures import _FakeModelPool
+        pool = _FakeModelPool()
+    else:
+        from ol_pool.router import ModelPool
+        pool = ModelPool.get_instance(
+            config_path if config_path else os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
+        )
+
     from ol_xliff.parser import XliffParser
     from ol_xliff.pipeline import XLIFFRepairPipeline
     from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
-
-    pool = ModelPool.get_instance(
-        config_path if config_path else os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
-    )
 
     parser = XliffParser()
     units = parser.parse(str(input_path))
