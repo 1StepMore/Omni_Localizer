@@ -3,9 +3,28 @@ from pathlib import Path
 
 import logging
 import sys
+import threading
+import weakref
 from dataclasses import dataclass
 
 _logger = logging.getLogger("tm")
+
+
+def _safe_flush_on_gc(svc: "TMService") -> None:
+    """GC-time finalizer for :class:`TMService` instances.
+
+    Registered via :func:`weakref.finalize` in ``TMService.__init__``. Runs
+    at garbage collection time (not at interpreter shutdown) and is the
+    modern, recommended replacement for ``__del__`` for cleanup that must
+    not raise. Catches and logs every exception so that this callback can
+    never propagate — finalize callbacks are explicitly allowed to swallow
+    errors, and during interpreter teardown modules/file handles may
+    already be gone.
+    """
+    try:
+        svc.close()
+    except Exception:
+        _logger.exception("TMService GC finalizer: flush failed")
 
 
 @contextmanager
@@ -78,6 +97,21 @@ class TMMatch:
 
 
 class TMService:
+    """Translation memory service with deferred writes and explicit flush.
+
+    Entries added via :meth:`add` are kept in memory and marked dirty. They
+    are persisted to the TMX file only when :meth:`flush` is called, or
+    implicitly via :meth:`close`, the context-manager protocol
+    (``with TMService(...) as svc:``), or the GC-time finalizer registered
+    in :meth:`__init__`.
+
+    Durability trade-off: if the process is hard-killed (SIGKILL, power
+    loss, OOM) between :meth:`add` and the next :meth:`flush`, in-memory
+    entries since the last successful save are lost. For crash-safe
+    operation, either use the context manager, call :meth:`flush` at known
+    checkpoints, or call :meth:`close` before shutdown.
+    """
+
     def __init__(
         self,
         tmx_path: str,
@@ -87,6 +121,10 @@ class TMService:
         self._embedding_model = embedding_model
         self._model = None
         self._entries: list[TMMatch] = []
+        self._dirty: bool = False
+        self._pending_writes: int = 0
+        self._lock = threading.RLock()
+        weakref.finalize(self, _safe_flush_on_gc, self)
         self._load()
 
     def _get_model(self):
@@ -149,10 +187,52 @@ class TMService:
         return (dots / (source_norm * target_norms)).tolist()
 
     def add(self, source: str, target: str, src_lang: str, tgt_lang: str) -> None:
-        self._entries.append(TMMatch(
-            source=source,
-            target=target,
-            similarity=1.0,
-            language_pair=f"{src_lang}-{tgt_lang}",
-        ))
+        with self._lock:
+            self._entries.append(TMMatch(
+                source=source,
+                target=target,
+                similarity=1.0,
+                language_pair=f"{src_lang}-{tgt_lang}",
+            ))
+            self._dirty = True
+            self._pending_writes += 1
+
+    def flush(self) -> None:
+        """Persist pending in-memory entries to the TMX file.
+
+        No-op if no entries have been added since the last successful
+        flush. Safe to call concurrently with :meth:`add`; serialization
+        is handled by the instance's re-entrant lock.
+        """
+        with self._lock:
+            self._flush_locked()
+
+    def _flush_locked(self) -> None:
+        if not self._dirty:
+            return
         self._save()
+        self._dirty = False
+        self._pending_writes = 0
+
+    def close(self) -> None:
+        """Best-effort flush for shutdown. Errors are logged, not raised.
+
+        Designed for use as the last action before a process exits
+        (explicitly, via the context-manager ``__exit__``, or via the
+        GC-time finalizer). Any failure during the underlying
+        :meth:`flush` is captured with a full traceback via
+        :func:`logging.exception` and swallowed — durability is best
+        effort here, so callers cannot be left with a partially-flushed
+        state or a raised exception they cannot handle during teardown.
+        """
+        try:
+            self.flush()
+        except Exception:
+            _logger.exception("TMService.close(): flush failed; pending writes may be lost")
+
+    def __enter__(self) -> "TMService":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+        return None
