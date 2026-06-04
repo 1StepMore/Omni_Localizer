@@ -13,18 +13,26 @@ class QueueTimeoutError(OLBaseError):
 
 
 class ConcurrencyLimiter:
-    """Controls concurrent translation and scoring operations with semaphore-based limiting."""
+    """Controls concurrent translation and scoring operations with semaphore-based limiting.
+
+    Concurrency is enforced exclusively by :class:`asyncio.Semaphore`. The
+    semaphores are the source of truth for slot accounting; no auxiliary
+    tracking structure is needed.
+    """
 
     def __init__(self, max_translation: int = 10, max_scoring: int = 5):
+        # C14 fix: the previous implementation also created an unbounded
+        # ``asyncio.Queue`` per role and pushed ``None`` on every acquisition
+        # (with a racy ``get_nowait()`` in ``finally``). That queue was
+        # dead — it was never drained anywhere — and grew without bound
+        # (O(N) per batch). The semaphores alone do the limiting, so the
+        # queue has been removed entirely.
         self._translation_sem = asyncio.Semaphore(max_translation)
         self._scoring_sem = asyncio.Semaphore(max_scoring)
-        self._translation_queue: asyncio.Queue = asyncio.Queue()
-        self._scoring_queue: asyncio.Queue = asyncio.Queue()
 
     @asynccontextmanager
     async def translation(self, timeout: float | None = None):
-        """Acquire translation slot. Queues if full, times out if wait exceeds timeout."""
-        await self._translation_queue.put(None)
+        """Acquire translation slot. Blocks if full, times out if wait exceeds timeout."""
         try:
             if timeout is not None:
                 async with asyncio.timeout(timeout):
@@ -36,15 +44,10 @@ class ConcurrencyLimiter:
             raise QueueTimeoutError(f"Translation slot wait timed out after {timeout}s")
         finally:
             self._translation_sem.release()
-            try:
-                self._translation_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
 
     @asynccontextmanager
     async def scoring(self, timeout: float | None = None):
-        """Acquire scoring slot. Queues if full, times out if wait exceeds timeout."""
-        await self._scoring_queue.put(None)
+        """Acquire scoring slot. Blocks if full, times out if wait exceeds timeout."""
         try:
             if timeout is not None:
                 async with asyncio.timeout(timeout):
@@ -56,10 +59,6 @@ class ConcurrencyLimiter:
             raise QueueTimeoutError(f"Scoring slot wait timed out after {timeout}s")
         finally:
             self._scoring_sem.release()
-            try:
-                self._scoring_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
 
     @asynccontextmanager
     async def with_timeout(self, timeout: float):
