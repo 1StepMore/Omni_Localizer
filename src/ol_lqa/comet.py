@@ -4,6 +4,18 @@ from typing import Any
 
 from ol_core.dataclass import EvaluationResult
 
+# Module-level COMET imports so that ``@patch("ol_lqa.comet.download_model")``
+# and ``@patch("ol_lqa.comet.load_from_checkpoint")`` work in tests (a local
+# ``from comet import ...`` inside a method is not patchable from the module).
+# Graceful degradation: if the ``comet`` package is not installed (e.g. in
+# minimal test/CI environments), the names are ``None`` and ``_ensure_model``
+# raises a clear ``RuntimeError`` instead of ``ImportError`` mid-call.
+try:
+    from comet import download_model, load_from_checkpoint
+except ImportError:
+    download_model = None  # type: ignore[assignment]
+    load_from_checkpoint = None  # type: ignore[assignment]
+
 
 class COMETService:
     DEFAULT_MODEL = "Unbabel/XCOMET-XL"
@@ -15,8 +27,10 @@ class COMETService:
 
     def _ensure_model(self) -> Any:
         if self._model is None:
-            from comet import download_model, load_from_checkpoint
-
+            if download_model is None or load_from_checkpoint is None:
+                raise RuntimeError(
+                    "comet package not installed; install with `pip install unbabel-comet`",
+                )
             self._model_path = download_model(self._model_name)
             self._model = load_from_checkpoint(self._model_path)
 
