@@ -1,5 +1,5 @@
 """File discovery utilities for batch processing."""
-
+import os
 from pathlib import Path
 
 from ol_logging.core import get_logger
@@ -13,6 +13,9 @@ def validate_directory(path: Path) -> bool:
         return False
     if not path.is_dir():
         _logger.warning(f"Invalid directory: {path}")
+        return False
+    if not os.access(path, os.R_OK):
+        _logger.warning(f"Directory not readable: {path}")
         return False
     return True
 

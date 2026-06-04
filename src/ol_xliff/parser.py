@@ -151,7 +151,6 @@ def parse_xliff_1x(content: str) -> list[TranslationUnit]:
 
     """
     units: list[TranslationUnit] = []
-    units.extend(_extract_metadata_units(content))
 
     # Try translate-toolkit first if available
     xliff_1_parser = None

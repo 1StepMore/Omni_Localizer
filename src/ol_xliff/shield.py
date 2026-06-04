@@ -97,13 +97,7 @@ def shield_xliff(text: str) -> tuple[str, dict[str, str]]:
     shield_map = {}
     result = text
 
-    # Conceptual begin/end pairs (bx/ex are self-closing but pair up by id).
-    # Run first so paired halves collapse into a single placeholder before the
-    # self_closing pass shields them individually.
-    result, bx_ex_map = _shield_bx_ex_pairs(result)
-    shield_map.update(bx_ex_map)
-
-    # Self-closing tags: x, plus any unpaired bx/ex that didn't match a partner.
+    # Self-closing tags: x, bx, ex — shielded individually by id.
     self_closing = [
         ('x', r'<x[^>]*id="([^"]+)"[^>]*/>'),
         ('bx', r'<bx[^>]*id="([^"]+)"[^>]*/>'),

@@ -30,7 +30,7 @@ class XLIFFRepairPipeline:
         self.llm_restorer = llm_restorer
 
     def is_complete(self, text: str, shield_map: dict[str, str], strict: bool = False) -> bool:
-        if not shield_map:
+        if text is None or not shield_map:
             return True
         for placeholder_id in shield_map:
             placeholder_str = f'{{{{_OL_XTAG_{placeholder_id}_}}}}'
