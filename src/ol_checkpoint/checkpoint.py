@@ -22,7 +22,7 @@ class CheckpointManager:
     def __init__(self, checkpoint_path: str, source_path: str | None = None):
         self._path = Path(checkpoint_path)
         self._source_path = Path(source_path) if source_path else None
-        self._lock_path = self._path.with_suffix('.lock')
+        self._lock_path = self._path.parent / (self._path.name + '.lock')
 
     def _compute_hash(self, file_path: Path) -> str:
         h = hashlib.sha256()
@@ -91,22 +91,48 @@ class CheckpointManager:
     def resume(
         self,
         mode: Literal['force', 'merge'],
-    ) -> ResumeResult:
+        data: dict | None = None,
+    ) -> ResumeResult | dict:
         if mode == 'force':
             if self._path.exists():
                 self._path.unlink()
+            if data is not None:
+                return data
             return ResumeResult(mode='force', fresh_start=True, recovered_units=0, warnings=[])
         elif mode == 'merge':
             warnings: list[str] = []
             recovered = 0
-            if self._path.exists():
-                try:
-                    existing = self.load()
-                    recovered = len(existing.get('processed_units', []))
-                except HashMismatchError as e:
-                    raise HashMismatchError(
-                        "Hash mismatch detected. Use --force to restart fresh or --merge to continue anyway.",
-                    ) from e
+            if data is not None:
+                if self._path.exists():
+                    try:
+                        existing = self.load()
+                    except HashMismatchError as e:
+                        raise HashMismatchError(
+                            "Hash mismatch detected. Use --force to restart fresh or --merge to continue anyway.",
+                        ) from e
+                    merged: dict = {**existing, **data}
+                    existing_units = existing.get('processed_units', []) or []
+                    new_units = data.get('processed_units', []) or []
+                    seen: set = set()
+                    merged_units: list = []
+                    for u in list(existing_units) + list(new_units):
+                        if u not in seen:
+                            seen.add(u)
+                            merged_units.append(u)
+                    merged['processed_units'] = merged_units
+                    return merged
+                return data
+            if not self._path.exists():
+                raise FileNotFoundError(
+                    f"Cannot resume in merge mode: checkpoint not found at {self._path}",
+                )
+            try:
+                existing = self.load()
+                recovered = len(existing.get('processed_units', []))
+            except HashMismatchError as e:
+                raise HashMismatchError(
+                    "Hash mismatch detected. Use --force to restart fresh or --merge to continue anyway.",
+                ) from e
             return ResumeResult(mode='merge', fresh_start=False, recovered_units=recovered, warnings=warnings)
         else:
             raise ValueError(f"Invalid resume mode: {mode}. Use 'force' or 'merge'.")
