@@ -10,6 +10,24 @@ from dataclasses import dataclass
 _logger = logging.getLogger("tm")
 
 
+def _ensure_hypomnema_tmxfile() -> None:
+    """Install ``ol_tm._py_tmx.TMXFile`` as ``hypomnema.TMXFile`` if missing.
+
+    ``hypomnema`` 0.8 is a typed domain-model library with no ``TMXFile``
+    class. :class:`TMService` was written against the legacy
+    ``TMXFile(path)`` / ``unit_iterator()`` / ``add_unit()`` / ``write()``
+    API, so we register a pure-Python stub at import time to keep those
+    call sites unchanged. Idempotent; safe under ``monkeypatch``.
+    """
+    import hypomnema
+    if not hasattr(hypomnema, "TMXFile"):
+        from ol_tm import _py_tmx
+        hypomnema.TMXFile = _py_tmx.TMXFile
+
+
+_ensure_hypomnema_tmxfile()
+
+
 def _safe_flush_on_gc(svc: "TMService") -> None:
     """GC-time finalizer for :class:`TMService` instances.
 
@@ -43,6 +61,7 @@ def _file_lock(lock_path: Path, exclusive: bool = True):
     """
     if sys.platform == 'win32':
         import msvcrt
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_file = open(lock_path, 'w')
         try:
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK if exclusive else msvcrt.LK_RLCK, 1)
@@ -52,6 +71,7 @@ def _file_lock(lock_path: Path, exclusive: bool = True):
             lock_file.close()
     else:
         import fcntl
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_file = open(lock_path, 'w')
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
@@ -157,6 +177,12 @@ class TMService:
         lock_path = self._tmx_path.with_suffix('.lock')
         with _file_lock(lock_path, exclusive=True):
             tmx = hypomnema.TMXFile(self._tmx_path)
+            # add_unit() takes (source, target) only; languages must be
+            # set on the file instance for <tuv xml:lang="..."> to round-trip.
+            if self._entries and "-" in self._entries[0].language_pair:
+                src, tgt = self._entries[0].language_pair.split("-", 1)
+                tmx.source_lang = src
+                tmx.target_lang = tgt
             for entry in self._entries:
                 tmx.add_unit(entry.source, entry.target)
             tmx.write()
