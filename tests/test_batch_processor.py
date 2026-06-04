@@ -119,11 +119,17 @@ class TestBatchProcessor:
 
     @pytest.fixture
     def mock_limiter(self):
-        """Create mock ConcurrencyLimiter."""
+        """Create mock ConcurrencyLimiter.
+
+        `__aexit__` must return None/False so exceptions raised inside the
+        `async with` block propagate to the caller. A bare AsyncMock defaults
+        to returning a truthy Mock, which would suppress the exception and
+        break tests that depend on the real failure path (e.g. API errors).
+        """
         limiter = MagicMock()
         limiter.translation = MagicMock()
-        limiter.translation.return_value.__aenter__ = AsyncMock()
-        limiter.translation.return_value.__aexit__ = AsyncMock()
+        limiter.translation.return_value.__aenter__ = AsyncMock(return_value=None)
+        limiter.translation.return_value.__aexit__ = AsyncMock(return_value=None)
         return limiter
 
     @pytest.fixture

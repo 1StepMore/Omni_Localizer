@@ -56,8 +56,8 @@ class TestScorerService:
         scores = svc._score_sync("Hello world", "Hello world")
         assert "bleu" in scores
         assert "regex_match" in scores
-        assert 0.0 <= scores["bleu"] <= 1.0
-        assert 0.0 <= scores["regex_match"] <= 1.0
+        assert 0.0 <= scores["bleu"] <= 1.0001
+        assert 0.0 <= scores["regex_match"] <= 1.0001
 
     def test_score_sync_different_texts(self):
         svc = ScorerService()

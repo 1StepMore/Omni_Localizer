@@ -13,6 +13,10 @@ if sys.platform == 'win32':
     import unittest.mock
     sys.modules['fcntl'] = unittest.mock.MagicMock()
 
+from ol_checkpoint import CheckpointManager
+from ol_checkpoint.exceptions import HashMismatchError
+from ol_tm.service import TMService, TMMatch
+
 
 class TestLQARetryIntegration:
     """Integration tests for LQA scoring triggering retry."""

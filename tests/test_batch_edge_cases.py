@@ -106,7 +106,7 @@ class TestPartialFailures:
     @pytest.fixture
     def mock_partial_pool(self):
         pool = MagicMock()
-        async def translate_with_partial_failure(text, src, tgt):
+        async def translate_with_partial_failure(text, src, tgt, context=None):
             if "Fail" in text:
                 raise RuntimeError("Translation failed for this file")
             return "# Translated content"

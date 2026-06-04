@@ -78,13 +78,13 @@ class TestJudgeService:
 
     def test_weighted_score_calculation(self, judge_service):
         scores = {"adequacy": 10.0, "fluency": 10.0, "terminology_consistency": 10.0, "format_preservation": 10.0}
-        weighted = judge_service._compute_weighted_score(scores)
-        assert weighted == 10.0
+        weighted = judge_service._compute_overall_score(scores)
+        assert abs(weighted - 10.0) < 0.01
 
     def test_weighted_score_partial_criteria(self, judge_service):
         scores = {"adequacy": 10.0, "fluency": 10.0}
-        weighted = judge_service._compute_weighted_score(scores)
-        expected = 10.0 * 0.35 + 10.0 * 0.30
+        weighted = judge_service._compute_overall_score(scores)
+        expected = (10.0 + 10.0) / 2
         assert abs(weighted - expected) < 0.01
 
     @pytest.mark.asyncio

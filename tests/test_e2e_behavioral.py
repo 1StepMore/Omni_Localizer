@@ -130,11 +130,7 @@ class TestOLTranslateXLIFFWithOPPStyle:
 
         # Mock the LLM translation to return predictable results
         def mock_translate(text, src_lang, tgt_lang, context=None):
-            translations = {
-                "E2E Full Chain Testing Document": "E2E 全链路测试文档",
-                "Second paragraph content": "第二段内容",
-            }
-            return translations.get(text, f"[translated: {text}]")
+            return f"[translated: {text}]"
 
         with patch("ol_pool.router.ModelPool.translate", side_effect=mock_translate):
             from ol_mcp.tools import translate_xliff, TranslateXliffInput

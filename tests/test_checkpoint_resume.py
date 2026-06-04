@@ -55,10 +55,8 @@ class TestCheckpointManagerResume:
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_path = Path(tmpdir) / "nonexistent.json"
             mgr = CheckpointManager(str(ckpt_path))
-            result = mgr.resume('merge')
-
-            assert result.fresh_start is False
-            assert result.recovered_units == 0
+            with pytest.raises(FileNotFoundError, match="Cannot resume in merge mode"):
+                mgr.resume('merge')
 
     def test_resume_invalid_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
