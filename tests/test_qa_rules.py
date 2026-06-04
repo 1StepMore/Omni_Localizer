@@ -2,6 +2,8 @@
 
 Tests the selected 5 pofilter rules: accelerators, brackets, printf, variables, xmltags.
 """
+import pytest
+
 from ol_lqa.qa_rules import (
     QARulesChecker,
     QAWarning,
@@ -157,3 +159,20 @@ class TestQARulesChecker:
         warnings = checker.check_unit("Press ~File", "按 ~File", position=0)
         accel_warnings = [w for w in warnings if w.rule_id == "accelerators"]
         assert len(accel_warnings) == 0 or accel_warnings[0].message is not None
+
+    def test_check_unit_false_result_records_warning(self, monkeypatch: pytest.MonkeyPatch):
+        """A pofilter method returning False (no exception) must still record a QAWarning.
+
+        Regression for C8: the previous `if result: continue` branch silently dropped
+        warnings from filters that signal failure by returning False instead of raising.
+        """
+        checker = QARulesChecker()
+        monkeypatch.setattr(checker._checker, "accelerators", lambda s, t: False)
+        warnings = checker.check_unit("Click &File", "点击 File", position=0)
+        accel_warnings = [w for w in warnings if w.rule_id == "accelerators"]
+        assert len(accel_warnings) == 1
+        assert accel_warnings[0].message == "QA rule accelerators did not pass"
+        assert accel_warnings[0].severity == Severity.FUNCTIONAL
+        assert accel_warnings[0].position == 0
+        assert accel_warnings[0].source_segment == "Click &File"
+        assert accel_warnings[0].target_segment == "点击 File"

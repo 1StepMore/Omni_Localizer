@@ -164,9 +164,20 @@ class QARulesChecker:
                 if filter_method is None:
                     continue
                 result = filter_method(source, target)
-                # filter_method returns True if pass, or raises FilterFailure/SeriousFilterFailure
+                # filter_method returns True if pass, returns False on fail (no exception),
+                # or raises FilterFailure/SeriousFilterFailure
                 if result:
                     continue
+                warnings.append(
+                    QAWarning(
+                        rule_id=rule_id,
+                        message=f"QA rule {rule_id} did not pass",
+                        severity=_get_severity(rule_id),
+                        position=position,
+                        source_segment=source,
+                        target_segment=target,
+                    )
+                )
             except FilterFailure as e:
                 warnings.append(
                     QAWarning(
