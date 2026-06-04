@@ -1,5 +1,4 @@
 """Logging module."""
-
 from .constants import (
     BACKUP_COUNT,
     DEBUG,
@@ -12,6 +11,7 @@ from .constants import (
     MAX_BYTES,
     WARNING,
 )
+from .core import get_logger, init_logger, is_initialized
 
 __all__ = [
     "BACKUP_COUNT",
@@ -23,6 +23,8 @@ __all__ = [
     "LOG_DIR_ENV",
     "LOG_FILE_PATTERN",
     "LOG_LEVEL_ENV",
-    "MAX_BYTES",
     "WARNING",
+    "get_logger",
+    "init_logger",
+    "is_initialized",
 ]
