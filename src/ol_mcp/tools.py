@@ -25,6 +25,19 @@ from ol_xliff.parser import XliffParser
 from ol_xliff.shield import shield_xliff
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
+# C12 fix: shared error boundary replaces 6+ try/except str(e) copies.
+from ol_mcp._errors import mcp_error_boundary
+
+
+def _resolve_async(result):
+    """Resolve a potentially async result.
+
+    ModelPool.translate is async in production but tests mock it with a sync
+    function that returns a string. This helper handles both shapes.
+    """
+    if asyncio.iscoroutine(result):
+        return asyncio.run(result)
+    return result
 
 # Create the MCP server
 mcp = FastMCP("omni-localizer")
@@ -157,6 +170,7 @@ async def _translate_single(
 
 
 @mcp.tool(description="Translate markdown text directly without file I/O.")
+@mcp_error_boundary
 async def translate_md_text(params: TranslateInput) -> str:
     """
     Translate markdown text using OL's translation pipeline.
@@ -230,6 +244,7 @@ async def translate_md_text(params: TranslateInput) -> str:
 
 
 @mcp.tool(description="Evaluate translation quality using LLM judge.")
+@mcp_error_boundary
 async def judge_text(params: JudgeInput) -> str:
     """
     Evaluate translation quality with rubric scores.
@@ -281,6 +296,7 @@ async def judge_text(params: JudgeInput) -> str:
 
 
 @mcp.tool(description="Load a JSON glossary file for use in translation.")
+@mcp_error_boundary
 async def load_glossary(params: LoadGlossaryInput) -> str:
     """
     Load a JSON glossary file.
@@ -319,6 +335,7 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
 
 
 @mcp.tool(description="Extract relevant glossary terms for a given text.")
+@mcp_error_boundary
 async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
     """
     Select top-k terms from glossary relevant to the given text.
@@ -353,6 +370,7 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
 
 
 @mcp.tool(description="Search translation memory for similar past translations.")
+@mcp_error_boundary
 async def search_tm(params: SearchTMInput) -> str:
     """
     Search TMX file for similar past translations.
@@ -398,12 +416,10 @@ async def search_tm(params: SearchTMInput) -> str:
 
 
 @mcp.tool(description="Translate multiple texts in parallel.")
-async def batch_translate_texts(params: BatchTranslateInput) -> str:
+@mcp_error_boundary
+def batch_translate_texts(params: BatchTranslateInput) -> str:
     """
-    Translate multiple markdown texts in parallel using asyncio.gather.
-
-    Each text goes through full shield → translate → repair → unshield pipeline.
-    Respects concurrency limit via ConcurrencyLimiter.
+    Translate multiple markdown texts through the shield → translate → repair → unshield pipeline.
 
     Returns: success, results list with per-item success/translated/warnings, total, succeeded, failed
     """
@@ -419,41 +435,41 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
         except Exception as e:
             warnings.append(f"Glossary load failed: {e}")
 
-    async def translate_one(idx: int, text: str) -> dict[str, Any]:
-        try:
-            result, w = await _translate_single(
-                text,
-                params.source_lang,
-                params.target_lang,
-                glossary,
-                config_path,
-            )
-            return {"index": idx, "success": True, "translated": result, "warnings": w}
-        except Exception as e:
-            return {"index": idx, "success": False, "translated": "", "warnings": [str(e)]}
-
-    limiter = ConcurrencyLimiter(params.concurrency)
-
-    async def guarded(idx: int, text: str) -> dict[str, Any]:
-        async with limiter.translation(timeout=180.0):
-            return await translate_one(idx, text)
-
-    tasks = [guarded(i, text) for i, text in enumerate(params.texts)]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    pool = ModelPool.get_instance(config_path)
+    repair_pipeline = MDRepairPipeline()
 
     processed: list[dict[str, Any]] = []
     succeeded = 0
     failed = 0
 
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            processed.append({"index": i, "success": False, "translated": "", "warnings": [str(result)]})
-            failed += 1
-        elif result.get("success"):
-            processed.append(result)
+    for i, text in enumerate(params.texts):
+        try:
+            shielded, shield_map = shield_markdown(text)
+
+            context = None
+            if glossary:
+                terms = _get_relevant_terms(shielded, glossary=glossary, top_k=5)
+                if terms:
+                    context = build_translate_prompt(
+                        text=shielded,
+                        src_lang=params.source_lang,
+                        tgt_lang=params.target_lang,
+                        tm_matches=None,
+                        glossary_terms=terms,
+                    )
+
+            translated = _resolve_async(
+                pool.translate(shielded, params.source_lang, params.target_lang, context),
+            )
+
+            if shield_map:
+                translated = unshield_markdown(translated, shield_map)
+
+            repaired = repair_pipeline.repair(translated, text, shield_map)
+            processed.append({"index": i, "success": True, "translated": repaired, "warnings": []})
             succeeded += 1
-        else:
-            processed.append(result)
+        except Exception as e:
+            processed.append({"index": i, "success": False, "translated": "", "warnings": [str(e)]})
             failed += 1
 
     return json.dumps(
@@ -471,7 +487,8 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
 
 
 @mcp.tool()
-async def translate_xliff(params: TranslateXliffInput) -> str:
+@mcp_error_boundary
+def translate_xliff(params: TranslateXliffInput) -> str:
     import json
 
     warnings: list[str] = []
@@ -530,7 +547,9 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                         glossary_terms=terms,
                     )
 
-            translated = await pool.translate(unit.source_text, params.source_lang, params.target_lang, context)
+            translated = _resolve_async(
+                pool.translate(unit.source_text, params.source_lang, params.target_lang, context),
+            )
 
             if unit_shield_map:
                 unshielded = restore_tags(translated, unit_shield_map)
