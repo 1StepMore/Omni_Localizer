@@ -1,8 +1,33 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import hypomnema
+import pytest
 
 from ol_tm.service import TMMatch, TMService
+
+
+_TMX_PATHS = [
+    "/tmp/test.tmx",
+    "/tmp/test_new.tmx",
+    "/tmp/test_empty.tmx",
+    "/tmp/test_threshold.tmx",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clean_tmx_files():
+    """Remove stale TMX files left by previous test runs.
+
+    Several tests in this module use hardcoded /tmp/*.tmx paths. If a
+    previous run wrote entries to those files (via TMService's weakref
+    finalizer on GC), subsequent runs would load those entries in
+    ``_load()`` and inflate ``_entries`` count. This fixture ensures
+    each test starts with a clean slate.
+    """
+    for p in _TMX_PATHS:
+        Path(p).unlink(missing_ok=True)
+    yield
 
 
 class TestTMMatch:
@@ -15,6 +40,31 @@ class TestTMMatch:
 
 
 class TestTMService:
+    @pytest.fixture(autouse=True)
+    def _mock_embedding_model(self, monkeypatch):
+        """Stub out the sentence-transformers model and cosine sim.
+
+        ``TMService._get_model()`` calls ``SentenceTransformer(...)`` which
+        downloads a 470MB model on first use. We don't need the real
+        embedding for these tests: each test sets ``svc._entries`` with
+        hard-coded ``similarity`` values and asserts the search/threshold/
+        sort logic on those. So we patch ``_get_model`` to return a fake
+        model whose ``encode()`` returns placeholder vectors, and we
+        patch ``_cosine_sim`` to return the entries' own similarity
+        values verbatim. The downstream sort/threshold logic then runs
+        on deterministic, test-controlled data.
+        """
+        def _mock_get_model(self):
+            m = MagicMock()
+            m.encode = lambda texts: [[1.0, 0.0, 0.0] for _ in texts]
+            return m
+
+        def _mock_cosine_sim(self, source_emb, target_embs):
+            return [e.similarity for e in self._entries]
+
+        monkeypatch.setattr(TMService, "_get_model", _mock_get_model)
+        monkeypatch.setattr(TMService, "_cosine_sim", _mock_cosine_sim)
+
     def test_init_default_model(self):
         svc = TMService("/tmp/test.tmx")
         assert svc._embedding_model == "paraphrase-multilingual-MiniLM-L12-v2"
