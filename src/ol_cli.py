@@ -236,6 +236,40 @@ def output_json(
     typer.echo(json.dumps(result, ensure_ascii=False))
 
 
+def _apply_fake_llm_seam() -> None:
+    """Test seam: when OMNI_TEST_FAKE_LLM=1, also stub ``span_aligner``.
+
+    The OMNI_TEST_FAKE_LLM seam short-circuits the LLM call
+    (``ModelPool.translate``) but does not cover the post-translation
+    MD repair pipeline. Level 2 of that pipeline imports
+    ``span_aligner.SpanProjector``, which constructs a HF transformer
+    (``bert-base-multilingual-cased``) — that fails in hermetic CI
+    (no API keys, no HF network).
+
+    This helper installs a lightweight ``sys.modules['span_aligner']``
+    stub whose ``SpanProjector.project`` is identity and ``align`` /
+    ``align_spans`` return ``[]``. Idempotent: re-running it is a
+    no-op (we mark the stub with a sentinel attribute).
+
+    See ``docs/T14_LIMITATION.md`` for the full T14 history.
+    """
+    import sys as _seam_sys
+    from unittest.mock import MagicMock as _SeamMagicMock
+
+    existing = _seam_sys.modules.get("span_aligner")
+    if existing is not None and getattr(existing, "_omni_fake_seam", False):
+        return
+
+    _span_mod = _SeamMagicMock()
+    _span_mod.SpanProjector = lambda *a, **k: _SeamMagicMock(
+        project=lambda text, *a, **k: text,
+        align=lambda *a, **k: [],
+    )
+    _span_mod.align_spans = lambda *a, **k: []
+    _span_mod._omni_fake_seam = True
+    _seam_sys.modules["span_aligner"] = _span_mod
+
+
 async def _translate_md_async(
     input_path: Path,
     output_path: Path,
@@ -253,6 +287,7 @@ async def _translate_md_async(
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
         pool = _FakeModelPool()
+        _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
         pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
@@ -385,6 +420,7 @@ async def _translate_xliff_async(
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
         pool = _FakeModelPool()
+        _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
         pool = ModelPool.get_instance(
