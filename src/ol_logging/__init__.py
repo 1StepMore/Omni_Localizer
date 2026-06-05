@@ -23,6 +23,7 @@ __all__ = [
     "LOG_DIR_ENV",
     "LOG_FILE_PATTERN",
     "LOG_LEVEL_ENV",
+    "MAX_BYTES",
     "WARNING",
     "get_logger",
     "init_logger",

@@ -428,7 +428,6 @@ async def _translate_xliff_async(
         )
 
     from ol_xliff.parser import XliffParser
-    from ol_xliff.pipeline import XLIFFRepairPipeline
     from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
 

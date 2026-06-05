@@ -13,9 +13,7 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
@@ -34,7 +32,6 @@ class TestOLErrorBoundary:
         """A tool that raises a low-level exception must return an opaque
         error code; the original message must not appear in the response.
         """
-        from ol_mcp import _errors
         from ol_mcp._errors import mcp_error_boundary
 
         # Define a fake tool decorated with mcp_error_boundary
@@ -55,7 +52,6 @@ class TestOLErrorBoundary:
 
     def test_ol_error_boundary_returns_stable_error_code(self):
         """The same exception class should map to the same error_code."""
-        from ol_mcp import _errors
         from ol_mcp._errors import mcp_error_boundary
 
         @mcp_error_boundary

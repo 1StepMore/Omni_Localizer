@@ -126,7 +126,7 @@ class TestOLTranslateXLIFFWithOPPStyle:
         This is the core test for Bug #2 - verify that after translation,
         the output XLIFF has <target> elements with translated content.
         """
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         # Mock the LLM translation to return predictable results
         def mock_translate(text, src_lang, tgt_lang, context=None):
@@ -172,7 +172,7 @@ class TestOLTranslateXLIFFWithOPPStyle:
 
         This tests the CLI path (load_xliff) to ensure _ensure_target_tags works.
         """
-        from ol_buses.xliff_bus import load_xliff, write_target_back, _ensure_target_tags
+        from ol_buses.xliff_bus import load_xliff, _ensure_target_tags
 
         # Test _ensure_target_tags directly
         content = opp_style_xliff.read_text(encoding="utf-8")
@@ -315,4 +315,4 @@ class TestOLAssembledDocumentSeparator:
         # Verify all chunks are present
         for text in texts:
             assert text[:20] in assembled or f"[T:{text[:20]}" in assembled, \
-                f"Chunk not found in assembled_document"
+                "Chunk not found in assembled_document"

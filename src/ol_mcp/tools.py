@@ -14,7 +14,6 @@ _logger = logging.getLogger(__name__)
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
-from ol_concurrency.scheduler import ConcurrencyLimiter
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
@@ -22,7 +21,6 @@ from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, l
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_tm.service import TMService
 from ol_xliff.parser import XliffParser
-from ol_xliff.shield import shield_xliff
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
 # C12 fix: shared error boundary replaces 6+ try/except str(e) copies.
