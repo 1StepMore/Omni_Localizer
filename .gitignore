@@ -67,6 +67,14 @@ config/local.yaml
 config/local.*.yaml
 config/secret.yaml
 config/production.yaml
+# Per-project book configs (added after May 2026 leak; these were the source
+# of the C2 finding. Pattern matches book_localization.yaml and any
+# future book_*.yaml that holds real LLM keys.)
+config/book_localization.yaml
+config/book_*.yaml
+# Per-test local overrides (e.g., test_local.yaml with real keys for one-shot runs)
+config/test_local.yaml
+config/test_local.*.yaml
 
 # Local scripts (template versions tracked, secrets set via env vars)
 test_en_to_zh.bat
