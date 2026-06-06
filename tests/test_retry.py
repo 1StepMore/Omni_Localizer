@@ -166,3 +166,87 @@ class TestRetryManager:
             f"Got {result.attempts} attempts. Pre-fix this was unreachable."
         )
         assert result.warning == "OL_WARN: Low_Score"
+
+    @pytest.mark.asyncio
+    async def test_translate_fn_transport_error_does_not_drop_unit(self):
+        """A8 verification: a transport error in translate_fn does NOT drop
+        the unit silently. RetryResult.transport_error=True, best_translation
+        falls back to source_text, warning contains 'OL_WARN: TRANSLATION_FAILED'.
+
+        Pin the OL-4 wrap in retry.py:38-56 so future refactors can't
+        silently regress to a string-only return.
+        """
+        import asyncio
+        mgr = RetryManager(max_retries=2, pass_threshold=7.0)
+
+        async def translate():
+            raise asyncio.TimeoutError("upstream API timed out after 60s")
+
+        async def judge(source, target, unit_id):
+            return EvaluationResult(
+                unit_id=unit_id, scorer_scores={},
+                judge_scores={"adequacy": 8.0, "fluency": 8.0},
+                format_preserved=True, format_errors=[], warnings=[],
+            )
+
+        result = await mgr.execute_with_retry(
+            "u1", "ORIGINAL_SOURCE_TEXT", translate, judge
+        )
+        assert result.transport_error is True, (
+            "translate_fn raised but transport_error is False; unit silently dropped"
+        )
+        assert result.best_translation == "ORIGINAL_SOURCE_TEXT", (
+            f"best_translation should fall back to source, got {result.best_translation!r}"
+        )
+        assert result.warning is not None
+        assert "OL_WARN: TRANSLATION_FAILED" in result.warning
+        assert "TimeoutError" in result.warning
+
+    @pytest.mark.asyncio
+    async def test_translate_fn_transport_error_propagates_via_a2_gather(self):
+        """A8 verification: in an A2-style asyncio.gather, one unit's transport
+        error does not abort the other units. The failed unit's result has
+        transport_error=True; the other units translate normally.
+        """
+        import asyncio
+        mgr = RetryManager(max_retries=0, pass_threshold=7.0)
+        texts = ["alpha", "fail-1", "beta", "fail-2", "gamma"]
+
+        async def translate_one(text):
+            async def translate():
+                if "fail" in text:
+                    raise asyncio.TimeoutError(f"timeout for {text!r}")
+                return f"TRANSLATED({text})"
+
+            async def judge(source, target, unit_id):
+                return EvaluationResult(
+                    unit_id=unit_id, scorer_scores={},
+                    judge_scores={"adequacy": 8.0, "fluency": 8.0},
+                    format_preserved=True, format_errors=[], warnings=[],
+                )
+
+            return await mgr.execute_with_retry(
+                f"u_{text}", text, translate, judge
+            )
+
+        results = await asyncio.gather(
+            *[translate_one(t) for t in texts], return_exceptions=True
+        )
+
+        succeeded = [r for r in results if isinstance(r, RetryResult) and not r.transport_error]
+        failed = [r for r in results if isinstance(r, RetryResult) and r.transport_error]
+        raised = [r for r in results if isinstance(r, Exception)]
+
+        assert len(succeeded) == 3, (
+            f"Expected 3 successful translates, got {len(succeeded)}. results={results!r}"
+        )
+        assert len(failed) == 2, (
+            f"Expected 2 transport_error RetryResults, got {len(failed)}"
+        )
+        assert len(raised) == 0, (
+            f"translate_fn raised should NOT propagate as Exception (A8 wrap); "
+            f"got {len(raised)} exceptions: {raised!r}"
+        )
+        for r in failed:
+            assert r.best_translation in texts
+            assert "OL_WARN: TRANSLATION_FAILED" in r.warning
