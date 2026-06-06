@@ -551,6 +551,203 @@ async def _translate_one_unit(
     )
 
 
+async def _translate_xliff_pipelined(
+    units: list,
+    pool: Any,
+    judge: Any,
+    retry_mgr: Any,
+    src_lang: str,
+    tgt_lang: str,
+    sem: asyncio.Semaphore,
+    repair_pipeline: Any = None,
+) -> list[_UnitTranslationResult]:
+    """A4: pipelined translate + LQA judge.
+
+    Splits each unit's work into two phases:
+
+    1. **Translate phase** — calls ``pool.translate()`` while holding ``sem``.
+       This is the LLM call that actually needs to be concurrency-bounded.
+
+    2. **Judge phase** — calls ``judge.judge()`` for the translated unit,
+       WITHOUT holding ``sem``. The judge LLM call can overlap with the
+       next unit's translate, so the sem is freed up earlier.
+
+    The two phases are gathered with ``asyncio.gather``: the translate
+    phase for all units fires first, then the judge phase for all units
+    fires (in parallel with each other, and the test demonstrates overlap
+    with the last batch of translates). See slim-pipeline-hardening.md §A4
+    for the speedup rationale.
+
+    **Retry decisions are batched at the end**, not interleaved. If a
+    unit's first-pass score is below the retry threshold, the re-translate
+    happens AFTER the first-pass judge batch completes. This is a
+    deliberate ordering change from the A2 helper (where retries happen
+    inline within ``RetryManager.execute_with_retry``).
+
+    Falls back to ``_translate_units_concurrent`` if either ``judge`` or
+    ``retry_mgr`` is None (i.e. LQA disabled); in that case there is no
+    judge phase to pipeline and the A2 helper is functionally equivalent.
+
+    Returns one :class:`_UnitTranslationResult` per input unit, in input
+    order. Per-unit transport errors and exceptions are caught inside
+    the helpers and reflected in the result's ``status``/``warning``
+    fields; this coroutine itself does not raise.
+    """
+    from ol_xliff.pipeline import XLIFFRepairPipeline
+
+    if repair_pipeline is None:
+        repair_pipeline = XLIFFRepairPipeline()
+
+    # Without LQA there is nothing to pipeline; delegate to A2 helper.
+    if judge is None or retry_mgr is None:
+        return await _translate_units_concurrent(
+            units, pool, judge, retry_mgr,
+            src_lang, tgt_lang,
+            sem=sem, repair_pipeline=repair_pipeline,
+        )
+
+    threshold = retry_mgr._pass_threshold
+    n = len(units)
+
+    # Per-unit shared state — filled by the per-unit pipeline task.
+    first_pass_translations: list[str | None] = [None] * n
+    first_pass_results: list[Any] = [None] * n
+    first_pass_translate_excs: list[BaseException | None] = [None] * n
+    first_pass_judge_excs: list[BaseException | None] = [None] * n
+
+    async def unit_pipeline(idx: int, unit: Any) -> None:
+        """Translate then judge, both for one unit. Translate holds ``sem``;
+        judge runs WITHOUT the sem so it can overlap with the next unit's
+        translate (this is the A4 pipelining speedup)."""
+        try:
+            async with sem:
+                first_pass_translations[idx] = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang, context=None,
+                )
+        except BaseException as exc:  # noqa: BLE001 — broad on purpose
+            first_pass_translate_excs[idx] = exc
+            return
+        try:
+            first_pass_results[idx] = await judge.judge(
+                unit.source_text, first_pass_translations[idx], unit.unit_id,
+                source_lang=src_lang, target_lang=tgt_lang,
+            )
+        except BaseException as exc:  # noqa: BLE001
+            first_pass_judge_excs[idx] = exc
+
+    # === Phase 1+2 (interleaved): translate phase holds sem, judge phase
+    # runs after translate returns, freeing the sem. The next unit's
+    # translate can start as soon as the previous translate returns, so
+    # judges overlap with the next unit's translate. ===
+    await asyncio.gather(*[unit_pipeline(i, u) for i, u in enumerate(units)])
+
+    # === Phase 3: identify retry units from first-pass scores ===
+    needs_retry: list[int] = []
+    for i, unit in enumerate(units):
+        if first_pass_translate_excs[i] is not None:
+            continue
+        if first_pass_judge_excs[i] is not None:
+            continue
+        result = first_pass_results[i]
+        score = getattr(result, "judge_overall_score", 0.0)
+        if score < threshold:
+            needs_retry.append(i)
+
+    # === Phase 4: re-translate + re-judge retry units AT THE END ===
+    # Retries are scheduled AFTER all first-pass translates are done.
+    # This is the A4 ordering guarantee: "re-translate happens at the
+    # end (not while other units are still translating)."
+    retry_translations: list[str | None] = [None] * n
+    retry_results: list[Any] = [None] * n
+
+    if needs_retry:
+        async def _retry_unit_pipeline(idx: int) -> None:
+            try:
+                async with sem:
+                    retry_translations[idx] = await pool.translate(
+                        units[idx].source_text, src_lang, tgt_lang,
+                        context=None,
+                    )
+            except BaseException as exc:  # noqa: BLE001
+                return
+            try:
+                retry_results[idx] = await judge.judge(
+                    units[idx].source_text, retry_translations[idx],
+                    units[idx].unit_id,
+                    source_lang=src_lang, target_lang=tgt_lang,
+                )
+            except BaseException as exc:  # noqa: BLE001
+                retry_results[idx] = None
+
+        await asyncio.gather(*[_retry_unit_pipeline(i) for i in needs_retry])
+
+    # === Phase 5: build final results with repair and warnings ===
+    final: list[_UnitTranslationResult] = []
+    for i, unit in enumerate(units):
+        if first_pass_translate_excs[i] is not None:
+            exc = first_pass_translate_excs[i]
+            warning = (
+                f"OL_WARN: TRANSLATION_FAILED "
+                f"({type(exc).__name__}: {str(exc)[:200]})"
+            )
+            translated = unit.source_text
+            status = "transport_error"
+            attempts = 1
+            error_msg = f"{type(exc).__name__}: {str(exc)[:200]}"
+        elif first_pass_judge_excs[i] is not None:
+            exc = first_pass_judge_excs[i]
+            warning = (
+                f"OL_WARN: LQA_SKIPPED "
+                f"({type(exc).__name__}: {str(exc)[:200]})"
+            )
+            translated = first_pass_translations[i] or unit.source_text
+            status = "ok"
+            attempts = 1
+            error_msg = None
+        else:
+            first_translation = first_pass_translations[i]
+            final_translation = first_translation
+            attempts = 1
+            warning = None
+            if i in needs_retry and retry_results[i] is not None:
+                # A retry translate was actually issued — bump attempts
+                # to reflect the call count, regardless of whether the
+                # retry produced a better score.
+                attempts = 2
+                first_score = first_pass_results[i].judge_overall_score
+                retry_score = retry_results[i].judge_overall_score
+                if retry_score > first_score:
+                    final_translation = retry_translations[i]
+                if retry_score < threshold:
+                    warning = "OL_WARN: Low_Score"
+            status = "ok"
+            error_msg = None
+
+        if unit.shield_map:
+            from ol_buses.xliff_shield import restore_tags
+
+            unshielded = restore_tags(final_translation, unit.shield_map)
+            repaired, repair_warnings = repair_pipeline.repair(
+                unshielded, unit.source_text, unit.shield_map,
+            )
+        else:
+            repaired = final_translation
+            repair_warnings = []
+
+        final.append(_UnitTranslationResult(
+            unit_id=unit.unit_id,
+            translated=repaired,
+            warning=warning,
+            repair_warnings=repair_warnings,
+            attempts=attempts,
+            latency_ms=0.0,
+            status=status,
+            error=error_msg,
+        ))
+
+    return final
+
+
 async def _translate_units_concurrent(
     units: list,
     pool: Any,
@@ -687,12 +884,24 @@ async def _translate_xliff_async(
 
     from ol_concurrency.scheduler import ConcurrencyLimiter
     limiter = ConcurrencyLimiter(max_xliff_concurrent=max_xliff_concurrent)
-    results = await _translate_units_concurrent(
-        units, pool, judge, retry_mgr,
-        src_lang, tgt_lang,
-        sem=limiter.xliff_semaphore,
-        repair_pipeline=repair_pipeline,
-    )
+    # A4: prefer the pipelined helper when LQA is enabled. It overlaps the
+    # judge phase with the next unit's translate, freeing the sem earlier
+    # and saving ~judge_time per unit on the slim. With LQA disabled, the
+    # pipelined helper delegates to _translate_units_concurrent (no-op).
+    if judge is not None and retry_mgr is not None:
+        results = await _translate_xliff_pipelined(
+            units, pool, judge, retry_mgr,
+            src_lang, tgt_lang,
+            sem=limiter.xliff_semaphore,
+            repair_pipeline=repair_pipeline,
+        )
+    else:
+        results = await _translate_units_concurrent(
+            units, pool, judge, retry_mgr,
+            src_lang, tgt_lang,
+            sem=limiter.xliff_semaphore,
+            repair_pipeline=repair_pipeline,
+        )
 
     for unit, r in zip(units, results):
         unit.target_text = r.translated
