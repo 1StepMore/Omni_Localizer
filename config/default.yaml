@@ -4,15 +4,26 @@ target_lang: "zh"
 glossary_path: null
 llm_pool:
   translation:
+    # A5 — slim-pipeline-hardening. M2.7 swap: add MiniMax-M2.7 as priority 1,
+    # demote MiniMax-M3 to priority 2 (was primary), demote ernie-4.5-turbo-32k
+    # to priority 3 (was fallback). M3 remains reachable for automatic failover.
+    # DORMANT until calibration passes — see .omo/plans/slim-pipeline-hardening.md
+    # section A5. The real-LLM calibration run is a follow-up operational task.
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
       api_key: null
-      base_url: null  # Optional: "${OPENAI_BASE_URL}" for proxies
+      base_url: null  # Optional: "${MINIMAX_BASE_URL}" for proxies
     - provider: "openai"
-      model: "gpt-4o"
+      model: "MiniMax-M3"
       priority: 2
+      role: "translation"
+      api_key: null
+      base_url: null
+    - provider: "openai"
+      model: "ernie-4.5-turbo-32k"
+      priority: 3
       role: "translation"
       api_key: null
       base_url: null
