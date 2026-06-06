@@ -18,9 +18,19 @@ class ConcurrencyLimiter:
     Concurrency is enforced exclusively by :class:`asyncio.Semaphore`. The
     semaphores are the source of truth for slot accounting; no auxiliary
     tracking structure is needed.
+
+    ``max_xliff_concurrent`` adds a third semaphore dedicated to
+    per-trans-unit translation in the XLIFF gather path
+    (``_translate_units_concurrent`` in ol_cli.py). Default 20 strikes a
+    balance between throughput and provider rate-limit tolerance.
     """
 
-    def __init__(self, max_translation: int = 10, max_scoring: int = 5):
+    def __init__(
+        self,
+        max_translation: int = 10,
+        max_scoring: int = 5,
+        max_xliff_concurrent: int = 20,
+    ):
         # C14 fix: the previous implementation also created an unbounded
         # ``asyncio.Queue`` per role and pushed ``None`` on every acquisition
         # (with a racy ``get_nowait()`` in ``finally``). That queue was
@@ -29,6 +39,18 @@ class ConcurrencyLimiter:
         # queue has been removed entirely.
         self._translation_sem = asyncio.Semaphore(max_translation)
         self._scoring_sem = asyncio.Semaphore(max_scoring)
+        self._xliff_sem = asyncio.Semaphore(max_xliff_concurrent)
+        self.max_xliff_concurrent = max_xliff_concurrent
+
+    @property
+    def xliff_semaphore(self) -> asyncio.Semaphore:
+        """The raw XLIFF semaphore for callers that want direct acquire/release.
+
+        Production code (``_translate_units_concurrent``) wraps the
+        semaphore directly; ``xliff()`` is the context-manager entry
+        point for code that wants timeout + QueueTimeoutError semantics.
+        """
+        return self._xliff_sem
 
     @asynccontextmanager
     async def translation(self, timeout: float | None = None):
@@ -59,6 +81,21 @@ class ConcurrencyLimiter:
             raise QueueTimeoutError(f"Scoring slot wait timed out after {timeout}s")
         finally:
             self._scoring_sem.release()
+
+    @asynccontextmanager
+    async def xliff(self, timeout: float | None = None):
+        """Acquire XLIFF gather slot. Blocks if full, times out if wait exceeds timeout."""
+        try:
+            if timeout is not None:
+                async with asyncio.timeout(timeout):
+                    await self._xliff_sem.acquire()
+            else:
+                await self._xliff_sem.acquire()
+            yield
+        except TimeoutError:
+            raise QueueTimeoutError(f"XLIFF slot wait timed out after {timeout}s")
+        finally:
+            self._xliff_sem.release()
 
     @asynccontextmanager
     async def with_timeout(self, timeout: float):

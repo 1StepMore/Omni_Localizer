@@ -4,6 +4,8 @@ import asyncio
 import re
 import signal
 import sys
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 # ========== OL Frontmatter Support ==========
@@ -420,6 +422,201 @@ def _load_dotenv(env_path: Path) -> None:
         pass
 
 
+@dataclass
+class _UnitTranslationResult:
+    """Pure-data result of translating a single trans-unit.
+
+    Produced by :func:`_translate_units_concurrent`; the caller applies
+    the ``translated`` field to the ``TranslationUnit.target_text`` and
+    merges the warnings into ``warnings_per_unit``. Decoupling the
+    per-unit work from the side-effect (mutating the unit) keeps the
+    helper testable.
+    """
+
+    unit_id: str
+    translated: str
+    warning: str | None = None
+    repair_warnings: list[str] = field(default_factory=list)
+    attempts: int = 0
+    latency_ms: float = 0.0
+    status: str = "ok"
+    error: str | None = None
+
+
+async def _translate_one_unit(
+    unit: Any,
+    pool: Any,
+    judge: Any,
+    retry_mgr: Any,
+    src_lang: str,
+    tgt_lang: str,
+    sem: asyncio.Semaphore,
+    repair_pipeline: Any,
+) -> _UnitTranslationResult:
+    """Translate one trans-unit, gated by ``sem``.
+
+    Per-unit error handling: A8's retry wrap (in ``ol_retry/retry.py``)
+    converts transport errors from ``translate_fn`` into a
+    ``RetryResult(transport_error=True)``, which we surface as
+    ``status="transport_error"`` with the OPP source as the fallback
+    translation. As a defense in depth, an unexpected exception is also
+    caught here and reported as ``status="exception"`` — the gather
+    itself never raises.
+    """
+    start = time.monotonic()
+    warning: str | None = None
+    translated = unit.source_text
+    attempts = 0
+    status = "ok"
+    error_msg: str | None = None
+
+    try:
+        async with sem:
+            if judge is not None and retry_mgr is not None:
+                async def translate_fn():
+                    return await pool.translate(
+                        unit.source_text, src_lang, tgt_lang, context=None,
+                    )
+
+                async def judge_fn(source, translation, unit_id):
+                    return await judge.judge(
+                        source, translation, unit_id,
+                        source_lang=src_lang, target_lang=tgt_lang,
+                    )
+
+                retry_result = await retry_mgr.execute_with_retry(
+                    f"xliff_unit_{unit.unit_id}",
+                    unit.source_text,
+                    translate_fn,
+                    judge_fn,
+                )
+                translated = retry_result.best_translation
+                attempts = retry_result.attempts
+                if retry_result.warning:
+                    warning = retry_result.warning
+                    logger.warning(
+                        f"LQA unit {unit.unit_id}: {retry_result.warning}"
+                    )
+                if retry_result.transport_error:
+                    status = "transport_error"
+            else:
+                translated = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang, context=None,
+                )
+                attempts = 1
+    except Exception as translate_err:
+        # Defense in depth: even with the A8 retry wrap, judge_fn can
+        # raise before the wrap catches it. Fall back to OPP source so
+        # the chunk process never dies.
+        warning = (
+            f"OL_WARN: TRANSLATION_FAILED ({type(translate_err).__name__}: "
+            f"{str(translate_err)[:100]})"
+        )
+        translated = unit.source_text
+        status = "exception"
+        error_msg = f"{type(translate_err).__name__}: {str(translate_err)[:200]}"
+        logger.warning(
+            f"Unit {unit.unit_id} translation failed: "
+            f"{type(translate_err).__name__}. Using OPP source as fallback."
+        )
+
+    latency_ms = (time.monotonic() - start) * 1000.0
+    # Structured per-unit log so concurrent output stays correlatable
+    # (unit_id is the join key for grep).
+    logger.info(
+        f"xliff_unit_done unit_id={unit.unit_id} "
+        f"attempt={attempts} latency_ms={latency_ms:.1f} status={status}"
+    )
+
+    if unit.shield_map:
+        from ol_buses.xliff_shield import restore_tags
+
+        unshielded = restore_tags(translated, unit.shield_map)
+        repaired, repair_warnings = repair_pipeline.repair(
+            unshielded, unit.source_text, unit.shield_map,
+        )
+    else:
+        repaired = translated
+        repair_warnings = []
+
+    return _UnitTranslationResult(
+        unit_id=unit.unit_id,
+        translated=repaired,
+        warning=warning,
+        repair_warnings=repair_warnings,
+        attempts=attempts,
+        latency_ms=latency_ms,
+        status=status,
+        error=error_msg,
+    )
+
+
+async def _translate_units_concurrent(
+    units: list,
+    pool: Any,
+    judge: Any,
+    retry_mgr: Any,
+    src_lang: str,
+    tgt_lang: str,
+    sem: asyncio.Semaphore,
+    repair_pipeline: Any = None,
+) -> list[_UnitTranslationResult]:
+    """Translate all trans-units concurrently, capped by ``sem``.
+
+    Replaces the serial ``for unit in units: await translate_one(unit)``
+    loop with ``asyncio.gather(*tasks, return_exceptions=True)`` to fire
+    multiple LLM calls at once. The caller supplies the bounded
+    ``asyncio.Semaphore`` so the concurrency cap lives in
+    :class:`ol_concurrency.scheduler.ConcurrencyLimiter` (single owner
+    of all concurrency knobs).
+
+    Returns one :class:`_UnitTranslationResult` per input unit, in
+    **input order** (gather preserves order, not ``as_completed``). The
+    gather itself only raises on a programming error; per-unit transport
+    errors and exceptions are caught inside ``_translate_one_unit`` and
+    reflected in the result's ``status``/``warning`` fields.
+    """
+    from ol_xliff.pipeline import XLIFFRepairPipeline
+
+    if repair_pipeline is None:
+        repair_pipeline = XLIFFRepairPipeline()
+
+    tasks = [
+        asyncio.create_task(
+            _translate_one_unit(
+                u, pool, judge, retry_mgr,
+                src_lang, tgt_lang, sem, repair_pipeline,
+            )
+        )
+        for u in units
+    ]
+    gather_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    final: list[_UnitTranslationResult] = []
+    for unit, result in zip(units, gather_results):
+        if isinstance(result, BaseException):
+            # Should be unreachable because _translate_one_unit catches
+            # everything, but record defensively so a future refactor
+            # cannot silently drop a unit.
+            warning = (
+                f"OL_WARN: TRANSLATION_FAILED ({type(result).__name__}: "
+                f"{str(result)[:100]})"
+            )
+            final.append(_UnitTranslationResult(
+                unit_id=unit.unit_id,
+                translated=unit.source_text,
+                warning=warning,
+                status="exception",
+                error=f"{type(result).__name__}: {str(result)[:200]}",
+            ))
+            logger.error(
+                f"Unit {unit.unit_id} unexpected exception in gather: {result}"
+            )
+            continue
+        final.append(result)
+    return final
+
+
 async def _translate_xliff_async(
     input_path: Path,
     output_path: Path,
@@ -475,71 +672,36 @@ async def _translate_xliff_async(
 
     repair_pipeline = XLIFFRepairPipeline()
 
+    # Pydantic v2 silently drops unknown YAML fields, so getattr() with a
+    # default is the safe read for an opt-in knob that has no schema entry.
+    max_xliff_concurrent = getattr(cfg, "max_xliff_concurrent", 20) or 20
+    if not isinstance(max_xliff_concurrent, int) or max_xliff_concurrent < 1:
+        max_xliff_concurrent = 20
+    logger.info(
+        f"Translating XLIFF {input_path.name}: {len(units)} units, "
+        f"max_xliff_concurrent={max_xliff_concurrent}, "
+        f"lqa={'on' if judge is not None else 'off'}"
+    )
+
     warnings_per_unit: dict[str, list[str]] = {}
 
-    for unit in units:
-        unit_shield_map = unit.shield_map
-        warning_this_unit: str | None = None
+    from ol_concurrency.scheduler import ConcurrencyLimiter
+    limiter = ConcurrencyLimiter(max_xliff_concurrent=max_xliff_concurrent)
+    results = await _translate_units_concurrent(
+        units, pool, judge, retry_mgr,
+        src_lang, tgt_lang,
+        sem=limiter.xliff_semaphore,
+        repair_pipeline=repair_pipeline,
+    )
 
-        try:
-            if judge is not None and retry_mgr is not None:
-                async def translate_fn():
-                    return await pool.translate(
-                        unit.source_text, src_lang, tgt_lang, context=None
-                    )
-
-                async def judge_fn(source, translation, unit_id):
-                    return await judge.judge(
-                        source, translation, unit_id,
-                        source_lang=src_lang, target_lang=tgt_lang,
-                    )
-
-                retry_result = await retry_mgr.execute_with_retry(
-                    f"xliff_unit_{unit.unit_id}",
-                    unit.source_text,
-                    translate_fn,
-                    judge_fn,
-                )
-                translated = retry_result.best_translation
-                if retry_result.warning:
-                    warning_this_unit = retry_result.warning
-                    logger.warning(f"LQA unit {unit.unit_id}: {retry_result.warning}")
-            else:
-                translated = await pool.translate(
-                    unit.source_text, src_lang, tgt_lang, context=None
-                )
-        except Exception as translate_err:
-            # Both translation and LQA failed (e.g. content moderation, rate
-            # limit, network error). Use the OPP source as the ultimate fallback
-            # so the chunk process never dies; the user gets a partial translation
-            # (failed units stay in Chinese, successful ones become English).
-            warning_this_unit = (
-                f"OL_WARN: TRANSLATION_FAILED ({type(translate_err).__name__}: "
-                f"{str(translate_err)[:100]})"
-            )
-            translated = unit.source_text
-            logger.warning(
-                f"Unit {unit.unit_id} translation failed: "
-                f"{type(translate_err).__name__}. Using OPP source as fallback."
-            )
-        if warning_this_unit:
-            warnings_per_unit.setdefault(unit.unit_id, []).append(
-                warning_this_unit
-            )
-
-        if unit_shield_map:
-            from ol_buses.xliff_shield import restore_tags
-
-            unshielded = restore_tags(translated, unit_shield_map)
-            repaired, unit_warnings = repair_pipeline.repair(
-                unshielded, unit.source_text, unit_shield_map
-            )
-            if unit_warnings:
-                warnings_per_unit[unit.unit_id] = unit_warnings
-        else:
-            repaired = translated
-
-        unit.target_text = repaired
+    for unit, r in zip(units, results):
+        unit.target_text = r.translated
+        if r.warning:
+            warnings_per_unit.setdefault(r.unit_id, []).append(r.warning)
+        if r.repair_warnings:
+            # Repair warnings replace the per-unit list (pre-existing
+            # contract relied on by warnings extraction downstream).
+            warnings_per_unit[unit.unit_id] = r.repair_warnings
 
     logger.debug(f"Translated {len(units)} units")
 
