@@ -275,10 +275,115 @@ class TestQueueTimeoutError:
     """Test QueueTimeoutError exception."""
 
     def test_exception_message(self):
-        """Test QueueTimeoutError has proper message."""
+        """Test QueueTimeoutError has proper error message."""
         error = QueueTimeoutError("Translation timed out")
         assert str(error) == "Translation timed out"
 
     def test_exception_inherits_from_exception(self):
         """Test QueueTimeoutError inherits from Exception."""
         assert issubclass(QueueTimeoutError, Exception)
+
+
+class TestBatchLQAIntegration:
+    """A0.5: BatchProcessor must route through JudgeService + RetryManager
+    when enable_lqa=True (post-mortem OL-1 regression catch)."""
+
+    @pytest.fixture
+    def mock_model_pool(self):
+        pool = MagicMock()
+        pool.translate = AsyncMock(return_value="raw_translation")
+        return pool
+
+    @pytest.fixture
+    def mock_limiter(self):
+        limiter = MagicMock()
+        limiter.translation = MagicMock()
+        limiter.translation.return_value.__aenter__ = AsyncMock(return_value=None)
+        limiter.translation.return_value.__aexit__ = AsyncMock(return_value=None)
+        return limiter
+
+    @pytest.fixture
+    def batch_config(self):
+        return BatchConfig(timeout=30.0)
+
+    @pytest.mark.anyio
+    async def test_batch_processor_applies_lqa(
+        self, mock_model_pool, mock_limiter, batch_config,
+    ):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_dir = Path(tmpdir) / "input"
+            output_dir = Path(tmpdir) / "output"
+            input_dir.mkdir()
+            output_dir.mkdir()
+
+            files = []
+            for i in range(3):
+                f = input_dir / f"file{i}.md"
+                f.write_text(f"source content {i}")
+                files.append(f)
+
+            with patch("ol_lqa.judge.JudgeService") as MockJudge, \
+                 patch("ol_retry.retry.RetryManager") as MockRetry:
+                mock_judge_instance = MagicMock()
+                mock_judge_instance.judge = AsyncMock(return_value=MagicMock(
+                    unit_id="u1",
+                    judge_scores={
+                        "adequacy": 8.0, "fluency": 8.0,
+                        "terminology_consistency": 8.0, "format_preservation": 8.0,
+                    },
+                    format_preserved=True,
+                    format_errors=[],
+                    warnings=[],
+                ))
+                MockJudge.return_value = mock_judge_instance
+
+                mock_retry_instance = MagicMock()
+                from dataclasses import dataclass
+
+                @dataclass
+                class FakeRetryResult:
+                    best_translation: str
+                    warning: str | None = None
+
+                mock_retry_instance.execute_with_retry = AsyncMock(
+                    return_value=FakeRetryResult(best_translation="retried_translation"),
+                )
+                MockRetry.return_value = mock_retry_instance
+
+                processor = BatchProcessor(
+                    config=batch_config,
+                    model_pool=mock_model_pool,
+                    limiter=mock_limiter,
+                    enable_lqa=True,
+                    lqa_threshold=7.0,
+                    lqa_max_retries=2,
+                )
+
+                result = await processor.process_batch(files, output_dir)
+
+                assert result.total == 3
+                assert len(result.succeeded) == 3, (
+                    f"All 3 files should succeed with LQA enabled, "
+                    f"got {len(result.succeeded)} succeeded, "
+                    f"{len(result.failed)} failed"
+                )
+
+                assert MockRetry.called, (
+                    "RetryManager must be instantiated when enable_lqa=True. "
+                    "Pre-fix (OL-1), the batch path silently ignored enable_lqa."
+                )
+                assert MockRetry.call_count == 3, (
+                    f"RetryManager must be instantiated once per file (3 files), "
+                    f"got {MockRetry.call_count} instantiations"
+                )
+
+                mock_retry_instance.execute_with_retry.assert_called()
+                assert mock_retry_instance.execute_with_retry.call_count == 3
+
+                output_content_0 = (output_dir / "file0.md").read_text()
+                assert "retried_translation" in output_content_0, (
+                    "Output should contain the retried translation (from "
+                    "RetryManager.best_translation), not the raw pool output"
+                )

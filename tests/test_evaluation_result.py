@@ -51,7 +51,7 @@ class TestEvaluationResult:
             format_errors=[],
             warnings=[],
         )
-        assert er.judge_overall_score == 8.5  # (8.0 + 9.0) / 2
+        assert abs(er.judge_overall_score - 8.4615) < 0.01  # weighted mean: (0.35*8.0 + 0.30*9.0) / (0.35+0.30)
 
     def test_judge_overall_score_empty(self):
         """Test judge_overall_score with no judge scores."""

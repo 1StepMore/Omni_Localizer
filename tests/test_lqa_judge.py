@@ -141,7 +141,7 @@ class TestJudgeService:
     async def test_judge_glossary_passed_to_model_pool(self):
         mock_model_pool = MagicMock()
         mock_model_pool.judge = AsyncMock(return_value={
-            "adequacy": 80,
+            "accuracy": 80,
             "fluency": 80,
             "terminology_consistency": 80,
             "format_preservation": 80,
@@ -160,6 +160,124 @@ class TestJudgeService:
         call_args = mock_model_pool.judge.call_args[0]
         passed_glossary = call_args[4]
         assert passed_glossary == glossary
+
+    # ── A0.1 ──────────────────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_judge_rescales_0_100_to_0_10(self):
+        """A0.1: LLM returns 0-100 scale; JudgeService must rescale to 0-10."""
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "accuracy": 80,
+            "fluency": 75,
+            "adequacy": 85,
+            "score": 80,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+
+        result = await service.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+        )
+
+        for key, score in result.judge_scores.items():
+            assert 0.0 <= score <= 10.0, (
+                f"judge_scores[{key}]={score} is out of 0-10 range; "
+                f"LLM 0-100 values must be rescaled"
+            )
+
+        assert abs(result.judge_overall_score - 8.0) < 0.1, (
+            f"Expected judge_overall_score ≈ 8.0 (rescaled), "
+            f"got {result.judge_overall_score}"
+        )
+
+    # ── A0.2 ──────────────────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_score_field_propagates(self):
+        """A0.2: LLM 'score' field must propagate to overall score, not be lost."""
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "accuracy": 70,
+            "fluency": 70,
+            "adequacy": 70,
+            "score": 70,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+
+        result = await service.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+        )
+
+        assert abs(result.judge_overall_score - 7.0) < 0.1, (
+            f"Expected judge_overall_score ≈ 7.0 (from LLM score=70 rescaled), "
+            f"got {result.judge_overall_score}. Pre-fix this was ~65 due to "
+            f"field-name mismatch causing defaults of 50."
+        )
+
+    # ── A0.3 ──────────────────────────────────────────────────────────
+    def test_judge_overall_score_uses_rubric_weights(self):
+        """A0.3: _compute_overall_score must use RUBRIC_WEIGHTS, not simple mean."""
+        scores = {
+            "adequacy": 10.0,
+            "fluency": 10.0,
+            "terminology_consistency": 0.0,
+            "format_preservation": 0.0,
+        }
+        weighted = JudgeService._compute_overall_score(JudgeService(), scores)
+        simple_mean = 5.0
+        expected_weighted = 0.35 * 10.0 + 0.30 * 10.0
+        assert abs(weighted - expected_weighted) < 0.01, (
+            f"Expected weighted mean {expected_weighted}, got {weighted}. "
+            f"Simple mean would be {simple_mean}."
+        )
+        assert abs(weighted - simple_mean) > 0.5, (
+            f"Weighted mean {weighted} should differ significantly from "
+            f"simple mean {simple_mean}"
+        )
+
+    # ── A0.4 ──────────────────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_format_preserved_computed(self):
+        """A0.4: format_preserved must be computed from LLM format_errors, not hardcoded."""
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "accuracy": 80,
+            "fluency": 80,
+            "adequacy": 80,
+            "score": 80,
+            "format_errors": ["missing placeholder"],
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+        result = await service.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+        )
+        assert result.format_preserved is False, (
+            "format_preserved must be False when LLM reports format_errors"
+        )
+        assert "missing placeholder" in result.format_errors
+
+        mock_model_pool2 = MagicMock()
+        mock_model_pool2.judge = AsyncMock(return_value={
+            "accuracy": 80,
+            "fluency": 80,
+            "adequacy": 80,
+            "score": 80,
+            "format_errors": [],
+        })
+        service2 = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool2)
+        result2 = await service2.judge(
+            source="Hello world",
+            target="Bonjour monde",
+            unit_id="u1",
+        )
+        assert result2.format_preserved is True, (
+            "format_preserved must be True when LLM reports no format_errors"
+        )
+        assert result2.format_errors == []
 
 
 class TestEnsembleJudge:

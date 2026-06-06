@@ -12,6 +12,8 @@ class RetryResult:
     best_translation: str
     warning: str | None
     attempt_history: list[tuple[str, float]] = field(default_factory=list)
+    judge_exception: Exception | None = None
+    transport_error: bool = False
 
 
 class RetryManager:
@@ -30,10 +32,46 @@ class RetryManager:
         best_result: EvaluationResult | None = None
         best_translation: str = ""
         warning: str | None = None
+        last_judge_err: Exception | None = None
+        last_transport_err = False
 
         for attempt in range(self._max_retries + 1):
-            translation = await translate_fn() if asyncio.iscoroutinefunction(translate_fn) else translate_fn()
-            result = await judge_fn(source_text, translation, unit_id)
+            try:
+                translation = await translate_fn() if asyncio.iscoroutinefunction(translate_fn) else translate_fn()
+            except Exception as translate_err:
+                # Translation failed; fall back to the source text and flag
+                # transport_error so downstream consumers can distinguish this
+                # from a genuine low-score retry.
+                return RetryResult(
+                    attempts=attempt + 1,
+                    final_score=0.0,
+                    best_translation=source_text,
+                    warning=(
+                        f"OL_WARN: TRANSLATION_FAILED "
+                        f"({type(translate_err).__name__}: {str(translate_err)[:200]})"
+                    ),
+                    attempt_history=attempt_history,
+                    judge_exception=translate_err,
+                    transport_error=True,
+                )
+
+            try:
+                result = await judge_fn(source_text, translation, unit_id)
+            except Exception as judge_err:
+                # LQA judge call itself failed (e.g. provider content moderation,
+                # network error). Fall back to the translation we already have
+                # rather than crashing the whole pipeline for this file.
+                last_judge_err = judge_err
+                last_transport_err = True
+                return RetryResult(
+                    attempts=attempt + 1,
+                    final_score=0.0,
+                    best_translation=translation,
+                    warning=f"OL_WARN: LQA_SKIPPED ({type(judge_err).__name__}: {judge_err})",
+                    attempt_history=attempt_history + [(translation, 0.0)],
+                    judge_exception=judge_err,
+                    transport_error=True,
+                )
 
             score = result.judge_overall_score
             attempt_history.append((translation, score))
@@ -61,4 +99,6 @@ class RetryManager:
             best_translation=best_translation,
             warning=warning,
             attempt_history=attempt_history,
+            judge_exception=last_judge_err,
+            transport_error=last_transport_err,
         )

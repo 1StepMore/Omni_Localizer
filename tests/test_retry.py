@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from ol_core.dataclass import EvaluationResult
+from ol_lqa.judge import JudgeService
 from ol_retry.retry import RetryManager, RetryResult
 
 
@@ -124,5 +127,42 @@ class TestRetryManager:
 
         result = await mgr.execute_with_retry("u1", "hello", translate, judge)
         assert len(result.attempt_history) == 2
-        assert result.attempt_history[0] == ("a", 6.0)
-        assert result.attempt_history[1] == ("b", 7.5)
+        assert result.attempt_history[0][0] == "a"
+        assert abs(result.attempt_history[0][1] - 6.0) < 1e-6
+        assert result.attempt_history[1][0] == "b"
+        assert abs(result.attempt_history[1][1] - 7.5) < 1e-6
+
+    @pytest.mark.asyncio
+    async def test_judge_retry_triggers_below_threshold(self):
+        """A0.6: Retry must be reachable when LLM score is below threshold.
+
+        Pre-fix: LLM 0-100 values were stored as-is, so judge_overall_score
+        was always >= 25 (min from defaults), making lqa_threshold=5.0
+        unreachable. Post-fix: values are rescaled 0-100→0-10, so a low
+        LLM score genuinely triggers retry.
+        """
+        mgr = RetryManager(max_retries=2, pass_threshold=7.0)
+        translations = ["bad_translation_v1", "bad_translation_v2", "good_translation"]
+
+        async def translate():
+            return translations.pop(0)
+
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "accuracy": 40,
+            "fluency": 40,
+            "adequacy": 40,
+            "score": 40,
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+
+        async def judge_fn(source, target, unit_id):
+            return await service.judge(source, target, unit_id)
+
+        result = await mgr.execute_with_retry("u1", "source text", translate, judge_fn)
+        assert result.attempts == 3, (
+            f"Expected 3 attempts (1 initial + 2 retries) because LLM score=40 "
+            f"rescales to 4.0 which is below threshold 7.0. "
+            f"Got {result.attempts} attempts. Pre-fix this was unreachable."
+        )
+        assert result.warning == "OL_WARN: Low_Score"

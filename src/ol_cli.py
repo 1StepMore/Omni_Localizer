@@ -318,14 +318,30 @@ async def _translate_md_async(
                 source_lang=src_lang, target_lang=tgt_lang,
             )
 
-        retry_result = await retry_mgr.execute_with_retry(
-            "md_main", shielded, translate_fn, judge_fn,
-        )
-        translated = retry_result.best_translation
-        if retry_result.warning:
-            logger.warning(f"LQA auto-retry: {retry_result.warning}")
+        try:
+            retry_result = await retry_mgr.execute_with_retry(
+                "md_main", shielded, translate_fn, judge_fn,
+            )
+            translated = retry_result.best_translation
+            if retry_result.warning:
+                logger.warning(f"LQA auto-retry: {retry_result.warning}")
+        except Exception as translate_err:
+            # Defense in depth: mirror the XLIFF path's fallback so transient
+            # LLM failures don't kill the whole MD translation.
+            logger.warning(
+                f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
+                f"Falling back to source text."
+            )
+            translated = original_text
     else:
-        translated = await pool.translate(shielded, src_lang, tgt_lang)
+        try:
+            translated = await pool.translate(shielded, src_lang, tgt_lang)
+        except Exception as translate_err:
+            logger.warning(
+                f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
+                f"Falling back to source text."
+            )
+            translated = original_text
 
     if shield_map:
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
@@ -431,6 +447,26 @@ async def _translate_xliff_async(
     from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
 
+    from ol_config.loader import load_config
+    cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
+    src_lang = src_lang or cfg.source_lang
+    tgt_lang = tgt_lang or cfg.target_lang
+
+    judge = None
+    retry_mgr = None
+    if cfg.enable_lqa:
+        from ol_lqa.judge import JudgeService
+        from ol_retry.retry import RetryManager
+        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
+        retry_mgr = RetryManager(
+            max_retries=cfg.lqa_max_retries,
+            pass_threshold=cfg.lqa_threshold,
+        )
+        logger.info(
+            f"LQA enabled for XLIFF: threshold={cfg.lqa_threshold}, "
+            f"max_retries={cfg.lqa_max_retries}"
+        )
+
     parser = XliffParser()
     units = parser.parse(str(input_path))
 
@@ -443,10 +479,53 @@ async def _translate_xliff_async(
 
     for unit in units:
         unit_shield_map = unit.shield_map
+        warning_this_unit: str | None = None
 
-        translated = await pool.translate(
-            unit.source_text, src_lang, tgt_lang, context=None
-        )
+        try:
+            if judge is not None and retry_mgr is not None:
+                async def translate_fn():
+                    return await pool.translate(
+                        unit.source_text, src_lang, tgt_lang, context=None
+                    )
+
+                async def judge_fn(source, translation, unit_id):
+                    return await judge.judge(
+                        source, translation, unit_id,
+                        source_lang=src_lang, target_lang=tgt_lang,
+                    )
+
+                retry_result = await retry_mgr.execute_with_retry(
+                    f"xliff_unit_{unit.unit_id}",
+                    unit.source_text,
+                    translate_fn,
+                    judge_fn,
+                )
+                translated = retry_result.best_translation
+                if retry_result.warning:
+                    warning_this_unit = retry_result.warning
+                    logger.warning(f"LQA unit {unit.unit_id}: {retry_result.warning}")
+            else:
+                translated = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang, context=None
+                )
+        except Exception as translate_err:
+            # Both translation and LQA failed (e.g. content moderation, rate
+            # limit, network error). Use the OPP source as the ultimate fallback
+            # so the chunk process never dies; the user gets a partial translation
+            # (failed units stay in Chinese, successful ones become English).
+            warning_this_unit = (
+                f"OL_WARN: TRANSLATION_FAILED ({type(translate_err).__name__}: "
+                f"{str(translate_err)[:100]})"
+            )
+            translated = unit.source_text
+            logger.warning(
+                f"Unit {unit.unit_id} translation failed: "
+                f"{type(translate_err).__name__}. Using OPP source as fallback."
+            )
+        if warning_this_unit:
+            warnings_per_unit.setdefault(unit.unit_id, []).append(
+                warning_this_unit
+            )
 
         if unit_shield_map:
             from ol_buses.xliff_shield import restore_tags
@@ -597,8 +676,19 @@ async def _translate_batch_async(
     batch_config = BatchConfig(max_concurrent=max_concurrent)
     pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
+    # POST_MORTEM OL-1: surface LQA knobs to the batch path.
+    from ol_config.loader import load_config
+    cfg, _ = load_config(config_path or "config/default.yaml")
+    enable_lqa = getattr(cfg, "enable_lqa", False)
+    lqa_threshold = getattr(cfg, "lqa_threshold", 7.0)
+    lqa_max_retries = getattr(cfg, "lqa_max_retries", 2)
+
     limiter = ConcurrencyLimiter(max_translation=max_concurrent)
-    processor = BatchProcessor(config=batch_config, model_pool=pool, limiter=limiter, glossary=glossary)
+    processor = BatchProcessor(
+        config=batch_config, model_pool=pool, limiter=limiter, glossary=glossary,
+        enable_lqa=enable_lqa,
+        lqa_threshold=lqa_threshold, lqa_max_retries=lqa_max_retries,
+    )
 
     start_time = time.time()
     async with ProgressContext() as _:
@@ -609,6 +699,9 @@ async def _translate_batch_async(
             src_lang=src_lang,
             tgt_lang=tgt_lang,
             detect_language=detect_language,
+            enable_lqa=enable_lqa,
+            lqa_threshold=lqa_threshold,
+            lqa_max_retries=lqa_max_retries,
         )
 
     duration = time.time() - start_time

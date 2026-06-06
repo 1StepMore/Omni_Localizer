@@ -3,6 +3,14 @@ from typing import Any
 from enum import Enum
 
 
+RUBRIC_WEIGHTS: dict[str, float] = {
+    "adequacy": 0.35,
+    "fluency": 0.30,
+    "terminology_consistency": 0.20,
+    "format_preservation": 0.15,
+}
+
+
 class ChannelType(Enum):
     MD = "md"
     XLIFF = "xliff"
@@ -88,4 +96,12 @@ class EvaluationResult:
     def judge_overall_score(self) -> float:
         if not self.judge_scores:
             return 0.0
-        return sum(self.judge_scores.values()) / len(self.judge_scores)
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for criterion, score in self.judge_scores.items():
+            weight = RUBRIC_WEIGHTS.get(criterion, 0.0)
+            weighted_sum += score * weight
+            total_weight += weight
+        if total_weight == 0.0:
+            return 0.0
+        return weighted_sum / total_weight

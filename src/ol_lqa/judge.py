@@ -1,20 +1,26 @@
 import asyncio
 from typing import Any
 
-from ol_core.dataclass import EvaluationResult
+from ol_core.dataclass import EvaluationResult, RUBRIC_WEIGHTS
 
 
 class JudgeService:
-    RUBRIC_WEIGHTS = {
-        "adequacy": 0.35,
-        "fluency": 0.30,
-        "terminology_consistency": 0.20,
-        "format_preservation": 0.15,
-    }
-
     def __init__(self, pass_threshold: float = 7.0, model_pool=None) -> None:
         self._pass_threshold = pass_threshold
         self._model_pool = model_pool
+
+    @staticmethod
+    def _rescale(raw: float) -> float:
+        return raw / 10.0
+
+    @staticmethod
+    def _remap_llm_fields(result: dict[str, Any]) -> dict[str, float]:
+        return {
+            "adequacy": JudgeService._rescale(result.get("adequacy", 0)),
+            "fluency": JudgeService._rescale(result.get("fluency", 0)),
+            "terminology_consistency": JudgeService._rescale(result.get("accuracy", 0)),
+            "format_preservation": JudgeService._rescale(result.get("score", 0)),
+        }
 
     async def judge(
         self,
@@ -26,35 +32,63 @@ class JudgeService:
         glossary: dict[str, Any] | None = None,
     ) -> EvaluationResult:
         if self._model_pool:
-            result = await self._model_pool.judge(source, target, source_lang, target_lang, glossary)
-            judge_scores = {
-                "adequacy": result.get("adequacy", 50),
-                "fluency": result.get("fluency", 50),
-                "terminology_consistency": result.get("terminology_consistency", 50),
-                "format_preservation": result.get("format_preservation", 50),
-            }
-            score = result.get("score", 50)
-            warnings = []
-            if score < self._pass_threshold * 10:
-                warnings.append(f"Judge score {score/10:.1f} below threshold {self._pass_threshold}")
+            try:
+                result = await self._model_pool.judge(source, target, source_lang, target_lang, glossary)
+            except Exception as pool_err:
+                return EvaluationResult(
+                    unit_id=unit_id,
+                    scorer_scores={},
+                    judge_scores={
+                        "adequacy": 0,
+                        "fluency": 0,
+                        "terminology_consistency": 0,
+                        "format_preservation": 0,
+                    },
+                    format_preserved=False,
+                    format_errors=[],
+                    warnings=[f"LQA judge error ({type(pool_err).__name__}: {pool_err})"],
+                )
+            judge_scores = self._remap_llm_fields(result)
+            format_errors = result.get("format_errors", [])
+            warnings: list[str] = []
+            overall = self._compute_overall_score(judge_scores)
+            if overall < self._pass_threshold:
+                warnings.append(
+                    f"Judge score {overall:.1f} below threshold {self._pass_threshold}"
+                )
             return EvaluationResult(
                 unit_id=unit_id,
                 scorer_scores={},
                 judge_scores=judge_scores,
-                format_preserved=False,
-                format_errors=[],
+                format_preserved=len(format_errors) == 0,
+                format_errors=format_errors,
                 warnings=warnings,
             )
 
         loop = asyncio.get_event_loop()
-        scores = await loop.run_in_executor(
-            None,
-            self._judge_sync,
-            source,
-            target,
-        )
+        try:
+            scores = await loop.run_in_executor(
+                None,
+                self._judge_sync,
+                source,
+                target,
+            )
+        except Exception as sync_err:
+            return EvaluationResult(
+                unit_id=unit_id,
+                scorer_scores={},
+                judge_scores={
+                    "adequacy": 0,
+                    "fluency": 0,
+                    "terminology_consistency": 0,
+                    "format_preservation": 0,
+                },
+                format_preserved=False,
+                format_errors=[],
+                warnings=[f"LQA sync judge error ({type(sync_err).__name__}: {sync_err})"],
+            )
 
-        warnings: list[str] = []
+        warnings = []
         overall = self._compute_overall_score(scores)
         if overall < self._pass_threshold:
             warnings.append(f"Judge score {overall:.1f} below threshold {self._pass_threshold}")
@@ -63,7 +97,7 @@ class JudgeService:
             unit_id=unit_id,
             scorer_scores={},
             judge_scores=scores,
-            format_preserved=False,
+            format_preserved=True,
             format_errors=[],
             warnings=warnings,
         )
@@ -116,7 +150,15 @@ class JudgeService:
     def _compute_overall_score(self, scores: dict[str, float]) -> float:
         if not scores:
             return 0.0
-        return sum(scores.values()) / len(scores)
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for criterion, score in scores.items():
+            weight = RUBRIC_WEIGHTS.get(criterion, 0.0)
+            weighted_sum += score * weight
+            total_weight += weight
+        if total_weight == 0.0:
+            return 0.0
+        return weighted_sum / total_weight
 
     async def judge_batch(
         self,
@@ -168,7 +210,13 @@ class EnsembleJudge:
                 aggregated[criterion] = sorted_scores[n // 2]
 
         warnings: list[str] = []
-        overall = sum(aggregated.values()) / len(aggregated)
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for criterion, score in aggregated.items():
+            weight = RUBRIC_WEIGHTS.get(criterion, 0.0)
+            weighted_sum += score * weight
+            total_weight += weight
+        overall = weighted_sum / total_weight if total_weight > 0 else 0.0
         if overall < self._pass_threshold:
             warnings.append(f"Ensemble judge score {overall:.1f} below threshold {self._pass_threshold}")
 

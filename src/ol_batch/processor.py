@@ -46,6 +46,9 @@ class BatchProcessor:
         tm_service: Any = None,
         glossary: dict[str, dict[str, Any]] | None = None,
         detect_language: bool = True,
+        enable_lqa: bool = False,
+        lqa_threshold: float = 7.0,
+        lqa_max_retries: int = 2,
     ) -> None:
         self._config = config
         self._pool = model_pool
@@ -56,6 +59,9 @@ class BatchProcessor:
         self._tm_service = tm_service
         self._glossary = glossary or {}
         self._detect_language = detect_language
+        self._enable_lqa = enable_lqa
+        self._lqa_threshold = lqa_threshold
+        self._lqa_max_retries = lqa_max_retries
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
@@ -66,11 +72,21 @@ class BatchProcessor:
         src_lang: str = "en",
         tgt_lang: str = "zh",
         detect_language: bool = True,
+        enable_lqa: bool | None = None,
+        lqa_threshold: float | None = None,
+        lqa_max_retries: int | None = None,
     ) -> BatchResult:
         self.add_frontmatter = add_frontmatter
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
         self._detect_language = detect_language
+        # Allow per-batch override of LQA; falls back to constructor setting.
+        if enable_lqa is not None:
+            self._enable_lqa = enable_lqa
+        if lqa_threshold is not None:
+            self._lqa_threshold = lqa_threshold
+        if lqa_max_retries is not None:
+            self._lqa_max_retries = lqa_max_retries
         self._logger.info(f"Batch processing started: {len(files)} files")
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -192,6 +208,48 @@ class BatchProcessor:
             self.tgt_lang,
             context,
         )
+
+        # POST_MORTEM OL-1: if LQA is enabled, route the translation through
+        # the JudgeService + RetryManager so low-quality first passes are
+        # auto-retried. Falls back to the raw translation if LQA helpers
+        # are unavailable (e.g. tests don't mock JudgeService).
+        if self._enable_lqa:
+            try:
+                from ol_lqa.judge import JudgeService
+                from ol_retry.retry import RetryManager
+
+                judge = JudgeService(
+                    pass_threshold=self._lqa_threshold, model_pool=self._pool,
+                )
+                retry_mgr = RetryManager(
+                    max_retries=self._lqa_max_retries,
+                    pass_threshold=self._lqa_threshold,
+                )
+
+                async def _translate_fn() -> str:
+                    return await self._pool.translate(
+                        shielded, self.src_lang, self.tgt_lang, context,
+                    )
+
+                async def _judge_fn(source: str, target: str, unit_id: str):
+                    return await judge.judge(
+                        source, target, unit_id,
+                        source_lang=self.src_lang, target_lang=self.tgt_lang,
+                    )
+
+                retry_result = await retry_mgr.execute_with_retry(
+                    f"batch_{input_path.name}", shielded, _translate_fn, _judge_fn,
+                )
+                translated = retry_result.best_translation
+                if retry_result.warning:
+                    self._logger.warning(
+                        f"LQA auto-retry for {input_path.name}: {retry_result.warning}"
+                    )
+            except Exception as lqa_err:
+                self._logger.warning(
+                    f"LQA path failed for {input_path.name}, "
+                    f"using raw translation: {type(lqa_err).__name__}: {lqa_err}"
+                )
 
         if shield_map:
             translated = unshield_markdown(translated, shield_map)

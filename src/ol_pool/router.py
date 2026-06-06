@@ -101,6 +101,11 @@ class ModelPool:
 
         litellm Router fallbacks format: [{"model_group_name": ["fallback_model_id", ...]}]
         key must be the model_name (role) passed to acompletion(), not the actual model ID.
+
+        POST_MORTEM OL-8: when a role has only one configured model (or all
+        fail), we add a cross-role fallback: judging/restoration calls can
+        fall back to a translation-tier model rather than crashing. The
+        translation role keeps its own fallbacks for primary translation.
         """
         fallbacks = []
         for role in ("translation", "judging", "restoration"):
@@ -111,6 +116,19 @@ class ModelPool:
                     f"{m.provider}/{m.model}" for m in sorted_models[1:]
                 ]
                 fallbacks.append({role: fallback_models})
+
+        # Cross-role safety net: if judging/restoration both fail, fall back
+        # to the translation role's models. This trades quality for liveness.
+        translation_models = getattr(pool, "translation", [])
+        if translation_models:
+            translation_fallback_ids = [
+                f"{m.provider}/{m.model}"
+                for m in sorted(translation_models, key=lambda m: m.priority)
+            ]
+            for role in ("judging", "restoration"):
+                if not getattr(pool, role, []):
+                    fallbacks.append({role: translation_fallback_ids})
+
         return fallbacks
 
     async def translate(
@@ -152,6 +170,9 @@ class ModelPool:
             "and form, keep all code blocks, links, image references, and inline "
             "formatting markers intact. Do not add explanations, do not wrap the "
             "output in code fences, and do not change the meaning of placeholders. "
+            "Do not wrap your output in any XML tags (including <source>, <target>, "
+            "<trans-unit>, or anything with xmlns= attributes). Output only the "
+            "translated text — no markup, no quotes around it, no language tags. "
             "Return only the translated text."
         )
 
@@ -211,9 +232,10 @@ Score the translation on a scale of 0-100 for each dimension:
 - fluency (30%): is the target natural and grammatical in {target_lang}?
 - adequacy (40%): is the target a complete translation with no missing or added content?
 
-Return a JSON object with exactly these four fields and nothing else:
-{{"accuracy": <int 0-100>, "fluency": <int 0-100>, "adequacy": <int 0-100>, "score": <int 0-100>}}
+Return a JSON object with exactly these five fields and nothing else:
+{{"accuracy": <int 0-100>, "fluency": <int 0-100>, "adequacy": <int 0-100>, "score": <int 0-100>, "format_errors": <list of strings>}}
 "score" is the overall judgment on the same 0-100 scale (you may compute it as a weighted average of the three dimensions).
+"format_errors" is a list of format/structure problems you detected in the target (e.g. missing placeholders, broken XML tags, unescaped entities). Return an empty list [] if the target preserves all format elements correctly.
 
 Anti-leakage rules — violations MUST score 0 on every dimension:
 1. The target must not contain meta-commentary, clarifications, apologies, notes to the reader, or any text that is not the translation itself (e.g. "I cannot translate this", "As an AI...", "[untranslated]").
@@ -230,16 +252,54 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
             "the benefit of the doubt to a translation that violates the anti-leakage rules."
         )
 
-        response = await self._router.acompletion(
-            model="judging",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.0,
-        )
+        try:
+            response = await self._router.acompletion(
+                model="judging",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+            )
+        except Timeout as e:
+            _logger.warning(f"Judge timeout: {e}")
+            return {
+                "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
+                "reason": f"judge_timeout: {e}", "transport_error": True,
+            }
+        except RateLimitError as e:
+            _logger.warning(f"Judge rate limit: {e}")
+            return {
+                "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
+                "reason": f"judge_rate_limit: {e}", "transport_error": True,
+            }
+        except AuthenticationError as e:
+            _logger.error(f"Judge auth error: {e}")
+            return {
+                "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
+                "reason": f"judge_auth: {e}", "transport_error": True,
+            }
+        except Exception as e:
+            _logger.error(f"Judge transport failed: {type(e).__name__}: {e}")
+            return {
+                "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
+                "reason": f"judge_unknown: {type(e).__name__}: {e}", "transport_error": True,
+            }
         import json
-        content = response.choices[0].message.content.strip()
+        try:
+            content = response.choices[0].message.content.strip()
+        except (AttributeError, IndexError) as resp_err:
+            _logger.error(
+                f"Judge response shape invalid: {resp_err}; returning transport_error"
+            )
+            return {
+                "accuracy": 0,
+                "fluency": 0,
+                "adequacy": 0,
+                "score": 0,
+                "reason": f"judge_response_invalid: {resp_err}",
+                "transport_error": True,
+            }
         if content.startswith("```"):
             content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         try:
