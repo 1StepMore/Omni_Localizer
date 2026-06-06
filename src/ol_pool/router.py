@@ -1,7 +1,11 @@
 import asyncio
+import hashlib
+import json
 import os
 import re
 import sys
+import time
+from collections import OrderedDict
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -29,6 +33,50 @@ _logger = get_logger("pool")
 _pool_cache: dict[str, "ModelPool"] = {}
 
 
+class _PromptCache:
+    """Content-addressed LRU cache for LLM completions.
+
+    Only safe for deterministic responses (temperature=0). The router
+    bypasses the cache when temperature != 0 OR when the config disables
+    it. Key = (model_role, sha256(messages_json), temperature).
+    """
+
+    def __init__(
+        self,
+        max_size: int = 1000,
+        ttl_seconds: float = 300.0,
+        time_func=None,
+    ):
+        self._max_size = max_size
+        self._ttl = ttl_seconds
+        self._time = time_func or time.monotonic
+        self._store: "OrderedDict[tuple, tuple[Any, float]]" = OrderedDict()
+
+    def get(self, key: tuple) -> Any | None:
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        value, expiry = entry
+        if expiry <= self._time():
+            del self._store[key]
+            return None
+        self._store.move_to_end(key)
+        return value
+
+    def put(self, key: tuple, value: Any) -> None:
+        if key in self._store:
+            self._store.move_to_end(key)
+        self._store[key] = (value, self._time() + self._ttl)
+        if len(self._store) > self._max_size:
+            self._store.popitem(last=False)
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+    def clear(self) -> None:
+        self._store.clear()
+
+
 def _resolve_env_vars(value: str) -> str:
     if value is None:
         return None
@@ -53,6 +101,9 @@ class ModelPool:
             config = result[0]
         except (TypeError, IndexError):
             config = result
+        # A3 — temperature-bypass is enforced in translate()/judge(), not here.
+        self._cache_enabled = getattr(config, "cache_system_prompt", True)
+        self._cache = _PromptCache(max_size=1000, ttl_seconds=300.0)
         try:
             self._router = Router(
                 model_list=self._build_model_list(config.llm_pool),
@@ -96,6 +147,13 @@ class ModelPool:
                 )
         return model_list
 
+    def _make_cache_key(
+        self, model: str, messages: list[dict], temperature: float,
+    ) -> tuple:
+        payload = json.dumps(messages, sort_keys=True, ensure_ascii=False)
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return (model, digest, float(temperature))
+
     def _build_fallbacks(self, pool: LLMPoolConfig) -> list[dict]:
         """Build fallbacks list per role based on priority ordering.
 
@@ -134,6 +192,7 @@ class ModelPool:
     async def translate(
         self, text: str, source_lang: str, target_lang: str,
         context: dict | str | None = None,
+        temperature: float = 0.0,
     ) -> str:
         if self._test_mode:
             return "placeholder"
@@ -176,18 +235,29 @@ class ModelPool:
             "Return only the translated text."
         )
 
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt},
+        ]
+
+        cache_key = self._make_cache_key("translation", messages, temperature)
+        if self._cache_enabled and temperature == 0.0:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                _logger.debug("Translation cache hit")
+                return cached
+
         for attempt in range(4):  # 1 initial + 3 retries
             try:
                 response = await self._router.acompletion(
                     model="translation",
-                    messages=[
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.0,
+                    messages=messages,
+                    temperature=temperature,
                 )
                 translated = response.choices[0].message.content
                 _logger.debug(f"Translation response: {len(translated)} chars")
+                if self._cache_enabled and temperature == 0.0:
+                    self._cache.put(cache_key, translated)
                 return translated
             except Timeout as e:
                 if attempt < 3:
@@ -215,6 +285,7 @@ class ModelPool:
     async def judge(
         self, source: str, target: str, source_lang: str, target_lang: str,
         glossary: dict[str, Any] | None = None,
+        temperature: float = 0.0,
     ) -> dict:
         if self._test_mode:
             return {"score": 0, "reason": "placeholder"}
@@ -252,14 +323,23 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
             "the benefit of the doubt to a translation that violates the anti-leakage rules."
         )
 
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt},
+        ]
+
+        cache_key = self._make_cache_key("judging", messages, temperature)
+        if self._cache_enabled and temperature == 0.0:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                _logger.debug("Judge cache hit")
+                return cached
+
         try:
             response = await self._router.acompletion(
                 model="judging",
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
+                messages=messages,
+                temperature=temperature,
             )
         except Timeout as e:
             _logger.warning(f"Judge timeout: {e}")
@@ -329,4 +409,6 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                     "reason": f"Missing field: {required}",
                     "incomplete": True,
                 }
+        if self._cache_enabled and temperature == 0.0:
+            self._cache.put(cache_key, result)
         return result

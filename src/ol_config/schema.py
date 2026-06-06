@@ -67,3 +67,12 @@ class ProjectConfig(BaseModel):
     enable_lqa: bool = Field(False, description="Auto-invoke LQA judge with retry in main pipeline")
     lqa_threshold: float = Field(7.0, description="LQA judge pass threshold (0-10)")
     lqa_max_retries: int = Field(2, description="Max LQA retries (best-of-N strategy)")
+    # A3 — slim-pipeline-hardening
+    cache_system_prompt: bool = Field(
+        True,
+        description=(
+            "Cache LLM completions in an in-process LRU keyed by "
+            "(model, prompt_hash, temperature). Disabled automatically when "
+            "temperature != 0. Re-run optimization; no first-run speedup."
+        ),
+    )
