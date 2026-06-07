@@ -4,36 +4,42 @@ target_lang: "zh"
 glossary_path: null
 llm_pool:
   translation:
-    # A5 — slim-pipeline-hardening. M2.7 swap: add MiniMax-M2.7 as priority 1,
-    # demote MiniMax-M3 to priority 2 (was primary), demote ernie-4.5-turbo-32k
-    # to priority 3 (was fallback). M3 remains reachable for automatic failover.
-    # DORMANT until calibration passes — see .omo/plans/slim-pipeline-hardening.md
-    # section A5. The real-LLM calibration run is a follow-up operational task.
+    # A5 — slim-pipeline-hardening. M2.7 swap: M2.7 is now the PRIMARY
+    # translation model (faster than M3, calibration delta -0.20 is well
+    # within the 0.5 acceptance threshold). M3 remains reachable for
+    # automatic failover; ernie-4.5-turbo-32k is the last-resort fallback.
+    # E.2 calibration report: final-out/_diagnostics/M2.7_CALIBRATION_REPORT.json
+    # (5 units, M3=9.80, M2.7=9.60, delta=-0.20, PASS).
+    #
+    # IMPORTANT: ``provider: "openai"`` is the LiteLLM OpenAI-compatible
+    # provider prefix. With ``base_url`` set to MiniMax's endpoint, calls
+    # route to MiniMax (not OpenAI). Same pattern for ernie (provider:
+    # "openai" with baidu base_url). See .env for key/base_url values.
     - provider: "openai"
       model: "MiniMax-M2.7"
       priority: 1
       role: "translation"
-      api_key: null
-      base_url: null  # Optional: "${MINIMAX_BASE_URL}" for proxies
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
     - provider: "openai"
       model: "MiniMax-M3"
       priority: 2
       role: "translation"
-      api_key: null
-      base_url: null
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
     - provider: "openai"
       model: "ernie-4.5-turbo-32k"
       priority: 3
       role: "translation"
-      api_key: null
-      base_url: null
+      api_key: "${BAIDU_API_KEY}"
+      base_url: null  # Baidu qianfan uses its own endpoint; configure if needed
   judging:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "MiniMax-M2.5"
       priority: 1
       role: "judging"
-      api_key: null
-      base_url: null
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
     - provider: "anthropic"
       model: "claude-3-sonnet-20240229"
       priority: 2
@@ -42,11 +48,11 @@ llm_pool:
       base_url: null
   restoration:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "MiniMax-M2.5"
       priority: 1
       role: "restoration"
-      api_key: null
-      base_url: null
+      api_key: "${MINIMAX_API_KEY}"
+      base_url: "${MINIMAX_BASE_URL}"
     - provider: "anthropic"
       model: "claude-3-haiku-20240307"
       priority: 2
