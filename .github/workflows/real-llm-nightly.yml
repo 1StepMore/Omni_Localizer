@@ -1,21 +1,22 @@
 name: Real-LLM Nightly
 
 # A11 — slim-pipeline-hardening. Nightly cron runs the real-LLM E2E
-# suite against a real MiniMax/M2.7 pool. Cost is bounded at ~$5-15/month
+# suite against a real MiniMax/M2.7 pool. Cost is bounded at ~$0.08/month
 # by the per-test pre-call cost gate in tests/real_llm/cost_estimator.py
-# (budget_usd=5.0 per test; cumulative is a no-op across tests since the
-# fixture is function-scoped). Promotion cadence: start weekly, move to
-# nightly after 1 month of stable green runs (per plan A11 risk register).
+# (budget_usd=5.0 per test, ~$0.005/test observed). The user authorized
+# nightly cadence (per PR15 — E.2 calibration prep + nightly promotion).
+# To go BACK to weekly cadence: change the cron below to "0 2 * * 0".
+# See docs/real_llm_runbook.md for the runbook.
 #
 # Manual trigger: `gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer`
 # Useful when validating a model swap or config change.
 
 on:
   schedule:
-    # 0 2 * * 0 = Sundays at 02:00 UTC. Weekly cadence for the first
-    # month (per plan A11). Promote to nightly (0 2 * * *) after the
-    # harness is validated. See docs/real_llm_runbook.md.
-    - cron: "0 2 * * 0"
+    # 0 2 * * * = nightly at 02:00 UTC. User authorized nightly cadence
+    # in PR15 (E.2 calibration prep + nightly promotion). See
+    # docs/real_llm_runbook.md for rollback procedure.
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 env:
