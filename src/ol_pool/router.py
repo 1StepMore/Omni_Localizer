@@ -9,6 +9,49 @@ from collections import OrderedDict
 from typing import Any
 from unittest.mock import MagicMock
 
+
+# ULTRAREADY-FIX (2026-06-08): real E2E run discovered that MiniMax
+# models leak <think>...</think> chain-of-thought into their output.
+# ORF then injects that leaked text into the DOCX, producing a document
+# that reads like an AI's scratchpad instead of a translation. This
+# stripper is a defense-in-depth measure: even if the model ignores the
+# "Do not add explanations" instruction in the system prompt, we
+# guarantee the output going into XLIFF is clean.
+#
+# Recognised patterns (in order of how aggressively they tend to leak):
+#   1. <think>...</think> (MiniMax, Qwen3-Thinking, DeepSeek-R1, etc.)
+#   2. <|thinking|>...</|thinking|>  (some Anthropic-style models)
+#   3. <|reasoning|>...</|reasoning|>
+#   4. <thought>...</thought>  (legacy)
+#   5. Markdown ```thinking ... ```  (some clients wrap it)
+_THINKING_BLOCK_RE = re.compile(
+    r"<think>.*?</think>"
+    r"|<\uff5c?thinking\uff5c?>.*?</\uff5c?thinking\uff5c?>"
+    r"|<\uff5c?reasoning\uff5c?>.*?</\uff5c?reasoning\uff5c?>"
+    r"|<thought>.*?</thought>"
+    r"|```thinking\s*\n.*?\n```",
+    re.DOTALL,
+)
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    """Remove LLM chain-of-thought artifacts from a model response.
+
+    ULTRAREADY-FIX (2026-06-08): the stripper only removes blocks that
+    look like model thinking (delimited by <think>, <|thinking|>, etc.).
+    Inline tags the LLM was asked to preserve (e.g. ``<bx id="1"/>``) are
+    NOT touched because they don't match the thinking-block regex.
+
+    After stripping, leading/trailing whitespace is collapsed so the
+    returned text starts and ends with the actual translation.
+    """
+    if not text:
+        return text
+    out = _THINKING_BLOCK_RE.sub("", text)
+    # Collapse runs of blank lines that the stripper may have left behind.
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
 # Ensure `src.ol_pool.router` and `ol_pool.router` resolve to the same
 # module object. Tests patch via `src.ol_pool.router.*` while importing
 # via `ol_pool.router`; without this aliasing the patches miss the
@@ -240,7 +283,11 @@ class ModelPool:
             "Do not wrap your output in any XML tags (including <source>, <target>, "
             "<trans-unit>, or anything with xmlns= attributes). Output only the "
             "translated text — no markup, no quotes around it, no language tags. "
-            "Return only the translated text."
+            "Return only the translated text. "
+            "CRITICAL: do NOT emit any <think>...</think>, <|thinking|>, <|reasoning|>, "
+            "or <thought>...</thought> blocks. Do NOT preface your answer with "
+            "'Let me analyze', 'I need to translate', or any planning prose. "
+            "Return ONLY the translated text and nothing else."
         )
 
         messages = [
@@ -262,7 +309,13 @@ class ModelPool:
                     messages=messages,
                     temperature=temperature,
                 )
-                translated = response.choices[0].message.content
+                raw = response.choices[0].message.content
+                translated = _strip_thinking_blocks(raw)
+                if translated != raw:
+                    _logger.debug(
+                        f"Stripped {len(raw) - len(translated)} chars of "
+                        f"chain-of-thought from LLM output"
+                    )
                 _logger.debug(f"Translation response: {len(translated)} chars")
                 if self._cache_enabled and temperature == 0.0:
                     self._cache.put(cache_key, translated)
