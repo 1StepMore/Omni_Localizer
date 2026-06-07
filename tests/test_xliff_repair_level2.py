@@ -17,8 +17,8 @@ class TestRepairLevel2:
         text = 'Hello world'
         shield_map = {'x_1': '<x id="1"/>'}
         original = 'Hello world'
-        result = level2_span_align(text, shield_map, original)
-        assert result == text
+        result_text, _l2_applied = level2_span_align(text, shield_map, original)
+        assert result_text == text
 
     def test_anchor_mapping_called(self):
         """Test that SpanProjector.project() is called when span-aligner available."""
@@ -34,21 +34,21 @@ class TestRepairLevel2:
             mock_instance.project.return_value = text
             mock_projector_class.return_value = mock_instance
 
-            result = level2_span_align(text, shield_map, original)
+            result_text, _l2_applied = level2_span_align(text, shield_map, original)
 
             mock_instance.project.assert_called_once_with(text, shield_map, original)
-            assert result == text
+            assert result_text == text
 
     def test_empty_inputs(self):
         """Test handling of empty inputs."""
-        result = level2_span_align('', {}, '')
-        assert result == ''
+        text, _l2_applied = level2_span_align('', {}, '')
+        assert text == ''
 
     def test_empty_shield_map(self):
         """Test handling of empty shield_map."""
         text = 'Hello world'
-        result = level2_span_align(text, {}, 'Hello world')
-        assert result == text
+        result_text, _l2_applied = level2_span_align(text, {}, 'Hello world')
+        assert result_text == text
 
     def test_text_unchanged_when_no_span_aligner(self):
         """Test that text is returned unchanged when span-aligner import fails."""
@@ -60,5 +60,7 @@ class TestRepairLevel2:
             importlib.reload(level2_mod)
 
             text = 'Test text'
-            result = level2_mod.level2_span_align(text, {'x_1': '<x id="1"/>'}, 'Test text')
-            assert result == text
+            result_text, _l2_applied = level2_mod.level2_span_align(
+                text, {'x_1': '<x id="1"/>'}, 'Test text'
+            )
+            assert result_text == text
