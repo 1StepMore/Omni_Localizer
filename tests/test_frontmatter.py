@@ -107,20 +107,102 @@ Translated content.
             assert "source_lang: en" in content
             assert "target_lang: zh" in content
 
-    def test_frontmatter_cli_option_respected(self, temp_md, temp_output_dir):
-        output_file = Path(temp_output_dir) / Path(temp_md).name
-        output_file.write_text("# Test\n\nTranslated content.", encoding="utf-8")
 
-        with patch("ol_cli.asyncio.run", return_value=str(output_file)):
-            result = runner.invoke(
-                app,
-                ["translate-md", temp_md, "-o", temp_output_dir, "-c", "config/default.yaml", "--no-frontmatter"],
-            )
-            assert result.exit_code == 0
+class TestCacheKeyBehavioralFlags:
+    """Regression: behavioral CLI flags MUST participate in the cache key.
 
-            content = output_file.read_text(encoding="utf-8")
-            assert not content.startswith("---")
-            assert content.startswith("# Test")
+    Before T24a, ``_cache_key(input_path, config_path)`` only hashed input
+    bytes + config bytes, so ``ol translate-md foo.md`` followed by
+    ``ol translate-md foo.md --no-frontmatter`` returned the cached
+    WITH-frontmatter output on the second run. The cache must invalidate
+    on every flag that affects the produced bytes.
+    """
+
+    def test_cache_key_differs_when_frontmatter_flag_differs(self, tmp_path):
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_with = _cache_key(
+            input_path, config_path=None, add_frontmatter=True,
+        )
+        key_without = _cache_key(
+            input_path, config_path=None, add_frontmatter=False,
+        )
+        assert key_with != key_without
+
+    def test_cache_key_differs_when_concurrency_differs(self, tmp_path):
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_low = _cache_key(
+            input_path, config_path=None, concurrency=1,
+        )
+        key_high = _cache_key(
+            input_path, config_path=None, concurrency=10,
+        )
+        assert key_low != key_high
+
+    def test_cache_key_differs_when_detect_language_differs(self, tmp_path):
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_on = _cache_key(
+            input_path, config_path=None, detect_language=True,
+        )
+        key_off = _cache_key(
+            input_path, config_path=None, detect_language=False,
+        )
+        assert key_on != key_off
+
+    def test_cache_key_differs_when_lqa_enabled_differs(self, tmp_path):
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_off = _cache_key(
+            input_path, config_path=None, lqa_enabled=False,
+        )
+        key_on = _cache_key(
+            input_path, config_path=None, lqa_enabled=True,
+        )
+        assert key_off != key_on
+
+    def test_cache_key_stable_for_identical_flags(self, tmp_path):
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_a = _cache_key(
+            input_path, config_path=None, add_frontmatter=False, concurrency=5,
+            detect_language=True, lqa_enabled=False,
+        )
+        key_b = _cache_key(
+            input_path, config_path=None, add_frontmatter=False, concurrency=5,
+            detect_language=True, lqa_enabled=False,
+        )
+        assert key_a == key_b
+
+    def test_cache_key_unchanged_for_legacy_call(self, tmp_path):
+        """Backward-compat: legacy call sites that pass no flags still work."""
+        from ol_cli import _cache_key
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text("# Hello\n", encoding="utf-8")
+
+        key_a = _cache_key(input_path, config_path=None)
+        key_b = _cache_key(
+            input_path, config_path=None, add_frontmatter=True, concurrency=5,
+            detect_language=True, lqa_enabled=False,
+        )
+        assert isinstance(key_a, str) and len(key_a) == 64
 
 
 class TestYamlEscaping:

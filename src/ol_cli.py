@@ -197,14 +197,39 @@ def _cache_root() -> Path:
     return root
 
 
-def _cache_key(input_path: Path, config_path: str | None) -> str:
-    """Return sha256(input_bytes + config_bytes_if_any)."""
+def _cache_key(
+    input_path: Path,
+    config_path: str | None,
+    add_frontmatter: bool = True,
+    concurrency: int = 5,
+    detect_language: bool = True,
+    lqa_enabled: bool = False,
+    no_restoration: bool = False,
+    no_glossary: bool = False,
+    glossary: str | None = None,
+    glossary_max_terms: int = 5,
+) -> str:
+    """Return sha256(input_bytes + config_bytes_if_any + behavioral_flags).
+
+    Behavioral CLI flags that affect the produced output bytes (frontmatter
+    on/off, concurrency for batch, language-detection, LQA, restoration,
+    glossary, glossary-max-terms) are mixed into the digest so a flag
+    change invalidates the cached output. See T24a.
+    """
     h = hashlib.sha256()
     h.update(input_path.read_bytes())
     if config_path:
         cfg = Path(config_path)
         if cfg.exists():
             h.update(cfg.read_bytes())
+    h.update(f"|fm={int(add_frontmatter)}".encode())
+    h.update(f"|con={int(concurrency)}".encode())
+    h.update(f"|det={int(detect_language)}".encode())
+    h.update(f"|lqa={int(lqa_enabled)}".encode())
+    h.update(f"|nres={int(no_restoration)}".encode())
+    h.update(f"|nglo={int(no_glossary)}".encode())
+    h.update(f"|glo={glossary or ''}".encode())
+    h.update(f"|gmt={int(glossary_max_terms)}".encode())
     return h.hexdigest()
 
 
@@ -214,6 +239,14 @@ def _check_cache(
     config_path: str | None,
     no_cache: bool = False,
     ext: str | None = None,
+    add_frontmatter: bool = True,
+    concurrency: int = 5,
+    detect_language: bool = True,
+    lqa_enabled: bool = False,
+    no_restoration: bool = False,
+    no_glossary: bool = False,
+    glossary: str | None = None,
+    glossary_max_terms: int = 5,
 ) -> bool:
     """If cached, copy ``<input_stem><ext>`` to ``output_path`` and return True.
 
@@ -223,7 +256,17 @@ def _check_cache(
         return False
     if ext is None:
         ext = input_path.suffix
-    key = _cache_key(input_path, config_path)
+    key = _cache_key(
+        input_path, config_path,
+        add_frontmatter=add_frontmatter,
+        concurrency=concurrency,
+        detect_language=detect_language,
+        lqa_enabled=lqa_enabled,
+        no_restoration=no_restoration,
+        no_glossary=no_glossary,
+        glossary=glossary,
+        glossary_max_terms=glossary_max_terms,
+    )
     cache_file = _cache_root() / f"{key}{ext}"
     if cache_file.exists():
         target = output_path / input_path.name
@@ -240,6 +283,14 @@ def _write_cache(
     config_path: str | None,
     no_cache: bool = False,
     ext: str | None = None,
+    add_frontmatter: bool = True,
+    concurrency: int = 5,
+    detect_language: bool = True,
+    lqa_enabled: bool = False,
+    no_restoration: bool = False,
+    no_glossary: bool = False,
+    glossary: str | None = None,
+    glossary_max_terms: int = 5,
 ) -> None:
     """Copy the produced output into the cache for next run.
 
@@ -252,7 +303,17 @@ def _write_cache(
         return
     if ext is None:
         ext = input_path.suffix
-    key = _cache_key(input_path, config_path)
+    key = _cache_key(
+        input_path, config_path,
+        add_frontmatter=add_frontmatter,
+        concurrency=concurrency,
+        detect_language=detect_language,
+        lqa_enabled=lqa_enabled,
+        no_restoration=no_restoration,
+        no_glossary=no_glossary,
+        glossary=glossary,
+        glossary_max_terms=glossary_max_terms,
+    )
     cache_file = _cache_root() / f"{key}{ext}"
     cache_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     shutil.copy(output_file, cache_file)
@@ -1334,7 +1395,14 @@ def translate_md(
         _set_restoration_for_next_translation(enabled=not no_restoration)
 
         # A6: cache check before any expensive LLM work.
-        if _check_cache(input_path, output_path, config, no_cache=no_cache):
+        if _check_cache(
+            input_path, output_path, config, no_cache=no_cache,
+            add_frontmatter=add_frontmatter,
+            no_restoration=no_restoration,
+            no_glossary=no_glossary,
+            glossary=glossary,
+            glossary_max_terms=glossary_max_terms,
+        ):
             cached_output = output_path / input_path.name
             if json_output:
                 output_json(True, str(input_path), str(cached_output), src, tgt)
@@ -1365,7 +1433,14 @@ def translate_md(
             )
 
         # A6: cache the produced output so the next run is a cache hit.
-        _write_cache(input_path, output_path, config, no_cache=no_cache)
+        _write_cache(
+            input_path, output_path, config, no_cache=no_cache,
+            add_frontmatter=add_frontmatter,
+            no_restoration=no_restoration,
+            no_glossary=no_glossary,
+            glossary=glossary,
+            glossary_max_terms=glossary_max_terms,
+        )
 
         if json_output:
             actual_output = output_path / input_path.name
@@ -1635,7 +1710,13 @@ def translate_xliff(
             tgt_lang = tgt_lang or "zh"
 
         # A6: cache check before any expensive LLM work.
-        if _check_cache(input_path, output_path, config_path, no_cache=no_cache):
+        if _check_cache(
+            input_path, output_path, config_path, no_cache=no_cache,
+            no_restoration=no_restoration,
+            no_glossary=no_glossary,
+            glossary=glossary,
+            glossary_max_terms=glossary_max_terms,
+        ):
             cached_output = output_path / input_path.name
             if json_output:
                 output_json(True, str(input_path), str(cached_output), src_lang, tgt_lang)
@@ -1674,7 +1755,13 @@ def translate_xliff(
             )
 
         # A6: cache the produced output so the next run is a cache hit.
-        _write_cache(input_path, output_path, config_path, no_cache=no_cache)
+        _write_cache(
+            input_path, output_path, config_path, no_cache=no_cache,
+            no_restoration=no_restoration,
+            no_glossary=no_glossary,
+            glossary=glossary,
+            glossary_max_terms=glossary_max_terms,
+        )
 
         output_file = output_path / Path(input).name
         if json_output:
