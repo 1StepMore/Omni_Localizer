@@ -153,138 +153,64 @@ def load_corpus(path: Path, num_units: int) -> list[dict]:
 
 
 def _build_pool_for_model(target_model: str, base_config_path: Path, dry_run: bool):
-    """Build (or stub) a ModelPool that prioritizes ``target_model`` in the translation role.
+    """Build a ModelPool whose translation role resolves to ``target_model``.
 
-    DEPRECATED: the default.yaml has ``api_key: null`` and ``base_url: null``
-    which makes the LiteLLM routing fail. Use ``_direct_litellm_translate``
-    instead — it goes through LiteLLM with explicit credentials from env.
-    """
-    return None
-
-
-def _direct_litellm_translate(model: str, source: str, dry_run: bool) -> str:
-    """Translate via LiteLLM directly, bypassing the OL config layer.
-
-    This works around the pre-existing default.yaml config gap
-    (api_key: null, base_url: null). Reads the relevant env vars:
-    - MINIMAX_API_KEY + MINIMAX_BASE_URL for MiniMax models
-    - OPENAI_API_KEY for OpenAI models
-    - BAIDU_API_KEY for Baidu/ernie models
+    Writes a temp config next to the original where the translation list
+    is restricted to the target model (priority 1). This is the only way
+    to force a specific translation model through ``ModelPool.translate()``,
+    which hardcodes ``model="translation"`` and relies on the priority list.
     """
     if dry_run or os.environ.get("OMNI_RUN_REAL_LLM_DRY") == "1":
-        return f"[{model}] {source}"
+        return None
     try:
-        from litellm import acompletion
-        import asyncio
+        from ol_pool.router import ModelPool
     except ImportError as e:
-        print(f"ERROR: litellm not installed: {e}", file=sys.stderr)
+        print(f"ERROR: cannot import ModelPool: {e}", file=sys.stderr)
+        print("  Are you in the Omni_Localizer directory with src/ on PYTHONPATH?", file=sys.stderr)
         sys.exit(2)
-
-    if model.startswith("MiniMax"):
-        api_key = os.environ.get("MINIMAX_API_KEY")
-        base_url = os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
-        provider_model = f"minimax/{model}"
-    elif "ernie" in model.lower():
-        api_key = os.environ.get("BAIDU_API_KEY")
-        base_url = os.environ.get("BAIDU_BASE_URL", "https://qianfan.baidubce.com/v2")
-        provider_model = f"baidu/{model}"
-    else:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        base_url = None
-        provider_model = model
-
-    if not api_key:
-        print(f"ERROR: no API key env var set for {model}", file=sys.stderr)
+    import yaml
+    with base_config_path.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    models = cfg.get("llm_pool", {}).get("translation", [])
+    target_entry = next((m for m in models if m.get("model") == target_model), None)
+    if target_entry is None:
+        print(f"ERROR: target model {target_model!r} not found in {base_config_path}", file=sys.stderr)
+        print(f"  Available translation models: {[m.get('model') for m in models]}", file=sys.stderr)
         sys.exit(2)
-
-    try:
-        resp = asyncio.run(acompletion(
-            model=provider_model,
-            messages=[
-                {"role": "system", "content": f"Translate the following text to Simplified Chinese (zh-CN). Output ONLY the translation, no commentary, no XML wrappers, no source echoing."},
-                {"role": "user", "content": source},
-            ],
-            temperature=0.0,
-            api_key=api_key,
-            base_url=base_url,
-            timeout=60.0,
-        ))
-    except Exception as e:
-        # Surface the error but keep the calibration running.
-        print(f"  [WARN] translate({model}) failed for unit: {e}", file=sys.stderr)
-        return f"[TRANSLATE_ERROR: {type(e).__name__}] {source[:200]}"
-
-    return resp.choices[0].message.content or ""
-
-
-def _direct_litellm_judge(source: str, target: str, judge_model: str, dry_run: bool) -> float:
-    """Judge via LiteLLM directly, returning a 0-10 score."""
-    if dry_run or os.environ.get("OMNI_RUN_REAL_LLM_DRY") == "1":
-        h = abs(hash((source, target, judge_model))) % 100
-        return 5.0 + (h / 100.0) * 5.0
-
-    try:
-        from litellm import acompletion
-        import asyncio
-    except ImportError:
-        return 7.0
-
-    if "ernie" in judge_model.lower():
-        api_key = os.environ.get("BAIDU_API_KEY")
-        base_url = os.environ.get("BAIDU_BASE_URL", "https://qianfan.baidubce.com/v2")
-        provider_model = f"baidu/{judge_model}"
-    elif judge_model.startswith("MiniMax"):
-        api_key = os.environ.get("MINIMAX_API_KEY")
-        base_url = os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
-        provider_model = f"minimax/{judge_model}"
-    else:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        base_url = None
-        provider_model = judge_model
-
-    if not api_key:
-        return 7.0
-
-    prompt = (
-        f"You are a translation quality judge. Rate the following translation "
-        f"on a scale of 0 to 10 (10 = perfect, 0 = unusable). Respond with "
-        f"ONLY a single number, no commentary.\n\n"
-        f"Source: {source}\n\nTranslation: {target}"
-    )
-
-    try:
-        resp = asyncio.run(acompletion(
-            model=provider_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            api_key=api_key,
-            base_url=base_url,
-            timeout=60.0,
-        ))
-        score_text = (resp.choices[0].message.content or "7.0").strip()
-        # Extract the first number from the response.
-        import re
-        m = re.search(r"(\d+(?:\.\d+)?)", score_text)
-        return float(m.group(1)) if m else 7.0
-    except Exception as e:
-        print(f"  [WARN] judge({judge_model}) failed: {e}", file=sys.stderr)
-        return 7.0
+    # Validator requires >= 2 models per role; keep all but put target at priority 1.
+    reordered = [{**target_entry, "priority": 1}]
+    next_priority = 2
+    for m in models:
+        if m.get("model") == target_model:
+            continue
+        reordered.append({**m, "priority": next_priority})
+        next_priority += 1
+    cfg["llm_pool"]["translation"] = reordered
+    tmp_cfg_path = base_config_path.parent / f".calibration_{target_model}.yaml"
+    with tmp_cfg_path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, allow_unicode=True)
+    return ModelPool.get_instance(str(tmp_cfg_path))
 
 
 def translate_unit(model: str, source: str, dry_run: bool, pool=None) -> str:
-    """Translate a single unit with the given model. Stubbed in dry-run.
-
-    The ``pool`` parameter is ignored — kept for backward compat with the
-    pool-based API that turned out to be blocked by the pre-existing
-    default.yaml config gap.
-    """
-    return _direct_litellm_translate(model, source, dry_run)
-
-
-def judge_unit(source: str, target: str, judge_model: str, dry_run: bool) -> float:
-    """Judge a translation. Returns 0-10 score. Stubbed in dry-run."""
+    """Translate a single unit. Stubbed in dry-run; real runs use the pre-built ``pool``."""
     if dry_run or os.environ.get("OMNI_RUN_REAL_LLM_DRY") == "1":
-        # Deterministic stub: pseudo-random but stable per (source, target, model).
+        return f"[{model}] {source}"
+    if pool is None:
+        raise RuntimeError(f"real translate requires a pre-built pool for {model}")
+    import asyncio
+    return asyncio.run(pool.translate(source, "en", "zh"))
+
+
+def judge_unit(source: str, target: str, judge_model: str, dry_run: bool, model_pool=None) -> float:
+    """Judge a translation. Returns 0-10 score. Stubbed in dry-run.
+
+    The ``judge_model`` argument is informational only; the actual judge is
+    selected from the judging role in the OL config (priority 1 by default).
+    ``model_pool`` must be provided for real judging — without it JudgeService
+    falls back to its built-in mock (returns 7.0).
+    """
+    if dry_run or os.environ.get("OMNI_RUN_REAL_LLM_DRY") == "1":
         h = abs(hash((source, target, judge_model))) % 100
         return 5.0 + (h / 100.0) * 5.0  # 5.0 - 10.0 range
     try:
@@ -293,10 +219,9 @@ def judge_unit(source: str, target: str, judge_model: str, dry_run: bool) -> flo
         print(f"ERROR: cannot import JudgeService: {e}", file=sys.stderr)
         sys.exit(2)
     import asyncio
-    judge_svc = JudgeService(pass_threshold=7.0)
+    judge_svc = JudgeService(pass_threshold=7.0, model_pool=model_pool)
     result = asyncio.run(judge_svc.judge(source, target, "calibration", "en", "zh"))
-    # Result is an EvaluationResult; final_score is 0-10.
-    return getattr(result, "final_score", 7.0) or 7.0
+    return result.judge_overall_score
 
 
 def run_calibration(args: argparse.Namespace) -> CalibrationReport:
@@ -308,14 +233,22 @@ def run_calibration(args: argparse.Namespace) -> CalibrationReport:
         notes.append("DRY RUN: no real LLM calls. Use without --dry-run for actual calibration.")
     if not dry_run and not os.environ.get("MINIMAX_API_KEY"):
         notes.append("MINIMAX_API_KEY not set — calibration requires it. Source .env or export it.")
-    if not dry_run and not os.environ.get("BAIDU_API_KEY") and "ernie" in args.judge_model.lower():
-        notes.append("BAIDU_API_KEY not set — judging may use fallback model.")
 
     print(f"Calibrating with {len(corpus)} units (judge={args.judge_model}, threshold={args.threshold})")
     if dry_run:
         print("  [DRY RUN MODE]")
     else:
-        print("  Using direct LiteLLM routing (default.yaml has api_key: null; calibration script bypasses it).")
+        print("  Building per-model pools (ModelPool) and judging via JudgeService.")
+
+    m3_pool = m27_pool = None
+    if not dry_run:
+        base_config = args.corpus.parents[3] / "config" / "default.yaml"
+        if not base_config.exists():
+            print(f"ERROR: base config not found at {base_config}", file=sys.stderr)
+            print("  Pass --base-config explicitly if the corpus is outside Omni_Localizer/tests/.", file=sys.stderr)
+            sys.exit(2)
+        m3_pool = _build_pool_for_model("MiniMax-M3", base_config, dry_run)
+        m27_pool = _build_pool_for_model("MiniMax-M2.7", base_config, dry_run)
 
     per_unit: list[dict] = []
     m3_scores: list[float] = []
@@ -324,10 +257,10 @@ def run_calibration(args: argparse.Namespace) -> CalibrationReport:
     for i, unit in enumerate(corpus, 1):
         unit_id = unit.get("unit_id", f"u_{i:04d}")
         source = unit["source"]
-        m3_t = translate_unit("MiniMax-M3", source, dry_run)
-        m27_t = translate_unit("MiniMax-M2.7", source, dry_run)
-        m3_s = _direct_litellm_judge(source, m3_t, args.judge_model, dry_run)
-        m27_s = _direct_litellm_judge(source, m27_t, args.judge_model, dry_run)
+        m3_t = translate_unit("MiniMax-M3", source, dry_run, pool=m3_pool)
+        m27_t = translate_unit("MiniMax-M2.7", source, dry_run, pool=m27_pool)
+        m3_s = judge_unit(source, m3_t, args.judge_model, dry_run, model_pool=m3_pool)
+        m27_s = judge_unit(source, m27_t, args.judge_model, dry_run, model_pool=m3_pool)
         delta = m27_s - m3_s
         m3_scores.append(m3_s)
         m27_scores.append(m27_s)

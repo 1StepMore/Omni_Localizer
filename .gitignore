@@ -75,6 +75,9 @@ config/book_*.yaml
 # Per-test local overrides (e.g., test_local.yaml with real keys for one-shot runs)
 config/test_local.yaml
 config/test_local.*.yaml
+# Temp configs written by scripts/calibrate_m2.7.py to force a specific
+# translation model in the ModelPool (one file per target model).
+config/.calibration_*.yaml
 
 # Local scripts (template versions tracked, secrets set via env vars)
 test_en_to_zh.bat
