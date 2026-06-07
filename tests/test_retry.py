@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -250,3 +251,42 @@ class TestRetryManager:
         for r in failed:
             assert r.best_translation in texts
             assert "OL_WARN: TRANSLATION_FAILED" in r.warning
+
+    # POST_MORTEM OL-5: RetryResult carries the underlying exception in
+    # the `exception` field (renamed from `judge_exception` since it can
+    # come from EITHER translate_fn or judge_fn). Old name kept as
+    # backward-compat alias.
+
+    def test_exception_field_carries_translate_err(self):
+        """When translate_fn raises, the exception object is preserved on .exception."""
+        boom = RuntimeError("LLM provider down")
+        def translate_fn():
+            raise boom
+        def judge_fn(s, t, u):
+            raise AssertionError("should not be called when translate fails")
+
+        mgr = RetryManager(max_retries=0, pass_threshold=7.0)
+        result = asyncio.run(
+            mgr.execute_with_retry("u1", "source", translate_fn, judge_fn)
+        )
+
+        assert result.transport_error is True
+        assert result.exception is boom
+
+    def test_judge_exception_alias_works(self):
+        """The old `.judge_exception` attribute name is preserved as an alias."""
+        boom = ValueError("judge blew up")
+        async def translate_fn():
+            return "ok"
+        async def judge_fn(s, t, u):
+            raise boom
+
+        mgr = RetryManager(max_retries=0, pass_threshold=7.0)
+        result = asyncio.run(
+            mgr.execute_with_retry("u1", "source", translate_fn, judge_fn)
+        )
+
+        # Old API still works.
+        assert result.judge_exception is boom
+        # New API also works.
+        assert result.exception is boom

@@ -12,8 +12,18 @@ class RetryResult:
     best_translation: str
     warning: str | None
     attempt_history: list[tuple[str, float]] = field(default_factory=list)
-    judge_exception: Exception | None = None
+    # POST_MORTEM OL-5: carries the error from EITHER stage (translate_fn
+    # transport failure or judge_fn failure). Renamed from `judge_exception`
+    # to reflect that it covers both. `judge_exception` is kept as a
+    # deprecated alias for backward compat.
+    exception: Exception | None = None
     transport_error: bool = False
+
+    def __getattr__(self, name: str):
+        # Backward-compat shim: callers using the old name still work.
+        if name == "judge_exception":
+            return self.__dict__.get("exception")
+        raise AttributeError(name)
 
 
 class RetryManager:
@@ -51,7 +61,7 @@ class RetryManager:
                         f"({type(translate_err).__name__}: {str(translate_err)[:200]})"
                     ),
                     attempt_history=attempt_history,
-                    judge_exception=translate_err,
+                    exception=translate_err,
                     transport_error=True,
                 )
 
@@ -69,7 +79,7 @@ class RetryManager:
                     best_translation=translation,
                     warning=f"OL_WARN: LQA_SKIPPED ({type(judge_err).__name__}: {judge_err})",
                     attempt_history=attempt_history + [(translation, 0.0)],
-                    judge_exception=judge_err,
+                    exception=judge_err,
                     transport_error=True,
                 )
 
@@ -99,6 +109,6 @@ class RetryManager:
             best_translation=best_translation,
             warning=warning,
             attempt_history=attempt_history,
-            judge_exception=last_judge_err,
+            exception=last_judge_err,
             transport_error=last_transport_err,
         )
