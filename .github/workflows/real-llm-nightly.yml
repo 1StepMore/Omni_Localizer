@@ -1,0 +1,86 @@
+name: Real-LLM Nightly
+
+# A11 — slim-pipeline-hardening. Nightly cron runs the real-LLM E2E
+# suite against a real MiniMax/M2.7 pool. Cost is bounded at ~$5-15/month
+# by the per-test pre-call cost gate in tests/real_llm/cost_estimator.py
+# (budget_usd=5.0 per test; cumulative is a no-op across tests since the
+# fixture is function-scoped). Promotion cadence: start weekly, move to
+# nightly after 1 month of stable green runs (per plan A11 risk register).
+#
+# Manual trigger: `gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer`
+# Useful when validating a model swap or config change.
+
+on:
+  schedule:
+    # 0 2 * * 0 = Sundays at 02:00 UTC. Weekly cadence for the first
+    # month (per plan A11). Promote to nightly (0 2 * * *) after the
+    # harness is validated. See docs/real_llm_runbook.md.
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  real-llm-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # No matrix: one run per cron tick. The 4 real-LLM tests share a
+    # single ModelPool instance (session-scoped fixture) so multi-
+    # matrixing would 4x the cost without 4x the signal.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install core deps
+        run: >-
+          python -m pip install
+          litellm translate-toolkit markdown-it-py pydantic PyYAML
+          pytest span-aligner typer jinja2 rich pytest-asyncio
+
+      - name: Run real-LLM E2E suite
+        env:
+          OMNI_RUN_REAL_LLM: "1"
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_BASE_URL: ${{ secrets.MINIMAX_BASE_URL }}
+          # BAIDU_API_KEY is required by config/local.yaml's
+          # ernie-4.5-turbo-32k translation + judging + restoration entries.
+          # The harness resolves it at config-load time even if the
+          # nightly run never picks the ernie-4.5 model.
+          BAIDU_API_KEY: ${{ secrets.BAIDU_API_KEY }}
+          BAIDU_BASE_URL: ${{ secrets.BAIDU_BASE_URL }}
+          PYTHONPATH: src
+        run: |
+          echo "Real-LLM nightly run starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python -m pytest tests/real_llm/ -v --tb=short --durations=10 2>&1 | tee pytest-real-llm.log
+          echo "Real-LLM nightly run finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Upload pytest log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-llm-pytest-log
+          path: pytest-real-llm.log
+          retention-days: 14
+
+      - name: Summarize cost from log
+        # Post-run sanity check: the suite has a $5/test budget cap. If
+        # the cumulative cost looks unusual (e.g. >$0.10 for 4 small
+        # tests), flag it. We don't parse the log strictly; this is a
+        # soft warning for human review.
+        if: always()
+        run: |
+          echo "=== Real-LLM nightly summary ==="
+          echo "Exit code: ${{ job.status }}"
+          echo "Tests run: see pytest-real-llm.log"
+          echo "Cost: see cost_estimator.summary() in test output"
+          echo "If cost > $0.10/night for 4 tests, recalibrate rates in"
+          echo "  tests/real_llm/cost_estimator.py (quarterly). See"
+          echo "  docs/real_llm_runbook.md."

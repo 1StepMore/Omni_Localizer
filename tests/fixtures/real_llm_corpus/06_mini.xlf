@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="06_mini.xlf" source-language="en" target-language="zh" datatype="plaintext">
+    <header>
+      <note from="OL">Real-LLM test corpus (A11.4): minimal 2-unit XLIFF for the full-pipeline e2e test.</note>
+    </header>
+    <body>
+      <trans-unit id="tu-1">
+        <source>Welcome to the Omni-Localizer real-LLM nightly test suite.</source>
+        <target></target>
+      </trans-unit>
+      <trans-unit id="tu-2">
+        <source>This run exercises the full XLIFF pipeline: parse, translate, judge, write.</source>
+        <target></target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

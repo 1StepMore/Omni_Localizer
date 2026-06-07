@@ -80,6 +80,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "real_llm_required: test requires a real LLM call (OMNI_RUN_REAL_LLM=1)",
+    "real_llm_optional: test may use real LLM if available, mocks otherwise",
+]
 
 [tool.ruff]
 line-length = 100

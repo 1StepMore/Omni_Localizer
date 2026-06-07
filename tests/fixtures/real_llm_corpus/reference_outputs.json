@@ -1,0 +1,45 @@
+{
+  "_doc": "A11 reference outputs for the real-LLM corpus. Each key is the basename of a corpus file (without .txt or .xlf extension). The fixtures/real_llm_corpus/ directory and tests/real_llm/test_real_llm_e2e.py must stay in sync with this file. Regenerate on deliberate model changes only (see docs/real_llm_runbook.md).",
+  "01_intro": {
+    "input": "Our company helps enterprises unlock the value of their data by combining modern cloud platforms with proven analytics practices. We work closely with each customer to understand their goals, map them to a realistic roadmap, and deliver measurable outcomes in weeks rather than months.",
+    "expected_keywords": [],
+    "min_quality_score": 0.7,
+    "target_lang": "zh",
+    "notes": "Generic enterprise intro; no domain-specific jargon. Quality floor: standard."
+  },
+  "02_market": {
+    "input": "The market for artificial intelligence in the enterprise is growing rapidly, with adoption strongest in financial services, healthcare, and retail. Buyers are increasingly sophisticated: they look beyond demo videos and ask for production references, governance frameworks, and clear return on investment. Vendors who can show real deployments and transparent pricing have a clear advantage.",
+    "expected_keywords": [],
+    "min_quality_score": 0.7,
+    "target_lang": "zh",
+    "notes": "Market positioning paragraph. No brand names; expect full translation into Simplified Chinese."
+  },
+  "03_product": {
+    "input": "Our product platform unifies data ingestion, model orchestration, and observability in a single workspace. Built on Microsoft Azure, integrated with Apple Push Notification service, and certified for Google Cloud, it lets teams ship machine learning workflows without stitching together half a dozen tools. The platform also supports custom connectors for legacy systems, including AS/400 and mainframes.",
+    "expected_keywords": ["Microsoft Azure", "Apple", "Google Cloud", "AS/400"],
+    "min_quality_score": 0.75,
+    "target_lang": "zh",
+    "notes": "Brand-name preservation test. Verbatim brand names (English) must survive translation. min_quality_score elevated to 0.75 because the test asserts brand preservation in addition to fluency."
+  },
+  "04_team": {
+    "input": "Behind every successful deployment is a team that combines deep technical skills with industry knowledge. Our engineers come from backgrounds in distributed systems, applied mathematics, and product design. They work alongside solution architects, customer success managers, and security specialists to make sure each rollout is reliable, secure, and aligned with the customer's broader strategy.",
+    "expected_keywords": [],
+    "min_quality_score": 0.7,
+    "target_lang": "zh",
+    "notes": "Team description; standard quality floor."
+  },
+  "05_close": {
+    "input": "If you would like to see the platform in action, we offer a thirty-minute live demonstration followed by a question and answer session with our solution architects. To schedule a session, contact our sales team or book directly through our website. We look forward to showing you how our customers have turned data into measurable business outcomes.",
+    "expected_keywords": [],
+    "min_quality_score": 0.7,
+    "target_lang": "zh",
+    "notes": "Call-to-action close; standard quality floor."
+  },
+  "06_mini": {
+    "_type": "xliff",
+    "trans_unit_count": 2,
+    "min_quality_score": 0.7,
+    "target_lang": "zh",
+    "notes": "Minimal XLIFF (2 trans-units) used by test_real_e2e_translate_xliff_full_pipeline. The full pipeline is parse → translate → judge → write."
+  }
+}
