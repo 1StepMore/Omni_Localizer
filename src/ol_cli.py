@@ -496,7 +496,8 @@ def _inject_xliff_header(repaired: str, header_note: str) -> str:
     return repaired  # No <file> element found, skip header injection
 
 
-__version__ = "0.2.6"
+from importlib.metadata import version as _pkg_version
+__version__ = _pkg_version("omni-localizer")
 
 # Initialize logging
 init_logger()
