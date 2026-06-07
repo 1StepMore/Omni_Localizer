@@ -180,12 +180,21 @@ class TestRetryResultNewFields:
         assert result.transport_error is False
 
     def test_retry_result_accepts_judge_exception(self):
+        """POST_MORTEM OL-5: RetryResult carries the underlying exception in
+        the new ``exception`` field (renamed from ``judge_exception`` for
+        semantic clarity since it carries errors from EITHER translate_fn
+        or judge_fn). The old ``judge_exception`` field name is preserved
+        as a backward-compat alias via __getattr__.
+        """
         exc = RuntimeError("boom")
         result = RetryResult(
             attempts=1, final_score=0, best_translation="",
             warning="OL_WARN: LQA_SKIPPED",
-            judge_exception=exc, transport_error=True,
+            exception=exc, transport_error=True,
         )
+        # New API works.
+        assert result.exception is exc
+        # Old API still works (backward-compat shim).
         assert result.judge_exception is exc
         assert result.transport_error is True
 
