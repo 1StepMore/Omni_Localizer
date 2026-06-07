@@ -68,6 +68,122 @@ def _consume_glossary_for_translation() -> Any:
     return g
 
 
+# ========== A12.4: Restoration enabled-flag single-use module state ==========
+# ``--no-restoration`` is the user-visible switch. The typer command sets
+# the flag (True = restoration enabled, default) before
+# ``asyncio.run(_translate_*_async(...))``; the async entry point reads
+# it via ``_consume_restoration_for_translation()`` and clears it.
+# Same rationale as the glossary module state: we don't want to change
+# ``_translate_*_async``'s positional signature because pre-existing
+# test_ol_cache.py fakes mock it with a fixed 5-arg signature.
+_pending_restoration_enabled: bool = True
+
+
+def _set_restoration_for_next_translation(enabled: bool) -> None:
+    global _pending_restoration_enabled
+    _pending_restoration_enabled = enabled
+
+
+def _consume_restoration_for_translation() -> bool:
+    """Defaults to ``True`` (restoration enabled) so callers that don't
+    set it explicitly keep working. Reset to the default after consume."""
+    global _pending_restoration_enabled
+    v = _pending_restoration_enabled
+    _pending_restoration_enabled = True
+    return v
+
+
+# ========== A12.5: glossary_max_terms single-use module state ==========
+# ``--glossary-max-terms N`` overrides the default top-5 in
+# ``Glossary.inject_into_prompt``. We don't add a positional arg to
+# ``_translate_*_async`` for the same reason as glossary/restoration.
+_pending_glossary_max_terms: int = 5
+
+
+def _set_glossary_max_terms_for_next_translation(n: int) -> None:
+    global _pending_glossary_max_terms
+    if not isinstance(n, int) or n < 1:
+        n = 5
+    _pending_glossary_max_terms = n
+
+
+def _consume_glossary_max_terms_for_translation() -> int:
+    global _pending_glossary_max_terms
+    v = _pending_glossary_max_terms
+    _pending_glossary_max_terms = 5
+    return v
+
+
+def _apply_glossary_max_terms(
+    glossary: Any, max_terms: int,
+) -> Any:
+    """Bind ``max_terms`` as the default for ``glossary.inject_into_prompt``.
+
+    Replaces the bound method on the specific instance so the pool's call
+    ``glossary.inject_into_prompt(text, prompt)`` picks up the CLI override.
+    An explicit ``max_terms`` argument to the patched call wins (forward
+    compat for future callers). No-op if glossary is None, missing the
+    method, or max_terms is the default 5.
+    """
+    if glossary is None or max_terms == 5:
+        return glossary
+    if not hasattr(glossary, "inject_into_prompt"):
+        return glossary
+
+    original = glossary.inject_into_prompt
+    default = max_terms
+
+    def _patched(source_text: str, prompt: str, max_terms: int | None = None) -> str:
+        return original(source_text, prompt, max_terms=max_terms or default)
+
+    glossary.inject_into_prompt = _patched
+    return glossary
+
+
+# ========== A12.4: Post-translate restoration helper ==========
+
+def _apply_post_translate_restoration(
+    output_file: Path,
+    original_text: str,
+    pool: Any | None,
+) -> bool:
+    """Run the A12.4 Restorer on the just-written ``output_file``.
+
+    Reads the file, extracts ``{{_OL_*_*}}`` placeholders from
+    ``original_text``, and asks the Restorer to fill any missing ones.
+    Returns True if the file was rewritten. Lives outside the async
+    translate functions so pre-existing tests mocking them still
+    observe the restoration step (it runs after ``asyncio.run``).
+    """
+    from ol_restoration import Restorer, extract_placeholders
+
+    if not output_file.exists():
+        return False
+    try:
+        text = output_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    placeholders = extract_placeholders(original_text or "")
+    restorer = Restorer(model_pool=pool)
+    restored = restorer.restore(text, original_text or "", placeholders)
+    if restored != text:
+        output_file.write_text(restored, encoding="utf-8")
+        return True
+    return False
+
+
+def _build_restoration_pool(config_path: str | None) -> Any:
+    """Build a ModelPool for the restoration step; returns ``None`` on failure."""
+    try:
+        from ol_pool.router import ModelPool
+        return ModelPool.get_instance(
+            config_path if config_path else "config/default.yaml",
+        )
+    except Exception:
+        return None
+
+
 def _cache_root() -> Path:
     """Return the OL cache root, creating it (mode 0o700) on first access.
 
@@ -1149,6 +1265,24 @@ def translate_md(
              "matching source terms are injected into the translation prompt "
              "to bias the LLM toward your terminology.",
     ),
+    no_glossary: bool = typer.Option(
+        False, "--no-glossary",
+        help="Skip glossary injection even if --glossary is set or "
+             "the config declares one.",
+    ),
+    no_restoration: bool = typer.Option(
+        False, "--no-restoration",
+        help="Skip the post-translate placeholder restoration step (A12.4). "
+             "The CLI will not ask the LLM to recover any {{_OL_*_*}} "
+             "placeholders the translator stripped.",
+    ),
+    glossary_max_terms: int = typer.Option(
+        5, "--glossary-max-terms",
+        min=1,
+        help="How many top glossary terms to inject per trans-unit "
+             "(default 5). Applies to --glossary / config glossary "
+             "injection; ignored when --no-glossary is set.",
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -1192,7 +1326,12 @@ def translate_md(
         # A12.1: --glossary CLI flag (PR12). When set, it takes precedence
         # over any glossary path declared in the config file.
         loaded_glossary = _load_glossary_or_none(glossary)
+        # A12.5: --no-glossary overrides both --glossary and the config glossary.
+        if no_glossary:
+            loaded_glossary = None
+        _apply_glossary_max_terms(loaded_glossary, glossary_max_terms)
         _set_glossary_for_next_translation(loaded_glossary)
+        _set_restoration_for_next_translation(enabled=not no_restoration)
 
         # A6: cache check before any expensive LLM work.
         if _check_cache(input_path, output_path, config, no_cache=no_cache):
@@ -1211,6 +1350,19 @@ def translate_md(
                 input_path, output_path, config, src, tgt, add_frontmatter,
             ),
         )
+
+        # A12.4: post-translate restoration runs after the async pipeline
+        # so pre-existing test fakes for ``_translate_md_async`` still
+        # observe this step.
+        if not no_restoration:
+            try:
+                _original_text = input_path.read_text(encoding="utf-8")
+            except OSError:
+                _original_text = ""
+            _restoration_pool = _build_restoration_pool(config)
+            _apply_post_translate_restoration(
+                Path(output_file), _original_text, _restoration_pool,
+            )
 
         # A6: cache the produced output so the next run is a cache hit.
         _write_cache(input_path, output_path, config, no_cache=no_cache)
@@ -1424,6 +1576,24 @@ def translate_xliff(
         help="Path to a glossary JSON/YAML file. Top-5 matching source terms "
              "are injected into each trans-unit's translation prompt.",
     ),
+    no_glossary: bool = typer.Option(
+        False, "--no-glossary",
+        help="Skip glossary injection even if --glossary is set or "
+             "the config declares one.",
+    ),
+    no_restoration: bool = typer.Option(
+        False, "--no-restoration",
+        help="Skip the post-translate placeholder restoration step (A12.4). "
+             "The CLI will not ask the LLM to recover any {{_OL_*_*}} "
+             "placeholders the translator stripped.",
+    ),
+    glossary_max_terms: int = typer.Option(
+        5, "--glossary-max-terms",
+        min=1,
+        help="How many top glossary terms to inject per trans-unit "
+             "(default 5). Applies to --glossary / config glossary "
+             "injection; ignored when --no-glossary is set.",
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -1478,7 +1648,11 @@ def translate_xliff(
 
         # A12.1: --glossary CLI flag (PR12). Same precedence as translate-md.
         loaded_glossary = _load_glossary_or_none(glossary)
+        if no_glossary:
+            loaded_glossary = None
+        _apply_glossary_max_terms(loaded_glossary, glossary_max_terms)
         _set_glossary_for_next_translation(loaded_glossary)
+        _set_restoration_for_next_translation(enabled=not no_restoration)
 
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
@@ -1486,6 +1660,18 @@ def translate_xliff(
         asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
         ))
+
+        # A12.4: post-translate restoration runs after asyncio.run so
+        # test fakes for ``_translate_xliff_async`` still observe it.
+        if not no_restoration:
+            try:
+                _original_text = input_path.read_text(encoding="utf-8")
+            except OSError:
+                _original_text = ""
+            _restoration_pool = _build_restoration_pool(config_path)
+            _apply_post_translate_restoration(
+                output_path / Path(input).name, _original_text, _restoration_pool,
+            )
 
         # A6: cache the produced output so the next run is a cache hit.
         _write_cache(input_path, output_path, config_path, no_cache=no_cache)

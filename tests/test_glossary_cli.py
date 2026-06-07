@@ -215,3 +215,186 @@ class TestGlossaryCLIFlagLoadsFile:
         assert called["n"] == 1
         # No glossary provided → glossary is None.
         assert called.get("glossary") is None
+
+
+# ============================================================================
+# A12.5: --no-glossary, --glossary-max-terms
+# ============================================================================
+
+
+class TestGlossaryCLINewFlags:
+    """A12.5 tests: ``--no-glossary`` and ``--glossary-max-terms`` flags."""
+
+    def test_translate_md_no_glossary_overrides_glossary_flag(
+        self, sample_md, tmp_path,
+    ):
+        """Pass both ``--glossary`` and ``--no-glossary``; the latter wins
+        (glossary is None in the pipeline)."""
+        called: dict = {}
+
+        async def fake_translate_md_async(
+            input_path, output_path, config_path, src_lang, tgt_lang,
+            add_frontmatter=True,
+        ):
+            from ol_cli import _consume_glossary_for_translation
+            called["glossary"] = _consume_glossary_for_translation()
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_file = output_path / input_path.name
+            output_file.write_text("translated", encoding="utf-8")
+            return str(output_file)
+
+        glossary_tmp = tmp_path / "glossary.json"
+        glossary_tmp.write_text(
+            SAMPLE_GLOSSARY.read_text(encoding="utf-8"), encoding="utf-8",
+        )
+
+        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+            rc = runner.invoke(
+                app,
+                ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
+                 "--glossary", str(glossary_tmp),
+                 "--no-glossary",
+                 "--no-cache"],
+            )
+
+        assert rc.exit_code == 0, (
+            f"CLI failed: rc={rc.exit_code}, output={rc.output!r}, "
+            f"exception={rc.exception!r}"
+        )
+        # --no-glossary wins: pipeline sees no Glossary.
+        assert called.get("glossary") is None, (
+            f"expected None glossary with --no-glossary, got {called.get('glossary')!r}"
+        )
+
+    def test_translate_xliff_no_glossary_overrides_glossary_flag(
+        self, sample_xliff, tmp_path,
+    ):
+        """Same check for ``translate-xliff``."""
+        called: dict = {}
+
+        async def fake_translate_xliff_async(
+            input_path, output_path, config_path, src_lang, tgt_lang,
+        ):
+            from ol_cli import _consume_glossary_for_translation
+            called["glossary"] = _consume_glossary_for_translation()
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_file = output_path / input_path.name
+            output_file.write_text("translated", encoding="utf-8")
+            return str(output_file)
+
+        glossary_tmp = tmp_path / "glossary.json"
+        glossary_tmp.write_text(
+            SAMPLE_GLOSSARY.read_text(encoding="utf-8"), encoding="utf-8",
+        )
+
+        with patch.object(ol_cli, "_translate_xliff_async", side_effect=fake_translate_xliff_async):
+            rc = runner.invoke(
+                app,
+                ["translate-xliff", str(sample_xliff), "-o", str(tmp_path / "out"),
+                 "--glossary", str(glossary_tmp),
+                 "--no-glossary",
+                 "--no-cache"],
+            )
+
+        assert rc.exit_code == 0, (
+            f"CLI failed: rc={rc.exit_code}, output={rc.output!r}, "
+            f"exception={rc.exception!r}"
+        )
+        assert called.get("glossary") is None
+
+    def test_translate_md_glossary_max_terms_binds_to_glossary(
+        self, sample_md, tmp_path, monkeypatch,
+    ):
+        """``--glossary-max-terms 3`` binds the new default on the
+        glossary's ``inject_into_prompt`` so the pool picks it up."""
+        glossary_tmp = tmp_path / "glossary.json"
+        glossary_tmp.write_text(
+            SAMPLE_GLOSSARY.read_text(encoding="utf-8"), encoding="utf-8",
+        )
+
+        from ol_terminology import Glossary
+        captured: dict = {}
+
+        real_load = Glossary.load
+
+        def spy_load(path):
+            g = real_load(path)
+            captured["glossary"] = g
+            return g
+
+        monkeypatch.setattr(Glossary, "load", staticmethod(spy_load))
+
+        async def fake_translate_md_async(
+            input_path, output_path, config_path, src_lang, tgt_lang,
+            add_frontmatter=True,
+        ):
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_file = output_path / input_path.name
+            output_file.write_text("translated", encoding="utf-8")
+            return str(output_file)
+
+        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+            rc = runner.invoke(
+                app,
+                ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
+                 "--glossary", str(glossary_tmp),
+                 "--glossary-max-terms", "3",
+                 "--no-cache"],
+            )
+
+        assert rc.exit_code == 0, (
+            f"CLI failed: rc={rc.exit_code}, output={rc.output!r}, "
+            f"exception={rc.exception!r}"
+        )
+        assert "glossary" in captured, "Glossary.load was not called"
+        glossary = captured["glossary"]
+        # The CLI's _apply_glossary_max_terms bound the override on
+        # the glossary's inject_into_prompt method, so the call below
+        # works without passing max_terms explicitly.
+        result = glossary.inject_into_prompt(
+            source_text="API rendering", prompt="Translate this.",
+        )
+        assert "Use these terms" in result, (
+            f"expected 'Use these terms' in injected prompt, got: {result!r}"
+        )
+        # Explicit max_terms wins (forward compat).
+        result2 = glossary.inject_into_prompt(
+            source_text="API rendering", prompt="Translate this.",
+            max_terms=1,
+        )
+        terms_section = result2.split("Use these terms:")[-1]
+        terms = [t for t in terms_section.split(",") if t.strip()]
+        assert len(terms) <= 1, (
+            f"expected at most 1 term with explicit max_terms=1, "
+            f"got: {terms!r}"
+        )
+
+    def test_translate_xliff_glossary_max_terms_no_error(
+        self, sample_xliff, tmp_path,
+    ):
+        """``--glossary-max-terms N`` on translate-xliff must be accepted
+        by the CLI (no usage error). Sanity test for the new flag."""
+        called: dict = {}
+
+        async def fake_translate_xliff_async(
+            input_path, output_path, config_path, src_lang, tgt_lang,
+        ):
+            called["n"] = called.get("n", 0) + 1
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_file = output_path / input_path.name
+            output_file.write_text("translated", encoding="utf-8")
+            return str(output_file)
+
+        with patch.object(ol_cli, "_translate_xliff_async", side_effect=fake_translate_xliff_async):
+            rc = runner.invoke(
+                app,
+                ["translate-xliff", str(sample_xliff), "-o", str(tmp_path / "out"),
+                 "--glossary-max-terms", "7",
+                 "--no-cache"],
+            )
+
+        assert rc.exit_code == 0, (
+            f"CLI failed: rc={rc.exit_code}, output={rc.output!r}, "
+            f"exception={rc.exception!r}"
+        )
+        assert called.get("n") == 1
