@@ -765,8 +765,8 @@ def _load_dotenv(env_path: Path) -> None:
             value = value.strip().strip('"').strip("'")
             if key and value:
                 os.environ.setdefault(key, value)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to load .env file %s: %s", env_path, exc)
 
 
 @dataclass
