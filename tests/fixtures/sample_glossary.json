@@ -1,0 +1,16 @@
+{
+  "terms": [
+    {"source": "API", "targets": ["应用程序接口", "API"]},
+    {"source": "rendering", "targets": ["渲染"]},
+    {"source": "shader", "targets": ["着色器"]},
+    {"source": "pipeline", "targets": ["管线"]},
+    {"source": "compiler", "targets": ["编译器"]},
+    {"source": "endpoint", "targets": ["端点"]},
+    {"source": "middleware", "targets": ["中间件"]},
+    {"source": "kernel", "targets": ["内核"]},
+    {"source": "buffer", "targets": ["缓冲区"]},
+    {"source": "thread", "targets": ["线程"]},
+    {"source": "lock", "targets": ["锁"]},
+    {"source": "queue", "targets": ["队列"]}
+  ]
+}

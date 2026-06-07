@@ -193,6 +193,7 @@ class ModelPool:
         self, text: str, source_lang: str, target_lang: str,
         context: dict | str | None = None,
         temperature: float = 0.0,
+        glossary: Any = None,
     ) -> str:
         if self._test_mode:
             return "placeholder"
@@ -221,6 +222,13 @@ class ModelPool:
                     )
                     prompt_parts.insert(0, f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}")
             prompt = "\n\n".join(prompt_parts)
+
+        # A12.3: when a Glossary object is provided (PR12), inject the
+        # top-N relevant terms into the user prompt. This is the
+        # dataclass-based path; the legacy ``context["glossary_terms"]``
+        # branch above is preserved for BatchProcessor / RAG users.
+        if glossary is not None and hasattr(glossary, "inject_into_prompt"):
+            prompt = glossary.inject_into_prompt(text, prompt)
 
         system_message = (
             "You are a professional translator. Translate the user's text from "

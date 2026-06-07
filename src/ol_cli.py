@@ -34,6 +34,40 @@ CACHE_DIR_NAME = "ol"
 _cache_logger = get_logger("cli.cache")
 
 
+# ========== A12: Glossary single-use module state ==========
+# The typer command sets ``_pending_glossary`` before calling
+# ``asyncio.run(_translate_*_async(...))``; the async entry point
+# reads it via ``_consume_glossary_for_translation()`` and clears it.
+#
+# Why module state? Because the pre-existing ``test_ol_cache.py`` and
+# ``test_xliff_translate.py`` fakes mock the async functions with a
+# fixed-arity signature; adding a ``glossary`` positional param would
+# break them. Module state lets us thread the glossary through without
+# changing the function's public signature. The CLI is a sequential
+# command path (set state → asyncio.run → read state → clear), so
+# concurrent state corruption is not a concern.
+_pending_glossary: Any = None
+
+
+def _set_glossary_for_next_translation(glossary: Any) -> None:
+    """Set the glossary for the next ``_translate_*_async`` call.
+
+    Single-use: the next consume clears it. Subsequent consumes
+    return ``None`` until another ``_set_glossary_for_next_translation``
+    is issued.
+    """
+    global _pending_glossary
+    _pending_glossary = glossary
+
+
+def _consume_glossary_for_translation() -> Any:
+    """Read the pending glossary (set by the typer command) and clear it."""
+    global _pending_glossary
+    g = _pending_glossary
+    _pending_glossary = None
+    return g
+
+
 def _cache_root() -> Path:
     """Return the OL cache root, creating it (mode 0o700) on first access.
 
@@ -118,6 +152,32 @@ def _clear_ol_cache() -> int:
     shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     return count
+
+
+def _load_glossary_or_none(path: str | None) -> Any:
+    """Load a glossary file, or return None if ``path`` is None.
+
+    ``--glossary`` is OPTIONAL — when the flag is not passed we return
+    ``None`` and the translation pipeline runs without glossary
+    injection (existing behavior, no regression).
+
+    On load failure (malformed JSON/YAML, schema error, missing file),
+    we exit with a clear error message — never silently fall back, the
+    user passed the flag intentionally and wants to know.
+    """
+    if path is None:
+        return None
+    from ol_terminology import Glossary
+
+    p = Path(path)
+    if not p.exists():
+        typer.echo(f"Error: glossary file not found: {path}", err=True)
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+    try:
+        return Glossary.load(p)
+    except (ValueError, FileNotFoundError) as e:
+        typer.echo(f"Error: failed to load glossary {path}: {e}", err=True)
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
 
 def _escape_yaml_value(value: str) -> str:
@@ -380,6 +440,11 @@ async def _translate_md_async(
     tgt_lang: str,
     add_frontmatter: bool = True,
 ) -> str:
+    # A12.3: read the glossary from module state (set by the typer command
+    # before asyncio.run). We intentionally keep this function's POSITIONAL
+    # signature unchanged so the pre-existing test_ol_cache.py fakes
+    # (which mock this function with a fixed 5-arg signature) still work.
+    glossary = _consume_glossary_for_translation()
     import os
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         import sys
@@ -412,7 +477,9 @@ async def _translate_md_async(
         )
 
         async def translate_fn():
-            return await pool.translate(shielded, src_lang, tgt_lang)
+            return await pool.translate(
+                shielded, src_lang, tgt_lang, glossary=glossary,
+            )
 
         async def judge_fn(source, translation, unit_id):
             return judge.judge(
@@ -437,7 +504,9 @@ async def _translate_md_async(
             translated = original_text
     else:
         try:
-            translated = await pool.translate(shielded, src_lang, tgt_lang)
+            translated = await pool.translate(
+                shielded, src_lang, tgt_lang, glossary=glossary,
+            )
         except Exception as translate_err:
             logger.warning(
                 f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
@@ -552,6 +621,7 @@ async def _translate_one_unit(
     tgt_lang: str,
     sem: asyncio.Semaphore,
     repair_pipeline: Any,
+    glossary: Any = None,
 ) -> _UnitTranslationResult:
     """Translate one trans-unit, gated by ``sem``.
 
@@ -575,7 +645,8 @@ async def _translate_one_unit(
             if judge is not None and retry_mgr is not None:
                 async def translate_fn():
                     return await pool.translate(
-                        unit.source_text, src_lang, tgt_lang, context=None,
+                        unit.source_text, src_lang, tgt_lang,
+                        context=None, glossary=glossary,
                     )
 
                 async def judge_fn(source, translation, unit_id):
@@ -601,7 +672,8 @@ async def _translate_one_unit(
                     status = "transport_error"
             else:
                 translated = await pool.translate(
-                    unit.source_text, src_lang, tgt_lang, context=None,
+                    unit.source_text, src_lang, tgt_lang,
+                    context=None, glossary=glossary,
                 )
                 attempts = 1
     except Exception as translate_err:
@@ -660,6 +732,7 @@ async def _translate_xliff_pipelined(
     tgt_lang: str,
     sem: asyncio.Semaphore,
     repair_pipeline: Any = None,
+    glossary: Any = None,
 ) -> list[_UnitTranslationResult]:
     """A4: pipelined translate + LQA judge.
 
@@ -703,7 +776,7 @@ async def _translate_xliff_pipelined(
         return await _translate_units_concurrent(
             units, pool, judge, retry_mgr,
             src_lang, tgt_lang,
-            sem=sem, repair_pipeline=repair_pipeline,
+            sem=sem, repair_pipeline=repair_pipeline, glossary=glossary,
         )
 
     threshold = retry_mgr._pass_threshold
@@ -722,7 +795,8 @@ async def _translate_xliff_pipelined(
         try:
             async with sem:
                 first_pass_translations[idx] = await pool.translate(
-                    unit.source_text, src_lang, tgt_lang, context=None,
+                    unit.source_text, src_lang, tgt_lang,
+                    context=None, glossary=glossary,
                 )
         except BaseException as exc:  # noqa: BLE001 — broad on purpose
             first_pass_translate_excs[idx] = exc
@@ -766,7 +840,7 @@ async def _translate_xliff_pipelined(
                 async with sem:
                     retry_translations[idx] = await pool.translate(
                         units[idx].source_text, src_lang, tgt_lang,
-                        context=None,
+                        context=None, glossary=glossary,
                     )
             except BaseException as exc:  # noqa: BLE001
                 return
@@ -857,6 +931,7 @@ async def _translate_units_concurrent(
     tgt_lang: str,
     sem: asyncio.Semaphore,
     repair_pipeline: Any = None,
+    glossary: Any = None,
 ) -> list[_UnitTranslationResult]:
     """Translate all trans-units concurrently, capped by ``sem``.
 
@@ -882,7 +957,7 @@ async def _translate_units_concurrent(
         asyncio.create_task(
             _translate_one_unit(
                 u, pool, judge, retry_mgr,
-                src_lang, tgt_lang, sem, repair_pipeline,
+                src_lang, tgt_lang, sem, repair_pipeline, glossary,
             )
         )
         for u in units
@@ -921,6 +996,11 @@ async def _translate_xliff_async(
     src_lang: str,
     tgt_lang: str,
 ) -> str:
+    # A12.3: read the glossary from module state (set by the typer command
+    # before asyncio.run). We intentionally keep this function's POSITIONAL
+    # signature unchanged so the pre-existing test_ol_cache.py fakes
+    # (which mock this function with a fixed 5-arg signature) still work.
+    glossary = _consume_glossary_for_translation()
     import os
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         import sys
@@ -994,6 +1074,7 @@ async def _translate_xliff_async(
             src_lang, tgt_lang,
             sem=limiter.xliff_semaphore,
             repair_pipeline=repair_pipeline,
+            glossary=glossary,
         )
     else:
         results = await _translate_units_concurrent(
@@ -1001,6 +1082,7 @@ async def _translate_xliff_async(
             src_lang, tgt_lang,
             sem=limiter.xliff_semaphore,
             repair_pipeline=repair_pipeline,
+            glossary=glossary,
         )
 
     for unit, r in zip(units, results):
@@ -1061,6 +1143,12 @@ def translate_md(
     clear_cache: bool = typer.Option(
         False, "--clear-cache", help="Remove all cached OL outputs and exit"
     ),
+    glossary: str | None = typer.Option(
+        None, "--glossary",
+        help="Path to a glossary JSON/YAML file. When provided, the top-5 "
+             "matching source terms are injected into the translation prompt "
+             "to bias the LLM toward your terminology.",
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -1088,17 +1176,23 @@ def translate_md(
 
         src = source_lang or "en"
         tgt = target_lang or "zh"
+        cfg_glossary: dict[str, Any] | None = None
 
         if config:
             from ol_config.loader import load_config
 
-            cfg, glossary = load_config(config)
+            cfg, cfg_glossary = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
         else:
             src = src or "en"
             tgt = tgt or "zh"
+
+        # A12.1: --glossary CLI flag (PR12). When set, it takes precedence
+        # over any glossary path declared in the config file.
+        loaded_glossary = _load_glossary_or_none(glossary)
+        _set_glossary_for_next_translation(loaded_glossary)
 
         # A6: cache check before any expensive LLM work.
         if _check_cache(input_path, output_path, config, no_cache=no_cache):
@@ -1113,7 +1207,9 @@ def translate_md(
             raise typer.Exit(code=ExitCode.SUCCESS)
 
         output_file = asyncio.run(
-            _translate_md_async(input_path, output_path, config, src, tgt, add_frontmatter),
+            _translate_md_async(
+                input_path, output_path, config, src, tgt, add_frontmatter,
+            ),
         )
 
         # A6: cache the produced output so the next run is a cache hit.
@@ -1323,6 +1419,11 @@ def translate_xliff(
     clear_cache: bool = typer.Option(
         False, "--clear-cache", help="Remove all cached OL outputs and exit"
     ),
+    glossary: str | None = typer.Option(
+        None, "--glossary",
+        help="Path to a glossary JSON/YAML file. Top-5 matching source terms "
+             "are injected into each trans-unit's translation prompt.",
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -1375,10 +1476,16 @@ def translate_xliff(
             logger.info(f"Completed: translate_xliff {input} (cache hit)")
             raise typer.Exit(code=ExitCode.SUCCESS)
 
+        # A12.1: --glossary CLI flag (PR12). Same precedence as translate-md.
+        loaded_glossary = _load_glossary_or_none(glossary)
+        _set_glossary_for_next_translation(loaded_glossary)
+
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
 
-        asyncio.run(_translate_xliff_async(Path(input), output_path, config_path, src_lang, tgt_lang))
+        asyncio.run(_translate_xliff_async(
+            Path(input), output_path, config_path, src_lang, tgt_lang,
+        ))
 
         # A6: cache the produced output so the next run is a cache hit.
         _write_cache(input_path, output_path, config_path, no_cache=no_cache)
