@@ -1,7 +1,10 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
 
 import asyncio
+import hashlib
+import os
 import re
+import shutil
 import signal
 import sys
 import time
@@ -18,6 +21,103 @@ from ol_logging.core import get_logger, init_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
+
+
+# ========== A6: Content-addressed cache (~/.omni_cache/ol/) ==========
+# Re-runs of the same input+config skip the expensive translation and just
+# copy the cached <input_stem>.<ext> to the output dir. The cache root can
+# be overridden with the OMNI_CACHE_DIR env var (used by tests). Mode 0o700
+# protects any sensitive content (e.g., a translated MD file that contains
+# private info).
+# CACHE_DIR_NAME is the per-module subdirectory under OMNI_CACHE_DIR.
+CACHE_DIR_NAME = "ol"
+_cache_logger = get_logger("cli.cache")
+
+
+def _cache_root() -> Path:
+    """Return the OL cache root, creating it (mode 0o700) on first access.
+
+    The env var is read at call-time (not at import-time) so tests can
+    override it via monkeypatch.setenv() before any call.
+    """
+    root = Path(
+        os.environ.get("OMNI_CACHE_DIR", str(Path.home() / ".omni_cache"))
+    ) / CACHE_DIR_NAME
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return root
+
+
+def _cache_key(input_path: Path, config_path: str | None) -> str:
+    """Return sha256(input_bytes + config_bytes_if_any)."""
+    h = hashlib.sha256()
+    h.update(input_path.read_bytes())
+    if config_path:
+        cfg = Path(config_path)
+        if cfg.exists():
+            h.update(cfg.read_bytes())
+    return h.hexdigest()
+
+
+def _check_cache(
+    input_path: Path,
+    output_path: Path,
+    config_path: str | None,
+    no_cache: bool = False,
+    ext: str | None = None,
+) -> bool:
+    """If cached, copy ``<input_stem><ext>`` to ``output_path`` and return True.
+
+    Honors ``--no-cache``: returns False without touching the cache.
+    """
+    if no_cache:
+        return False
+    if ext is None:
+        ext = input_path.suffix
+    key = _cache_key(input_path, config_path)
+    cache_file = _cache_root() / f"{key}{ext}"
+    if cache_file.exists():
+        target = output_path / input_path.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(cache_file, target)
+        _cache_logger.info(f"Cache hit: {cache_file} -> {target}")
+        return True
+    return False
+
+
+def _write_cache(
+    input_path: Path,
+    output_path: Path,
+    config_path: str | None,
+    no_cache: bool = False,
+    ext: str | None = None,
+) -> None:
+    """Copy the produced output into the cache for next run.
+
+    Honors ``--no-cache``: no-op.
+    """
+    if no_cache:
+        return
+    output_file = output_path / input_path.name
+    if not output_file.exists():
+        return
+    if ext is None:
+        ext = input_path.suffix
+    key = _cache_key(input_path, config_path)
+    cache_file = _cache_root() / f"{key}{ext}"
+    cache_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    shutil.copy(output_file, cache_file)
+    _cache_logger.debug(f"Cache miss: wrote {cache_file}")
+
+
+def _clear_ol_cache() -> int:
+    """Remove all cached OL files. Returns the number of files removed."""
+    root = _cache_root()
+    if not root.exists():
+        return 0
+    count = sum(1 for _ in root.iterdir())
+    shutil.rmtree(root)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return count
 
 
 def _escape_yaml_value(value: str) -> str:
@@ -955,6 +1055,12 @@ def translate_md(
     add_frontmatter: bool = typer.Option(
         True, "--frontmatter/--no-frontmatter", help="Add YAML frontmatter to output file"
     ),
+    no_cache: bool = typer.Option(
+        False, "--no-cache", help="Skip the .omni_cache/ cache check (force a fresh translation)"
+    ),
+    clear_cache: bool = typer.Option(
+        False, "--clear-cache", help="Remove all cached OL outputs and exit"
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -974,6 +1080,12 @@ def translate_md(
 
     logger.info(f"Command: translate_md {input}")
     try:
+        if clear_cache:
+            n = _clear_ol_cache()
+            logger.info(f"Cleared {n} cached file(s) from {_cache_root()}")
+            typer.echo(f"Cleared {n} cached file(s) from {_cache_root()}")
+            raise typer.Exit(code=ExitCode.SUCCESS)
+
         src = source_lang or "en"
         tgt = target_lang or "zh"
 
@@ -988,9 +1100,24 @@ def translate_md(
             src = src or "en"
             tgt = tgt or "zh"
 
+        # A6: cache check before any expensive LLM work.
+        if _check_cache(input_path, output_path, config, no_cache=no_cache):
+            cached_output = output_path / input_path.name
+            if json_output:
+                output_json(True, str(input_path), str(cached_output), src, tgt)
+            else:
+                typer.echo(
+                    f"Translated (cached): {input_path.name} -> {cached_output} ({src} -> {tgt})"
+                )
+            logger.info(f"Completed: translate_md {input} (cache hit)")
+            raise typer.Exit(code=ExitCode.SUCCESS)
+
         output_file = asyncio.run(
             _translate_md_async(input_path, output_path, config, src, tgt, add_frontmatter),
         )
+
+        # A6: cache the produced output so the next run is a cache hit.
+        _write_cache(input_path, output_path, config, no_cache=no_cache)
 
         if json_output:
             actual_output = output_path / input_path.name
@@ -1190,6 +1317,12 @@ def translate_xliff(
     json_output: bool = typer.Option(
         False, "--json", help="Output JSON instead of human-readable text"
     ),
+    no_cache: bool = typer.Option(
+        False, "--no-cache", help="Skip the .omni_cache/ cache check (force a fresh translation)"
+    ),
+    clear_cache: bool = typer.Option(
+        False, "--clear-cache", help="Remove all cached OL outputs and exit"
+    ),
 ) -> int:
     try:
         input_path = validate_input_file(input)
@@ -1209,6 +1342,12 @@ def translate_xliff(
 
     logger.info(f"Command: translate_xliff {input}")
     try:
+        if clear_cache:
+            n = _clear_ol_cache()
+            logger.info(f"Cleared {n} cached file(s) from {_cache_root()}")
+            typer.echo(f"Cleared {n} cached file(s) from {_cache_root()}")
+            raise typer.Exit(code=ExitCode.SUCCESS)
+
         src_lang = source_lang
         tgt_lang = target_lang
         config_path = config
@@ -1224,10 +1363,25 @@ def translate_xliff(
             src_lang = src_lang or "en"
             tgt_lang = tgt_lang or "zh"
 
+        # A6: cache check before any expensive LLM work.
+        if _check_cache(input_path, output_path, config_path, no_cache=no_cache):
+            cached_output = output_path / input_path.name
+            if json_output:
+                output_json(True, str(input_path), str(cached_output), src_lang, tgt_lang)
+            else:
+                typer.echo(
+                    f"Translated (cached): {input_path.name} -> {cached_output} ({src_lang} -> {tgt_lang})"
+                )
+            logger.info(f"Completed: translate_xliff {input} (cache hit)")
+            raise typer.Exit(code=ExitCode.SUCCESS)
+
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
 
         asyncio.run(_translate_xliff_async(Path(input), output_path, config_path, src_lang, tgt_lang))
+
+        # A6: cache the produced output so the next run is a cache hit.
+        _write_cache(input_path, output_path, config_path, no_cache=no_cache)
 
         output_file = output_path / Path(input).name
         if json_output:
