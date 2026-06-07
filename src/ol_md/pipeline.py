@@ -46,8 +46,8 @@ class MDRepairPipeline:
         if self.is_complete(current_text, shield_map):
             return current_text
 
-        aligned = level2_span_align(current_text, shield_map, original_text)
-        if aligned != current_text:
+        aligned, l2_applied = level2_span_align(current_text, shield_map, original_text)
+        if l2_applied and aligned != current_text:
             current_text = aligned
 
         if self.is_complete(current_text, shield_map):

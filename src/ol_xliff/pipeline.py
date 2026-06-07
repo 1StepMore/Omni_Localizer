@@ -68,8 +68,8 @@ class XLIFFRepairPipeline:
         if self.is_complete(current_text, shield_map):
             return current_text, warnings
 
-        aligned = level2_span_align(current_text, shield_map, original)
-        if aligned != current_text:
+        aligned, l2_applied = level2_span_align(current_text, shield_map, original)
+        if l2_applied and aligned != current_text:
             current_text = aligned
 
         if self.is_complete(current_text, shield_map):

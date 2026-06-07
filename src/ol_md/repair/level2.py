@@ -5,9 +5,23 @@ except ImportError:
     _has_span_aligner = False
 
 
-def level2_span_align(text: str, shield_map: dict, original: str) -> str:
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+def level2_span_align(
+    text: str, shield_map: dict, original: str
+) -> tuple[str, bool]:
+    """Apply L2 span alignment to `text`. Returns (text, l2_applied).
+
+    l2_applied=True: span_aligner was available AND the L2 repair
+    succeeded; `text` is the L2-repaired output.
+    l2_applied=False: span_aligner unavailable OR L2 raised; `text`
+    is the upstream text (graceful degradation).
+    """
     if not _has_span_aligner:
-        return text
+        return text, False
     # Force HF offline mode so the network call fails immediately; restore
     # the previous value in finally to avoid leaking the override.
     import os
@@ -15,13 +29,12 @@ def level2_span_align(text: str, shield_map: dict, original: str) -> str:
     os.environ["HF_HUB_OFFLINE"] = "1"
     try:
         projector = SpanProjector()
-        return projector.project(text, shield_map, original)
+        return projector.project(text, shield_map, original), True
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(
+        _logger.warning(
             "L2 span_aligner unavailable, falling back to upstream text: %s", e
         )
-        return text
+        return text, False
     finally:
         if old_offline is None:
             os.environ.pop("HF_HUB_OFFLINE", None)
