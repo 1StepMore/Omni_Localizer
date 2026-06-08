@@ -32,20 +32,58 @@ def extract_tags(source_xml: str) -> dict[str, str]:
     return tags
 
 
+# ULTRAREADY-FIX (2026-06-08): the LLM sometimes emits inline tag
+# placeholders in a non-canonical format ({{OLXTAGbx1}} instead of
+# {{_OL_XTAG_bx_1_}}) AND additionally appends the actual <bx>/<ex>
+# tags at the end (entity-escaped as &lt;...&gt;). The bus's existing
+# restore_tags only matches the canonical {{_OL_XTAG_*_}} format, so
+# both forms leak through into the XLIFF output and end up as literal
+# text in the final DOCX. This regex matches the LLM's format AND
+# strips the erroneously-appended actual tags.
+_OLXTAG_NEW_RE = re.compile(r'\{\{OLXTAG(bx|ex|x)(\d+)\}\}')
+_BX_APPENDED_RE = re.compile(r'&lt;bx[^>]*id="[^"]*"[^>]*/&gt;')
+_EX_APPENDED_RE = re.compile(r'&lt;ex[^>]*id="[^"]*"[^>]*/&gt;')
+_X_APPENDED_RE = re.compile(r'&lt;x[^>]*id="[^"]*"[^>]*/&gt;')
+
+
 def restore_tags(target_text: str, tag_map: dict[str, str]) -> str:
     """Restore tags from placeholder map to target text.
 
+    ULTRAREADY-FIX (2026-06-08): now also handles the LLM's
+    non-canonical placeholder format ``{{OLXTAG<type><id>}}`` and
+    strips the LLM's erroneously-appended actual <bx>/<ex>/<x> tags
+    so the final DOCX doesn't end up with literal placeholder text
+    or duplicated markup.
+
     Args:
         target_text: Text with placeholders like {{_OL_XTAG_x_1_}}
-        tag_map: Mapping of placeholder ID to original tag
+                      or {{OLXTAGbx1}}, possibly with actual
+                      &lt;bx.../&gt; tags appended.
+        tag_map: Mapping of placeholder ID (e.g. ``bx_1``) to original tag.
 
     Returns:
-        Text with tags restored
-
+        Text with placeholders replaced and erroneously-appended
+        actual tags removed.
     """
     result = target_text
+
+    # Format 1: bus's canonical {{_OL_XTAG_<key>_}} format
     for placeholder, tag in tag_map.items():
-        result = result.replace(f'{{{{_OL_XTAG_{placeholder}_}}}}', tag)
+        result = result.replace(f"{{{{_OL_XTAG_{placeholder}_}}}}", tag)
+
+    # Format 2: LLM's non-canonical {{OLXTAG<type><id>}} format
+    def _replace_new(m: re.Match) -> str:
+        tag_type = m.group(1)
+        tag_id = m.group(2)
+        return tag_map.get(f"{tag_type}_{tag_id}", m.group(0))
+    result = _OLXTAG_NEW_RE.sub(_replace_new, result)
+
+    # Strip the LLM's erroneously-appended actual tags (entity-escaped
+    # because they came from the LLM as literal markup, e.g. "&lt;bx .../&gt;")
+    result = _BX_APPENDED_RE.sub("", result)
+    result = _EX_APPENDED_RE.sub("", result)
+    result = _X_APPENDED_RE.sub("", result)
+
     return result
 
 
