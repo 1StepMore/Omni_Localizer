@@ -870,6 +870,14 @@ async def _translate_one_unit(
             f"{type(translate_err).__name__}. Using OPP source as fallback."
         )
 
+    if isinstance(translated, str) and not translated.strip() and unit.source_text and unit.source_text.strip():
+        warning = warning or "OL_WARN: EMPTY_LLM_OUTPUT (LLM returned whitespace; using OPP source)"
+        logger.warning(
+            f"Unit {unit.unit_id} LLM returned whitespace-only output "
+            f"({translated!r}); falling back to OPP source for this unit."
+        )
+        translated = unit.source_text
+
     latency_ms = (time.monotonic() - start) * 1000.0
     # Structured per-unit log so concurrent output stays correlatable
     # (unit_id is the join key for grep).

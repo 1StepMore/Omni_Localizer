@@ -1,4 +1,5 @@
 """XLIFF bus for Omni-Localizer using translate-toolkit."""
+import logging
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -6,6 +7,8 @@ from typing import Any
 
 from ol_buses.xliff_shield import replace_tags_with_placeholders
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
+
+_logger = logging.getLogger(__name__)
 
 
 # Matches a bare `&` that is NOT already the start of a known XML entity.
@@ -173,6 +176,21 @@ def write_target_back(
     for unit in ctx.units:
         if unit.target_text is None:
             continue
+
+        # ULTRAREADY-FIX (2026-06-08): fallback for empty LLM output.
+        # The LLM sometimes produces just whitespace for units whose
+        # source is text wrapped in inline tags (e.g. para_index_0 =
+        # title "《爱上海尔》" between <bx> and <ex>). If target_text
+        # is empty/whitespace, fall back to the source's text content
+        # (with placeholders) so the inline tags + Chinese text still
+        # appear in the output. The user at least sees the title text
+        # (in Chinese) rather than a blank paragraph.
+        if not unit.target_text.strip() and unit.source_text.strip():
+            logger.warning(
+                f"Empty LLM target for unit {unit.unit_id}; "
+                f"falling back to source text. Source={unit.source_text[:80]!r}"
+            )
+            unit.target_text = unit.source_text
 
         if unit.unit_id == HEADER_NOTE_UNIT_ID:
             header_note_pattern = re.compile(
