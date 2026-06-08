@@ -71,6 +71,22 @@ _CHINESE_PUNCT_REPLACEMENTS: list[tuple[str, str]] = [
     ("十、", "10. "),
 ]
 
+# ULTRAREADY-FIX (2026-06-08): strip markdown-style emphasis that the LLM
+# sometimes emits when it sees formatting placeholders like 《book title》.
+# XLIFF/DOCX do not render *text* or _text_ as emphasis — only inline tags
+# like <bx>/<ex>/<it> do. Stripping markdown italics prevents the "Love Haier"
+# → "*Loving Haier*" regression where the LLM substitutes brackets with
+# markdown asterisks.
+import re as _re_markdown_strip
+_MARKDOWN_EMPHASIS_RE = _re_markdown_strip.compile(r"\*+([^*\n]+?)\*+|_+([^_\n]+?)_+")
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    """Remove *italic* and _italic_ markdown emphasis from LLM output."""
+    if not text:
+        return text
+    return _MARKDOWN_EMPHASIS_RE.sub(r"\1\2", text)
+
 
 def _localize_chinese_punctuation(text: str) -> str:
     """Convert Chinese typographic conventions in LLM output to English.
@@ -362,10 +378,16 @@ class ModelPool:
                         f"Stripped {len(raw) - len(translated)} chars of "
                         f"chain-of-thought from LLM output"
                     )
-                localized = _localize_chinese_punctuation(translated)
-                if localized != translated:
+                no_markdown = _strip_markdown_emphasis(translated)
+                if no_markdown != translated:
                     _logger.debug(
-                        f"Localized {len(translated) - len(localized)} chars of "
+                        f"Stripped {len(translated) - len(no_markdown)} chars of "
+                        f"markdown emphasis from LLM output"
+                    )
+                localized = _localize_chinese_punctuation(no_markdown)
+                if localized != no_markdown:
+                    _logger.debug(
+                        f"Localized {len(no_markdown) - len(localized)} chars of "
                         f"Chinese typographic conventions to English"
                     )
                 translated = localized
