@@ -52,6 +52,47 @@ def _strip_thinking_blocks(text: str) -> str:
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
+_CHINESE_PUNCT_REPLACEMENTS: list[tuple[str, str]] = [
+    ("《", ""),
+    ("》", ""),
+    ("“", '"'),
+    ("”", '"'),
+    ("‘", "'"),
+    ("’", "'"),
+    ("一、", "1. "),
+    ("二、", "2. "),
+    ("三、", "3. "),
+    ("四、", "4. "),
+    ("五、", "5. "),
+    ("六、", "6. "),
+    ("七、", "7. "),
+    ("八、", "8. "),
+    ("九、", "9. "),
+    ("十、", "10. "),
+]
+
+
+def _localize_chinese_punctuation(text: str) -> str:
+    """Convert Chinese typographic conventions in LLM output to English.
+
+    ULTRAREADY-FIX (2026-06-08): the LLM correctly preserves Chinese
+    punctuation per the "preserve all markup" instruction, but the
+    instruction is wrong for typographic conventions. This function
+    localizes them after the model returns so the XLIFF carries
+    English conventions downstream.
+
+    Inline XLIFF tags like ``<bx id="1"/>`` are NOT touched because
+    the replacements only match Chinese punctuation characters.
+    """
+    if not text:
+        return text
+    for src, dst in _CHINESE_PUNCT_REPLACEMENTS:
+        text = text.replace(src, dst)
+    # Collapse runs of spaces that result from stripping 《》 next to
+    # space, e.g. "Love Haier " should not become "Love Haier  ".
+    text = re.sub(r"  +", " ", text)
+    return text
+
 # Ensure `src.ol_pool.router` and `ol_pool.router` resolve to the same
 # module object. Tests patch via `src.ol_pool.router.*` while importing
 # via `ol_pool.router`; without this aliasing the patches miss the
@@ -284,10 +325,15 @@ class ModelPool:
             "<trans-unit>, or anything with xmlns= attributes). Output only the "
             "translated text — no markup, no quotes around it, no language tags. "
             "Return only the translated text. "
-            "CRITICAL: do NOT emit any <think>...</think>, <|thinking|>, <|reasoning|>, "
+            "CRITICAL: do NOT emit any ①think...①/think>, <|thinking|>, <|reasoning|>, "
             "or <thought>...</thought> blocks. Do NOT preface your answer with "
             "'Let me analyze', 'I need to translate', or any planning prose. "
-            "Return ONLY the translated text and nothing else."
+            "Return ONLY the translated text and nothing else. "
+            "LOCALIZE Chinese typographic conventions to the target language: "
+            "strip 《》 book-title brackets (English uses italics), convert "
+            "“” and ‘’ quotes to ASCII, and replace Chinese ordinal "
+            "markers 一、 二、 三、 … 十、 with '1.', '2.', '3.' … '10.'. "
+            "Do NOT preserve these conventions verbatim in the target language."
         )
 
         messages = [
@@ -316,6 +362,13 @@ class ModelPool:
                         f"Stripped {len(raw) - len(translated)} chars of "
                         f"chain-of-thought from LLM output"
                     )
+                localized = _localize_chinese_punctuation(translated)
+                if localized != translated:
+                    _logger.debug(
+                        f"Localized {len(translated) - len(localized)} chars of "
+                        f"Chinese typographic conventions to English"
+                    )
+                translated = localized
                 _logger.debug(f"Translation response: {len(translated)} chars")
                 if self._cache_enabled and temperature == 0.0:
                     self._cache.put(cache_key, translated)
