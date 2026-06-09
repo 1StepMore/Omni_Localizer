@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-09
+
+### Changed
+- **`ol_cli.py`**: Replaced all `: Any` type annotations (21 instances) and `-> Any` return types (4 instances) with concrete types
+  - Added `TYPE_CHECKING` imports for `JudgeService`, `ModelPool`, `RetryManager`, `Glossary`
+  - Added `from ol_core.dataclass import TranslationUnit` at top level
+  - Used `typing.cast` for duck-typed seams (`_FakeModelPool`)
+  - Zero new LSP diagnostics — only pre-existing errors remain
+
 ## [0.4.0] - 2026-06-03
 
 ### Added

@@ -9,7 +9,7 @@ import signal
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 # ========== OL Frontmatter Support ==========
 from datetime import UTC, datetime
@@ -21,6 +21,13 @@ from ol_logging.core import get_logger, init_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
+from ol_core.dataclass import TranslationUnit
+
+if TYPE_CHECKING:
+    from ol_lqa.judge import JudgeService
+    from ol_pool.router import ModelPool
+    from ol_retry.retry import RetryManager
+    from ol_terminology import Glossary
 
 
 # ========== A6: Content-addressed cache (~/.omni_cache/ol/) ==========
@@ -46,10 +53,10 @@ _cache_logger = get_logger("cli.cache")
 # changing the function's public signature. The CLI is a sequential
 # command path (set state → asyncio.run → read state → clear), so
 # concurrent state corruption is not a concern.
-_pending_glossary: Any = None
+_pending_glossary: 'Glossary | None' = None
 
 
-def _set_glossary_for_next_translation(glossary: Any) -> None:
+def _set_glossary_for_next_translation(glossary: 'Glossary | None') -> None:
     """Set the glossary for the next ``_translate_*_async`` call.
 
     Single-use: the next consume clears it. Subsequent consumes
@@ -60,7 +67,7 @@ def _set_glossary_for_next_translation(glossary: Any) -> None:
     _pending_glossary = glossary
 
 
-def _consume_glossary_for_translation() -> Any:
+def _consume_glossary_for_translation() -> 'Glossary | None':
     """Read the pending glossary (set by the typer command) and clear it."""
     global _pending_glossary
     g = _pending_glossary
@@ -115,8 +122,8 @@ def _consume_glossary_max_terms_for_translation() -> int:
 
 
 def _apply_glossary_max_terms(
-    glossary: Any, max_terms: int,
-) -> Any:
+    glossary: 'Glossary | None', max_terms: int,
+) -> 'Glossary | None':
     """Bind ``max_terms`` as the default for ``glossary.inject_into_prompt``.
 
     Replaces the bound method on the specific instance so the pool's call
@@ -145,7 +152,7 @@ def _apply_glossary_max_terms(
 def _apply_post_translate_restoration(
     output_file: Path,
     original_text: str,
-    pool: Any | None,
+    pool: 'ModelPool | None',
 ) -> bool:
     """Run the A12.4 Restorer on the just-written ``output_file``.
 
@@ -173,7 +180,7 @@ def _apply_post_translate_restoration(
     return False
 
 
-def _build_restoration_pool(config_path: str | None) -> Any:
+def _build_restoration_pool(config_path: str | None) -> 'ModelPool | None':
     """Build a ModelPool for the restoration step; returns ``None`` on failure."""
     try:
         from ol_pool.router import ModelPool
@@ -181,6 +188,9 @@ def _build_restoration_pool(config_path: str | None) -> Any:
             config_path if config_path else "config/default.yaml",
         )
     except Exception:
+        logger = get_logger("cli")
+        logger.exception("ModelPool init failed")
+        logger.warning("ModelPool init failed (likely test env without API keys)")
         return None
 
 
@@ -331,7 +341,7 @@ def _clear_ol_cache() -> int:
     return count
 
 
-def _load_glossary_or_none(path: str | None) -> Any:
+def _load_glossary_or_none(path: str | None) -> 'Glossary | None':
     """Load a glossary file, or return None if ``path`` is None.
 
     ``--glossary`` is OPTIONAL — when the flag is not passed we return
@@ -544,6 +554,16 @@ def validate_input_file(path: str) -> Path:
     return file_path
 
 
+def _enforce_file_size(input_path: Path, max_size_mb: int = 50) -> None:
+    """Reject files larger than max_size_mb."""
+    size_mb = input_path.stat().st_size / (1024 * 1024)
+    if size_mb > max_size_mb:
+        raise typer.BadParameter(
+            f"Input file {input_path.name} is {size_mb:.1f} MB, "
+            f"exceeds limit of {max_size_mb} MB"
+        )
+
+
 def ensure_output_dir(path: str) -> Path:
     output_path = Path(path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -631,7 +651,8 @@ async def _translate_md_async(
         if str(_suite_root) not in sys.path:
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        pool = _FakeModelPool()
+        from ol_pool.router import ModelPool as _MP
+        pool = cast(_MP, cast(object, _FakeModelPool()))
         _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
@@ -791,15 +812,15 @@ class _UnitTranslationResult:
 
 
 async def _translate_one_unit(
-    unit: Any,
-    pool: Any,
-    judge: Any,
-    retry_mgr: Any,
+    unit: TranslationUnit,
+    pool: 'ModelPool',
+    judge: 'JudgeService | None',
+    retry_mgr: 'RetryManager | None',
     src_lang: str,
     tgt_lang: str,
     sem: asyncio.Semaphore,
-    repair_pipeline: Any,
-    glossary: Any = None,
+    repair_pipeline: 'MDRepairPipeline | XLIFFRepairPipeline',
+    glossary: 'Glossary | None' = None,
 ) -> _UnitTranslationResult:
     """Translate one trans-unit, gated by ``sem``.
 
@@ -911,14 +932,14 @@ async def _translate_one_unit(
 
 async def _translate_xliff_pipelined(
     units: list,
-    pool: Any,
-    judge: Any,
-    retry_mgr: Any,
+    pool: 'ModelPool',
+    judge: 'JudgeService | None',
+    retry_mgr: 'RetryManager | None',
     src_lang: str,
     tgt_lang: str,
     sem: asyncio.Semaphore,
-    repair_pipeline: Any = None,
-    glossary: Any = None,
+    repair_pipeline: 'XLIFFRepairPipeline | None' = None,
+    glossary: 'Glossary | None' = None,
 ) -> list[_UnitTranslationResult]:
     """A4: pipelined translate + LQA judge.
 
@@ -974,7 +995,7 @@ async def _translate_xliff_pipelined(
     first_pass_translate_excs: list[BaseException | None] = [None] * n
     first_pass_judge_excs: list[BaseException | None] = [None] * n
 
-    async def unit_pipeline(idx: int, unit: Any) -> None:
+    async def unit_pipeline(idx: int, unit: TranslationUnit) -> None:
         """Translate then judge, both for one unit. Translate holds ``sem``;
         judge runs WITHOUT the sem so it can overlap with the next unit's
         translate (this is the A4 pipelining speedup)."""
@@ -984,7 +1005,7 @@ async def _translate_xliff_pipelined(
                     unit.source_text, src_lang, tgt_lang,
                     context=None, glossary=glossary,
                 )
-        except BaseException as exc:  # noqa: BLE001 — broad on purpose
+        except Exception as exc:
             first_pass_translate_excs[idx] = exc
             return
         try:
@@ -992,7 +1013,7 @@ async def _translate_xliff_pipelined(
                 unit.source_text, first_pass_translations[idx], unit.unit_id,
                 source_lang=src_lang, target_lang=tgt_lang,
             )
-        except BaseException as exc:  # noqa: BLE001
+        except Exception as exc:
             first_pass_judge_excs[idx] = exc
 
     # === Phase 1+2 (interleaved): translate phase holds sem, judge phase
@@ -1028,7 +1049,7 @@ async def _translate_xliff_pipelined(
                         units[idx].source_text, src_lang, tgt_lang,
                         context=None, glossary=glossary,
                     )
-            except BaseException as exc:  # noqa: BLE001
+            except Exception as exc:
                 return
             try:
                 retry_results[idx] = await judge.judge(
@@ -1036,7 +1057,7 @@ async def _translate_xliff_pipelined(
                     units[idx].unit_id,
                     source_lang=src_lang, target_lang=tgt_lang,
                 )
-            except BaseException as exc:  # noqa: BLE001
+            except Exception as exc:
                 retry_results[idx] = None
 
         await asyncio.gather(*[_retry_unit_pipeline(i) for i in needs_retry])
@@ -1110,14 +1131,14 @@ async def _translate_xliff_pipelined(
 
 async def _translate_units_concurrent(
     units: list,
-    pool: Any,
-    judge: Any,
-    retry_mgr: Any,
+    pool: 'ModelPool',
+    judge: 'JudgeService | None',
+    retry_mgr: 'RetryManager | None',
     src_lang: str,
     tgt_lang: str,
     sem: asyncio.Semaphore,
-    repair_pipeline: Any = None,
-    glossary: Any = None,
+    repair_pipeline: 'MDRepairPipeline | XLIFFRepairPipeline | None' = None,
+    glossary: 'Glossary | None' = None,
 ) -> list[_UnitTranslationResult]:
     """Translate all trans-units concurrently, capped by ``sem``.
 
@@ -1195,13 +1216,14 @@ async def _translate_xliff_async(
         if str(_suite_root) not in sys.path:
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        pool = _FakeModelPool()
+        from ol_pool.router import ModelPool as _MP
+        pool = cast(_MP, cast(object, _FakeModelPool()))
         _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
-        pool = ModelPool.get_instance(
-            config_path if config_path else os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
-        )
+        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+
+    from ol_config.loader import load_config
 
     from ol_xliff.parser import XliffParser
     from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
@@ -1388,6 +1410,7 @@ def translate_md(
             cfg, cfg_glossary = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
+            _enforce_file_size(input_path, cfg.max_input_size_mb)
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
         else:
             src = src or "en"
@@ -1713,6 +1736,7 @@ def translate_xliff(
             cfg, _ = load_config(config)
             src_lang = src_lang or cfg.source_lang
             tgt_lang = tgt_lang or cfg.target_lang
+            _enforce_file_size(input_path, cfg.max_input_size_mb)
             typer.echo(f"Using config: {cfg.project_id} ({src_lang} -> {tgt_lang})")
         else:
             src_lang = src_lang or "en"
