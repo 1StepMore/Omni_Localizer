@@ -42,21 +42,31 @@ def _escape_xml_entities(text: str) -> str:
 
 
 def _ensure_target_tags(content: str) -> str:
-    """Inject empty <target></target> after </source> if not present.
+    """Normalize XLIFF so every trans-unit has <target></target>.
 
-    OPP-generated XLIFF files only contain <source> elements without <target>.
-    write_target_back() requires <target>...</target> to exist for regex replacement.
-    This function pre-injects empty target tags to ensure write_target_back() works.
+    OPP-generated XLIFF files contain <source> elements without <target>.
+    Subsequent runs may produce <target/> (self-closing) or <target></target>
+    (already normalized).  write_target_back() requires the open-close form
+    <target>...</target> for regex replacement, so this function handles all
+    three cases:
+
+    1. Self-closing <target/>  →  <target></target>
+    2. No <target> at all      →  inject <target></target>
+    3. Already <target>...</target>  →  leave unchanged
 
     Args:
         content: XLIFF file content as string
 
     Returns:
-        Content with <target></target> injected after each </source> that lacks a target
+        Content where every trans-unit has <target></target>
     """
     import re
 
-    # Match trans-unit with source but NO target following
+    # Step 1: convert self-closing <target/> to <target></target>
+    # write_target_back's regex requires a closing </target> tag.
+    content = re.sub(r'<target\s*/>', '<target></target>', content)
+
+    # Step 2: inject <target></target> for trans-units that still lack one
     # Uses negative lookahead (?!\s*<target) to ensure no target comes after source
     source_only_pattern = re.compile(
         r'(<trans-unit[^>]*id="([^"]+)"[^>]*>.*?</source>)(?!\s*<target)',
@@ -77,7 +87,8 @@ def validate_xliff_structure(path: str) -> bool:
     try:
         content = path.read_text(encoding='utf-8')
         return '<xliff' in content and '<file' in content
-    except Exception:
+    except (OSError, UnicodeDecodeError):
+        _logger.exception("Failed to read XLIFF file for validation: %s", path)
         return False
 
 
@@ -186,7 +197,7 @@ def write_target_back(
         # appear in the output. The user at least sees the title text
         # (in Chinese) rather than a blank paragraph.
         if not unit.target_text.strip() and unit.source_text.strip():
-            logger.warning(
+            _logger.warning(
                 f"Empty LLM target for unit {unit.unit_id}; "
                 f"falling back to source text. Source={unit.source_text[:80]!r}"
             )

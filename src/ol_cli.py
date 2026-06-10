@@ -663,9 +663,14 @@ async def _translate_md_async(
     src_lang = src_lang or cfg.source_lang
     tgt_lang = tgt_lang or cfg.target_lang
 
-    original_text = input_path.read_text(encoding="utf-8")
-    shielded, shield_map = shield_markdown(original_text)
+    max_concurrent = getattr(cfg, "max_md_concurrent", 5) or 5
+    if not isinstance(max_concurrent, int) or max_concurrent < 1:
+        max_concurrent = 5
 
+    original_text = input_path.read_text(encoding="utf-8")
+
+    judge = None
+    retry_mgr = None
     if cfg.enable_lqa:
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
@@ -675,49 +680,62 @@ async def _translate_md_async(
             pass_threshold=cfg.lqa_threshold,
         )
 
-        async def translate_fn():
-            return await pool.translate(
-                shielded, src_lang, tgt_lang, glossary=glossary,
-            )
-
-        async def judge_fn(source, translation, unit_id):
-            return judge.judge(
-                source, translation, unit_id,
-                source_lang=src_lang, target_lang=tgt_lang,
-            )
-
-        try:
-            retry_result = await retry_mgr.execute_with_retry(
-                "md_main", shielded, translate_fn, judge_fn,
-            )
-            translated = retry_result.best_translation
-            if retry_result.warning:
-                logger.warning(f"LQA auto-retry: {retry_result.warning}")
-        except Exception as translate_err:
-            # Defense in depth: mirror the XLIFF path's fallback so transient
-            # LLM failures don't kill the whole MD translation.
-            logger.warning(
-                f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
-                f"Falling back to source text."
-            )
-            translated = original_text
+    if max_concurrent > 1:
+        from ol_concurrency.scheduler import ConcurrencyLimiter
+        limiter = ConcurrencyLimiter(max_md_concurrent=max_concurrent)
+        repaired = await _translate_md_units_concurrent(
+            original_text, pool, judge, retry_mgr,
+            src_lang, tgt_lang, limiter.md_semaphore, cfg,
+            glossary=glossary,
+        )
     else:
-        try:
-            translated = await pool.translate(
-                shielded, src_lang, tgt_lang, glossary=glossary,
-            )
-        except Exception as translate_err:
-            logger.warning(
-                f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
-                f"Falling back to source text."
-            )
-            translated = original_text
+        shielded, shield_map = shield_markdown(original_text)
 
-    if shield_map:
-        repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
-        repaired = unshield_markdown(repaired, shield_map)
-    else:
-        repaired = translated
+        if cfg.enable_lqa:
+
+            async def translate_fn():
+                return await pool.translate(
+                    shielded, src_lang, tgt_lang, glossary=glossary,
+                )
+
+            async def judge_fn(source, translation, unit_id):
+                return await judge.judge(
+                    source, translation, unit_id,
+                    source_lang=src_lang, target_lang=tgt_lang,
+                )
+
+            try:
+                retry_result = await retry_mgr.execute_with_retry(
+                    "md_main", shielded, translate_fn, judge_fn,
+                )
+                translated = retry_result.best_translation
+                if retry_result.warning:
+                    logger.warning(f"LQA auto-retry: {retry_result.warning}")
+            except Exception as translate_err:
+                # Defense in depth: mirror the XLIFF path's fallback so transient
+                # LLM failures don't kill the whole MD translation.
+                logger.warning(
+                    f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
+                    f"Falling back to source text."
+                )
+                translated = original_text
+        else:
+            try:
+                translated = await pool.translate(
+                    shielded, src_lang, tgt_lang, glossary=glossary,
+                )
+            except Exception as translate_err:
+                logger.warning(
+                    f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
+                    f"Falling back to source text."
+                )
+                translated = original_text
+
+        if shield_map:
+            repaired, _ = MDRepairPipeline().repair(translated, original_text, shield_map)
+            repaired = unshield_markdown(repaired, shield_map)
+        else:
+            repaired = translated
 
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
@@ -737,6 +755,46 @@ async def _translate_md_async(
     output_file.write_text(output_content, encoding="utf-8")
 
     return str(output_file)
+
+
+async def _translate_md_units_concurrent(
+    md_text: str, pool, judge, retry_mgr,
+    src_lang, tgt_lang, sem: asyncio.Semaphore,
+    cfg, glossary=None,
+) -> str:
+    """Translate MD by extracting trans-units and translating them concurrently.
+
+    Extracts translatable units from the full markdown text, translates
+    them in parallel via :func:`_translate_units_concurrent`, then
+    unshields and reassembles the markdown document.
+
+    Args:
+        glossary: Optional glossary for terminology injection. Passed through
+                  to ``_translate_units_concurrent`` for parity with the serial
+                  MD path.
+    """
+    from ol_md.extractor import extract_and_shield_md_units
+    units = extract_and_shield_md_units(md_text)
+
+    results = await _translate_units_concurrent(
+        units, pool, judge, retry_mgr,
+        src_lang, tgt_lang, sem, MDRepairPipeline(),
+        glossary=glossary,
+    )
+
+    for i, result in enumerate(results):
+        if result.status not in ("ok", "transport_error"):
+            logger.warning(
+                f"Unit {units[i].unit_id} status={result.status}: {result.error}"
+            )
+        unshielded = unshield_markdown(result.translated, units[i].shield_map)
+        units[i].target_text = unshielded
+
+    from ol_buses.md_bus import parse_md_to_tokens
+    from ol_md.token_stream import TokenPositionTracker
+    tokens = parse_md_to_tokens(md_text)
+    tracker = TokenPositionTracker(tokens)
+    return tracker.rebuild(tokens, units)
 
 
 def _load_env_for_cli() -> None:
@@ -995,6 +1053,20 @@ async def _translate_xliff_pipelined(
     first_pass_translate_excs: list[BaseException | None] = [None] * n
     first_pass_judge_excs: list[BaseException | None] = [None] * n
 
+    # Progress tracking (shared across concurrent unit_pipeline tasks).
+    _fp_count = [0]
+    _fp_lock = asyncio.Lock()
+    PROGRESS_LOG_INTERVAL = 50
+
+    async def _log_progress(done: int, total: int, phase: str) -> None:
+        if done % PROGRESS_LOG_INTERVAL == 0 or done == total:
+            pct = done / total * 100
+            logger.info(
+                f"XLIFF {phase}: {done}/{total} ({pct:.0f}%)"
+            )
+            for h in logger.handlers:
+                h.flush()
+
     async def unit_pipeline(idx: int, unit: TranslationUnit) -> None:
         """Translate then judge, both for one unit. Translate holds ``sem``;
         judge runs WITHOUT the sem so it can overlap with the next unit's
@@ -1007,6 +1079,9 @@ async def _translate_xliff_pipelined(
                 )
         except Exception as exc:
             first_pass_translate_excs[idx] = exc
+            async with _fp_lock:
+                _fp_count[0] += 1
+                await _log_progress(_fp_count[0], n, "first-pass")
             return
         try:
             first_pass_results[idx] = await judge.judge(
@@ -1015,6 +1090,9 @@ async def _translate_xliff_pipelined(
             )
         except Exception as exc:
             first_pass_judge_excs[idx] = exc
+        async with _fp_lock:
+            _fp_count[0] += 1
+            await _log_progress(_fp_count[0], n, "first-pass")
 
     # === Phase 1+2 (interleaved): translate phase holds sem, judge phase
     # runs after translate returns, freeing the sem. The next unit's
@@ -1042,6 +1120,11 @@ async def _translate_xliff_pipelined(
     retry_results: list[Any] = [None] * n
 
     if needs_retry:
+        _rt_count = [0]
+        _rt_lock = asyncio.Lock()
+        retry_n = len(needs_retry)
+        logger.info(f"Retry phase: re-translating {retry_n} low-scoring units")
+
         async def _retry_unit_pipeline(idx: int) -> None:
             try:
                 async with sem:
@@ -1059,6 +1142,9 @@ async def _translate_xliff_pipelined(
                 )
             except Exception as exc:
                 retry_results[idx] = None
+            async with _rt_lock:
+                _rt_count[0] += 1
+                await _log_progress(_rt_count[0], retry_n, "retry")
 
         await asyncio.gather(*[_retry_unit_pipeline(i) for i in needs_retry])
 
@@ -1160,13 +1246,30 @@ async def _translate_units_concurrent(
     if repair_pipeline is None:
         repair_pipeline = XLIFFRepairPipeline()
 
-    tasks = [
-        asyncio.create_task(
-            _translate_one_unit(
-                u, pool, judge, retry_mgr,
-                src_lang, tgt_lang, sem, repair_pipeline, glossary,
-            )
+    _cu_count = [0]
+    _cu_lock = asyncio.Lock()
+    cu_n = len(units)
+    PROGRESS_LOG_INTERVAL = 50
+
+    async def _tracked_translate(u: TranslationUnit) -> _UnitTranslationResult:
+        result = await _translate_one_unit(
+            u, pool, judge, retry_mgr,
+            src_lang, tgt_lang, sem, repair_pipeline, glossary,
         )
+        async with _cu_lock:
+            _cu_count[0] += 1
+            done = _cu_count[0]
+            if done % PROGRESS_LOG_INTERVAL == 0 or done == cu_n:
+                pct = done / cu_n * 100
+                logger.info(
+                    f"XLIFF concurrent: {done}/{cu_n} ({pct:.0f}%)"
+                )
+                for h in logger.handlers:
+                    h.flush()
+        return result
+
+    tasks = [
+        asyncio.create_task(_tracked_translate(u))
         for u in units
     ]
     gather_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1302,7 +1405,7 @@ async def _translate_xliff_async(
             # contract relied on by warnings extraction downstream).
             warnings_per_unit[unit.unit_id] = r.repair_warnings
 
-    logger.debug(f"Translated {len(units)} units")
+    logger.info(f"Translation complete: {len(units)} units")
 
     original_text = input_path.read_text(encoding="utf-8")
     original_text = _ensure_target_tags(original_text)
