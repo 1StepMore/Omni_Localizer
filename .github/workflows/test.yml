@@ -62,5 +62,5 @@ jobs:
       - name: Install all deps
         run: python -m pip install -e ".[ml]"
         continue-on-error: true
-- name: Run full test suite
-  run: python -m pytest tests/ --ignore=tests/test_checkpoint*.py --ignore=tests/test_lqa_judge.py --ignore=tests/test_lqa_scorer.py --ignore=tests/test_lqa_comet.py --ignore=tests/test_tm_service.py --ignore=tests/test_ol_mcp.py --ignore=tests/test_ol_mcp_error_boundary.py --ignore=tests/test_ol_mcp_translate_xliff_bug.py --ignore=tests/test_e2e_behavioral.py --tb=short -v || true
+      - name: Run full test suite
+        run: python -m pytest tests/ --ignore=tests/test_checkpoint*.py --ignore=tests/test_lqa_judge.py --ignore=tests/test_lqa_scorer.py --ignore=tests/test_lqa_comet.py --ignore=tests/test_tm_service.py --ignore=tests/test_ol_mcp.py --ignore=tests/test_ol_mcp_error_boundary.py --ignore=tests/test_ol_mcp_translate_xliff_bug.py --ignore=tests/test_e2e_behavioral.py --tb=short -v || true
