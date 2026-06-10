@@ -1,9 +1,12 @@
 """MD Token Stream bus for Omni-Localizer using markdown-it-py."""
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from ol_core.dataclass import ChannelType, TranslationContext, TranslationUnit
+
+_logger = logging.getLogger(__name__)
 
 
 def validate_md_structure(path: str) -> bool:
@@ -14,7 +17,8 @@ def validate_md_structure(path: str) -> bool:
     try:
         content = path.read_text(encoding='utf-8')
         return len(content) > 0
-    except Exception:
+    except (OSError, UnicodeDecodeError):
+        _logger.exception("Failed to read MD file for validation: %s", path)
         return False
 
 def load_md(path: str, glossary: dict[str, Any] | None = None) -> TranslationContext:
@@ -118,4 +122,10 @@ def rebuild_md_from_tokens(original_tokens: list, translated_units: list[Transla
         elif hasattr(token, 'content'):
             result_parts.append(token.content)
 
-    return '\n'.join(result_parts)
+    blocks = []
+    for part in result_parts:
+        if part and '\n' in part:
+            blocks.extend(part.split('\n'))
+        elif part:
+            blocks.append(part)
+    return '\n\n'.join(blocks) if blocks else ''
