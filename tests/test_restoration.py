@@ -18,12 +18,10 @@ when no placeholders are missing.
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -35,7 +33,7 @@ if sys.platform == "win32":
 
 import ol_cli
 from ol_cli import app
-from ol_restoration import PLACEHOLDER_PATTERN, Restorer, extract_placeholders
+from ol_restoration import Restorer, extract_placeholders
 
 
 runner = CliRunner()

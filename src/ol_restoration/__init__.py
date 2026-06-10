@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Awaitable, Callable, Sequence
+from typing import Any, Awaitable, Sequence
 
 _logger = logging.getLogger("ol_restoration")
 

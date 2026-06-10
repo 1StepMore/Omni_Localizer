@@ -1332,7 +1332,6 @@ async def _translate_xliff_async(
     from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
 
-    from ol_config.loader import load_config
     cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
     src_lang = src_lang or cfg.source_lang
     tgt_lang = tgt_lang or cfg.target_lang

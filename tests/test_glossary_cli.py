@@ -11,7 +11,6 @@ or by patching ``Glossary.load`` directly.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from unittest.mock import patch

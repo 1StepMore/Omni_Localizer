@@ -88,8 +88,8 @@ def test_would_exceed_budget_returns_true_when_over() -> None:
         f"Candidate cost must be $0.60, got ${candidate}"
     )
     assert est.would_exceed_budget(candidate) is True, (
-        f"Budget=$1.00, cumulative=$0.50, candidate=$0.60 → sum $1.10 > $1.00, "
-        f"gate must return True (skip the call)"
+        "Budget=$1.00, cumulative=$0.50, candidate=$0.60 → sum $1.10 > $1.00, "
+        "gate must return True (skip the call)"
     )
 
     # Caller skipped: estimator state unchanged
@@ -100,8 +100,8 @@ def test_would_exceed_budget_returns_true_when_over() -> None:
     boundary = est.estimate_call("MiniMax-M2.7", input_tokens=100_000, output_tokens=30_000)
     assert boundary == pytest.approx(0.50)
     assert est.would_exceed_budget(boundary) is False, (
-        f"Boundary: cumulative=$0.50, candidate=$0.50 → sum $1.00 == $1.00, "
-        f"gate must return False (allow the call, strict >)"
+        "Boundary: cumulative=$0.50, candidate=$0.50 → sum $1.00 == $1.00, "
+        "gate must return False (allow the call, strict >)"
     )
 
     # Sanity: a tiny safe candidate is also allowed

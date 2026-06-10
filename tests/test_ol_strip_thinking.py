@@ -5,7 +5,6 @@ leaks <think>...</think> chain-of-thought into its output, which ORF
 then injects into the DOCX. These tests pin the contract that the
 output is clean.
 """
-import pytest
 
 from ol_pool.router import _strip_thinking_blocks
 

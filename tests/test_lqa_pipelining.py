@@ -33,9 +33,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
-from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -243,7 +241,6 @@ class TestFinalScoresMatchSerial:
     @pytest.mark.asyncio
     async def test_lqa_pipeline_final_scores_match_serial_run(self):
         from ol_cli import _translate_xliff_pipelined
-        from ol_lqa.judge import JudgeService
 
         n_units = 5
         # Use different per-unit scores to make sure the helper is actually

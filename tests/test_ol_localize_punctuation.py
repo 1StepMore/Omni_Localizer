@@ -22,7 +22,6 @@ prompt is wrong.
 These tests pin the contract: the localizer MUST convert these
 patterns before the text is written to the XLIFF.
 """
-import pytest
 
 from ol_pool.router import _localize_chinese_punctuation
 

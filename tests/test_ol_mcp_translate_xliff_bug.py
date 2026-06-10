@@ -8,7 +8,6 @@ must also write real translations.
 """
 import json
 import os
-import tempfile
 import xml.etree.ElementTree as ET
 
 import pytest
