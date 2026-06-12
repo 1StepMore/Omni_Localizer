@@ -43,6 +43,11 @@ class ConcurrencyLimiter:
         self.max_xliff_concurrent = max_xliff_concurrent
 
     @property
+    def md_semaphore(self) -> asyncio.Semaphore:
+        """The translation semaphore used by the MD path for per-unit limiting."""
+        return self._translation_sem
+
+    @property
     def xliff_semaphore(self) -> asyncio.Semaphore:
         """The raw XLIFF semaphore for callers that want direct acquire/release.
 

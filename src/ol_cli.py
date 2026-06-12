@@ -682,7 +682,7 @@ async def _translate_md_async(
 
     if max_concurrent > 1:
         from ol_concurrency.scheduler import ConcurrencyLimiter
-        limiter = ConcurrencyLimiter(max_md_concurrent=max_concurrent)
+        limiter = ConcurrencyLimiter(max_translation=max_concurrent)
         repaired = await _translate_md_units_concurrent(
             original_text, pool, judge, retry_mgr,
             src_lang, tgt_lang, limiter.md_semaphore, cfg,
