@@ -58,7 +58,7 @@ class TokenPositionTracker:
                 result_parts.append(f"```{info}\n{content}```")
 
             elif token_type in ('paragraph_close', 'heading_close'):
-                result_parts.append('\n')
+                result_parts.append('\n\n')
 
             else:
                 content = getattr(token, 'content', '')
