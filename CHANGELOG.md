@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-06-14
+
+### Added
+- **`ol_post.punctuation` module** (`src/ol_post/punctuation.py`): Post-translate punctuation normalizer for the zh↔en pipeline.
+  - `normalize_to_english(text)`: maps full-width Chinese punctuation (U+201C/D quotes, U+2018/9 single quotes, U+FF0C fullwidth comma, U+3002 ideographic full stop, etc.) to ASCII equivalents. Implemented with `str.maketrans` for O(1) per-character mapping.
+  - `normalize_to_chinese(text)`: inverse direction — maps ASCII `,.;:""''` to Chinese equivalents.
+  - Pure post-processing, no LLM calls, zero API cost.
+  - Wired into `_translate_md_async` in `src/ol_cli.py` (after the repair stage, before writing the output file). Dispatched on `tgt_lang` prefix. The XLIFF path is unchanged (XLIFF `<target>` text is structural and re-escaped on the way out).
+  - Fixes 82/1865-char (4.4%) Chinese punctuation contamination observed in English-mode Haier DOCX output, and the symmetric ASCII-in-Chinese problem in the en→zh direction.
+
+### Fixed
+- **`GLOSSARY_TERM_LIMIT` raised 5 → 20** (`src/ol_terminology/rag_injector.py:9`): The previous 5-term cap forced the auto-glossary injector to truncate the top-10 source terms to 5, silently dropping half the consistency coverage. 20 terms at ~5 chars each fits well under the LLM context budget for typical paragraphs. The `forced_terms` bypass mechanism is unchanged — callers do not populate it.
+
 ## [0.4.2] - 2026-06-12
 
 ### Fixed

@@ -210,6 +210,21 @@ lqa_max_retries: 2      # max retry attempts
 
 Robustness against **real LLM output quirks**: `write_target_back()` in the XLIFF bus now applies an `_escape_xml_entities()` helper to LLM-produced target text **before** placeholder restoration. Real LLMs occasionally emit unescaped `&`, `<`, or `>` (e.g., `R&D`, `AT&T`) that would otherwise cause `lxml.etree.XMLSyntaxError: xmlParseEntityRef: no name` on round-trip. This change unblocks the real-LLM nightly test that was previously crashing on the LQA judge path.
 
+## Post-Processing (Punctuation Normalizer)
+
+For the zh↔en direction, the MD translator runs a deterministic post-processing step after repair, before the output file is written:
+
+```python
+from ol_post.punctuation import normalize_to_english, normalize_to_chinese
+```
+
+| Function | Maps | Direction |
+|---|---|---|
+| `normalize_to_english(text)` | Full-width Chinese punctuation → ASCII | zh→en |
+| `normalize_to_chinese(text)` | ASCII `,.;:""''` → Chinese equivalents | en→zh |
+
+Implemented with `str.maketrans` for O(1) per-character translation (no regex, no LLM call, zero API cost). Wired into `_translate_md_async` in `src/ol_cli.py` and dispatched on `tgt_lang` prefix. Resolves the 82/1865-char (4.4%) Chinese punctuation contamination previously observed in English-mode output, and the symmetric ASCII-in-Chinese problem in the en→zh direction.
+
 ## Architecture
 
 - **MD Channel**: Token Stream + 4-layer semantic repair

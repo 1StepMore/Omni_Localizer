@@ -751,6 +751,12 @@ async def _translate_md_async(
     else:
         output_content = repaired
 
+    from ol_post.punctuation import normalize_to_english, normalize_to_chinese
+    if tgt_lang.startswith("en"):
+        output_content = normalize_to_english(output_content)
+    elif tgt_lang.startswith("zh"):
+        output_content = normalize_to_chinese(output_content)
+
     output_file = output_path / input_path.name
     output_file.write_text(output_content, encoding="utf-8")
 

@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 TM_MATCH_LIMIT = 3
-GLOSSARY_TERM_LIMIT = 5
+GLOSSARY_TERM_LIMIT = 20
 
 
 def build_translate_prompt(
