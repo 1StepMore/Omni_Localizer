@@ -31,6 +31,38 @@ class TestLLMModelConfig:
         assert config.provider == "openai"
         assert config.role == LLMModelRole.TRANSLATION
 
+    def test_requests_per_minute_default(self):
+        """requests_per_minute defaults to 500 (legacy hardcoded value)."""
+        config = LLMModelConfig(
+            provider="openai",
+            model="gpt-4o-mini",
+            priority=1,
+            role=LLMModelRole.TRANSLATION,
+        )
+        assert config.requests_per_minute == 500
+
+    def test_requests_per_minute_override(self):
+        """requests_per_minute can be set to provider-specific value (e.g. NVIDIA 40 RPM)."""
+        config = LLMModelConfig(
+            provider="openai",
+            model="deepseek-ai/deepseek-v4-flash",
+            priority=3,
+            role=LLMModelRole.TRANSLATION,
+            requests_per_minute=40,
+        )
+        assert config.requests_per_minute == 40
+
+    def test_requests_per_minute_must_be_positive(self):
+        """requests_per_minute must be >= 1 (Pydantic ge=1)."""
+        with pytest.raises(ValidationError):
+            LLMModelConfig(
+                provider="openai",
+                model="gpt-4o-mini",
+                priority=1,
+                role=LLMModelRole.TRANSLATION,
+                requests_per_minute=0,
+            )
+
     def test_api_key_env_var_exists(self):
         """Test that existing env var in api_key passes validation."""
         os.environ["MY_API_KEY"] = "secret123"

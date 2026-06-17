@@ -31,6 +31,17 @@ class LLMModelConfig(BaseModel):
     base_url: str | None = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
     timeout: float | None = Field(60.0, description="Timeout in seconds for this model. Defaults to 60s.")
+    requests_per_minute: int = Field(
+        500, ge=1,
+        description=(
+            "Per-deployment requests-per-minute cap forwarded to litellm Router. "
+            "Used as a routing weight by default; for hard 429 enforcement, "
+            "the Router must be initialized with enforce_model_rate_limits=True. "
+            "Set this to your provider's actual RPM (e.g. NVIDIA free tier = 40) "
+            "to avoid burning quota on retry storms. Default 500 preserves the "
+            "legacy hardcoded value."
+        ),
+    )
 
     @model_validator(mode='after')
     def validate_env_vars(self) -> 'LLMModelConfig':
@@ -76,3 +87,6 @@ class ProjectConfig(BaseModel):
             "temperature != 0. Re-run optimization; no first-run speedup."
         ),
     )
+    max_input_size_mb: int = Field(50, ge=1, description="Reject input files larger than this (MB)")
+    max_xliff_concurrent: int = Field(20, ge=1, description="Max concurrent in-flight trans-unit translations in XLIFF path")
+    max_md_concurrent: int = Field(5, ge=1, description="Max concurrent in-flight trans-unit translations in MD path. Set to 1 to force the serial shield+translate path (1 translate + 1 judge call instead of per-unit calls); dramatically faster for large docs with slow judge models.")

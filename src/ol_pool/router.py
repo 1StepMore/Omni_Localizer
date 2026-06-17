@@ -204,6 +204,9 @@ class ModelPool:
         # A3 — temperature-bypass is enforced in translate()/judge(), not here.
         self._cache_enabled = getattr(config, "cache_system_prompt", True)
         self._cache = _PromptCache(max_size=1000, ttl_seconds=300.0)
+        # 2026-06-17 round 5 (FIX-#18): per-process rate-limit hit counter
+        # (lightweight dict; no Prometheus dep — CLI/test env).
+        self._rate_limit_hits: dict[str, int] = {}
         try:
             self._router = Router(
                 model_list=self._build_model_list(config.llm_pool),
@@ -211,6 +214,11 @@ class ModelPool:
                 num_retries=2,
                 timeout=120.0,
                 fallbacks=self._build_fallbacks(config.llm_pool),
+                # 2026-06-17 round 5 (OPT-13): enforce per-model RPM
+                # configured in `_build_model_list`. Calls exceeding the
+                # cap return litellm.RateLimitError (HTTP 429) immediately
+                # instead of waiting on provider 429 + backoff.
+                optional_pre_call_checks=["enforce_model_rate_limits"],
             )
         except Exception:
             # Real Router init can fail in test envs (no API keys, version
@@ -238,11 +246,13 @@ class ModelPool:
                     litellm_params["base_url"] = _resolve_env_vars(model.base_url)
                 if model.timeout is not None:
                     litellm_params["timeout"] = model.timeout
+                # 2026-06-17 round 5 (FIX-#7): canonical rpm location
+                # (litellm_params, per litellm/types/router.py:201-203).
+                litellm_params["rpm"] = model.requests_per_minute
                 model_list.append(
                     {
                         "model_name": role,
                         "litellm_params": litellm_params,
-                        "rpm": 500,
                     },
                 )
         return model_list
@@ -253,6 +263,15 @@ class ModelPool:
         payload = json.dumps(messages, sort_keys=True, ensure_ascii=False)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return (model, digest, float(temperature))
+
+    def metrics(self) -> dict[str, int]:
+        """Return a copy of the rate-limit hit counter (role → hits).
+
+        2026-06-17 round 5 (FIX-#18): lightweight ops hook. External
+        code can poll this between cycles to detect rate-limit storms.
+        Returns a shallow copy so callers can't mutate internal state.
+        """
+        return dict(self._rate_limit_hits)
 
     def _build_fallbacks(self, pool: LLMPoolConfig) -> list[dict]:
         """Build fallbacks list per role based on priority ordering.
@@ -364,26 +383,14 @@ class ModelPool:
                 _logger.debug("Translation cache hit")
                 return cached
 
+        model_str = "translation"  # role passed to acompletion; key for hit counter
         for attempt in range(4):  # 1 initial + 3 retries
             try:
                 response = await self._router.acompletion(
-                    model="translation",
+                    model=model_str,
                     messages=messages,
                     temperature=temperature,
                 )
-                raw = response.choices[0].message.content
-                translated = _strip_thinking_blocks(raw)
-                if translated != raw:
-                    _logger.debug(
-                        f"Stripped {len(raw) - len(translated)} chars of "
-                        f"chain-of-thought from LLM output"
-                    )
-                no_markdown = _strip_markdown_emphasis(translated)
-                if no_markdown != translated:
-                    _logger.debug(
-                        f"Stripped {len(translated) - len(no_markdown)} chars of "
-                        f"markdown emphasis from LLM output"
-                    )
                 localized = _localize_chinese_punctuation(no_markdown)
                 if localized != no_markdown:
                     _logger.debug(
@@ -404,6 +411,8 @@ class ModelPool:
                     _logger.error(f"Translation failed after 4 attempts: {e}")
                     raise
             except RateLimitError as e:
+                # 2026-06-17 round 5 (FIX-#18): increment per-model hit counter
+                self._rate_limit_hits[model_str] = self._rate_limit_hits.get(model_str, 0) + 1
                 if attempt < 3:
                     wait = 2 ** attempt * 10
                     _logger.warning(f"RateLimitError, retrying in {wait}s (attempt {attempt + 1}/4)")
@@ -521,6 +530,27 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
         try:
             result = json.loads(content)
         except json.JSONDecodeError:
+            # Regex fallback: extract numeric values from malformed JSON like
+            # {"accuracy": 95, "fluency":.io98, "adequacy": 99, "score": 98}
+            # or {"accuracy": 100, "fluency": directly as per ...: 100, ...}
+            import re as _re
+            def _extract_numeric(content: str, field: str) -> int | None:
+                m = _re.search(rf'"{field}"\s*:\s*[^,}}\d]*(\d+)', content)
+                return int(m.group(1)) if m else None
+            acc = _extract_numeric(content, "accuracy")
+            flu = _extract_numeric(content, "fluency")
+            ade = _extract_numeric(content, "adequacy")
+            sco = _extract_numeric(content, "score")
+            if acc is not None and flu is not None and ade is not None and sco is not None:
+                _logger.warning(
+                    f"Judge JSON parse recovered via regex. Raw: {content[:200]}"
+                )
+                return {
+                    "accuracy": acc, "fluency": flu, "adequacy": ade, "score": sco,
+                    "reason": content[:200] if content else "regex-recovered",
+                    "parse_failed": True,
+                    "regex_recovered": True,
+                }
             _logger.error(
                 f"Judge parse failed, returning score=0 (fail-closed). Raw response: {content[:300]}"
             )
