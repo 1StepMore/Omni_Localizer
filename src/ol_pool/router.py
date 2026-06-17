@@ -391,6 +391,19 @@ class ModelPool:
                     messages=messages,
                     temperature=temperature,
                 )
+                raw = response.choices[0].message.content
+                translated = _strip_thinking_blocks(raw)
+                if translated != raw:
+                    _logger.debug(
+                        f"Stripped {len(raw) - len(translated)} chars of "
+                        f"chain-of-thought from LLM output"
+                    )
+                no_markdown = _strip_markdown_emphasis(translated)
+                if no_markdown != translated:
+                    _logger.debug(
+                        f"Stripped {len(translated) - len(no_markdown)} chars of "
+                        f"markdown emphasis from LLM output"
+                    )
                 localized = _localize_chinese_punctuation(no_markdown)
                 if localized != no_markdown:
                     _logger.debug(
