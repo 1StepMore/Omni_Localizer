@@ -2,60 +2,99 @@ project_id: "ol-phase0-test"
 source_lang: "en"
 target_lang: "zh"
 glossary_path: null
+# NOTE (2026-06-14): Default config. llm_pool is redirected to match
+# config/local.yaml (the only config with valid .env references). The
+# MiniMax / OpenAI / Anthropic model entries were historical and
+# referenced env vars that are no longer set. If you need to change the
+# model pool, edit config/local.yaml and mirror the change here.
+# See config/local.yaml for the full design rationale.
+# 2026-06-16: Free-tier models prioritized. Translation primary = Zhipu
+# glm-4-flash (0.5s). Judging primary = Agnes (independent family).
+# OPENCODE_GO deepseek-v4-flash kept as lowest-priority backup.
+# See config/local.yaml for full design rationale.
+# 2026-06-17 round 3: mirror OPT-12 from local.yaml (lower to 5).
+# 2026-06-17 round 8 (#24): all api_key use ${ENV_VAR} refs (no literals).
+max_xliff_concurrent: 5
 llm_pool:
   translation:
-    # A5 — slim-pipeline-hardening. M2.7 swap: M2.7 is now the PRIMARY
-    # translation model (faster than M3, calibration delta -0.20 is well
-    # within the 0.5 acceptance threshold). M3 remains reachable for
-    # automatic failover; ernie-4.5-turbo-32k is the last-resort fallback.
-    # E.2 calibration report: final-out/_diagnostics/M2.7_CALIBRATION_REPORT.json
-    # (5 units, M3=9.80, M2.7=9.60, delta=-0.20, PASS).
-    #
-    # IMPORTANT: ``provider: "openai"`` is the LiteLLM OpenAI-compatible
-    # provider prefix. With ``base_url`` set to MiniMax's endpoint, calls
-    # route to MiniMax (not OpenAI). Same pattern for ernie (provider:
-    # "openai" with baidu base_url). See .env for key/base_url values.
     - provider: "openai"
-      model: "MiniMax-M2.7"
+      model: "glm-4-flash"
       priority: 1
       role: "translation"
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 60.0
     - provider: "openai"
-      model: "MiniMax-M3"
+      model: "agnes-2.0-flash"
       priority: 2
       role: "translation"
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
+      timeout: 60.0
     - provider: "openai"
-      model: "ernie-4.5-turbo-32k"
+      model: "deepseek-ai/deepseek-v4-flash"
       priority: 3
       role: "translation"
-      api_key: "${BAIDU_API_KEY}"
-      base_url: null  # Baidu qianfan uses its own endpoint; configure if needed
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
+      timeout: 60.0
+    - provider: "openai"
+      model: "moonshotai/kimi-k2.6"
+      priority: 4
+      role: "translation"
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 5
+      role: "translation"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
+
   judging:
     - provider: "openai"
-      model: "MiniMax-M2.5"
+      model: "agnes-2.0-flash"
       priority: 1
       role: "judging"
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
-    - provider: "anthropic"
-      model: "claude-3-sonnet-20240229"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
+      timeout: 60.0
+    - provider: "openai"
+      model: "glm-4-flash"
       priority: 2
       role: "judging"
-      api_key: null
-      base_url: null
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 3
+      role: "judging"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
+
   restoration:
     - provider: "openai"
-      model: "MiniMax-M2.5"
+      model: "glm-4-flash"
       priority: 1
       role: "restoration"
-      api_key: "${MINIMAX_API_KEY}"
-      base_url: "${MINIMAX_BASE_URL}"
-    - provider: "anthropic"
-      model: "claude-3-haiku-20240307"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 60.0
+    - provider: "openai"
+      model: "agnes-2.0-flash"
       priority: 2
       role: "restoration"
-      api_key: null
-      base_url: null
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 3
+      role: "restoration"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
