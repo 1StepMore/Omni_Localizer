@@ -235,6 +235,106 @@ class TestModelPool:
         snapshot["judging"] = 99
         assert "judging" not in mp._rate_limit_hits
 
+    @patch("src.ol_pool.router.load_config")
+    def test_build_fallbacks_skips_zero_rpm_models(self, mock_load_config):
+        """FIX-#17: models with requests_per_minute <= 0 are excluded from
+        fallback chains. Pydantic ge=1 prevents this at config load, but
+        attribute mutation after construction (e.g. test setup) can bypass
+        validation. The filter is belt-and-suspenders.
+        """
+        from ol_pool.router import _pool_cache as router_cache
+        router_cache.clear()
+        alive = LLMModelConfig(
+            provider="openai", model="alive", priority=1,
+            role=LLMModelRole.TRANSLATION, requests_per_minute=40,
+        )
+        dead = LLMModelConfig(
+            provider="openai", model="dead", priority=2,
+            role=LLMModelRole.TRANSLATION, requests_per_minute=10,
+        )
+        # Bypass Pydantic ge=1 by mutating after construction
+        dead.requests_per_minute = 0
+        pool = LLMPoolConfig(
+            translation=[alive, dead],
+            judging=[
+                LLMModelConfig(provider="openai", model="j1", priority=1,
+                               role=LLMModelRole.JUDGING),
+                LLMModelConfig(provider="openai", model="j2", priority=2,
+                               role=LLMModelRole.JUDGING),
+            ],
+            restoration=[
+                LLMModelConfig(provider="openai", model="r1", priority=1,
+                               role=LLMModelRole.RESTORATION),
+                LLMModelConfig(provider="openai", model="r2", priority=2,
+                               role=LLMModelRole.RESTORATION),
+            ],
+        )
+        cfg = MagicMock(llm_pool=pool)
+        mock_load_config.return_value = cfg
+        mp = ModelPool()
+        fallbacks = mp._build_fallbacks(pool)
+        for entry in fallbacks:
+            if "translation" in entry:
+                assert "openai/dead" not in entry["translation"], (
+                    f"rpm=0 model should be excluded; got {entry}"
+                )
+
+    def test_litellm_local_model_cost_map_env_set(self):
+        """FIX-A (round 6): router.py must set LITELLM_LOCAL_MODEL_COST_MAP
+        before importing litellm so the remote cost-map fetch is skipped
+        on every Router init (no more WARNING spam in OMO logs).
+        """
+        import os
+        assert os.environ.get("LITELLM_LOCAL_MODEL_COST_MAP", "").lower() == "true", (
+            "LITELLM_LOCAL_MODEL_COST_MAP must be 'True' (or 'true') at import time"
+        )
+
+    def test_get_instance_invalidates_on_config_mtime_change(self, tmp_path):
+        """FIX-#11: _pool_cache mtime invalidation. When the config file
+        is modified on disk, get_instance() must return a freshly-built
+        ModelPool (not the cached one) so the new config takes effect
+        without restarting the process.
+        """
+        from ol_pool.router import _pool_cache as router_cache
+        # Clear cache for isolation
+        router_cache.clear()
+        cfg_file = tmp_path / "test_config.yaml"
+        cfg_file.write_text("project_id: test\n")
+        # First call: caches an instance
+        with patch("ol_pool.router.load_config") as mock_load:
+            mock_load.return_value = MagicMock(llm_pool=MagicMock(
+                translation=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.TRANSLATION),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.TRANSLATION),
+                ],
+                judging=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.JUDGING),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.JUDGING),
+                ],
+                restoration=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.RESTORATION),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.RESTORATION),
+                ],
+            ))
+            mp1 = ModelPool.get_instance(str(cfg_file))
+            # Touch the file to update mtime (os.utime to ensure forward change)
+            import os
+            new_mtime = os.stat(cfg_file).st_mtime + 5
+            os.utime(cfg_file, (new_mtime, new_mtime))
+            mp2 = ModelPool.get_instance(str(cfg_file))
+            # Different instance after mtime change
+            assert mp1 is not mp2, (
+                f"Expected new ModelPool after mtime change; got same instance"
+            )
+        # Clean up
+        router_cache.clear()
+
     @pytest.mark.asyncio
     @patch("src.ol_pool.router.load_config")
     async def test_translate_returns_placeholder(self, mock_load_config, mock_config):

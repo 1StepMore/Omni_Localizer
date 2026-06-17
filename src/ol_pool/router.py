@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -115,6 +116,11 @@ def _localize_chinese_punctuation(text: str) -> str:
 # module that actually holds the Router/load_config names.
 sys.modules.setdefault('src.ol_pool.router', sys.modules[__name__])
 
+# 2026-06-17 round 6: skip litellm's remote model-cost-map fetch
+# (would hit raw.githubusercontent.com on every Router init and log a
+# WARNING on timeout). MUST be set before `import litellm` below.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
 import litellm
 from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
 
@@ -130,7 +136,9 @@ from ol_logging.core import get_logger
 
 _logger = get_logger("pool")
 
-_pool_cache: dict[str, "ModelPool"] = {}
+# 2026-06-17 round 6 (FIX-#11): cache value is (pool, config_mtime) so
+# config edits on disk are picked up without restarting the process.
+_pool_cache: dict[str, tuple["ModelPool", float]] = {}
 
 
 class _PromptCache:
@@ -229,9 +237,14 @@ class ModelPool:
 
     @classmethod
     def get_instance(cls, config_path: str = "config/default.yaml") -> "ModelPool":
-        if config_path not in _pool_cache:
-            _pool_cache[config_path] = cls(config_path)
-        return _pool_cache[config_path]
+        try:
+            current_mtime = Path(config_path).stat().st_mtime
+        except OSError:
+            current_mtime = 0.0
+        entry = _pool_cache.get(config_path)
+        if entry is None or entry[1] != current_mtime:
+            _pool_cache[config_path] = (cls(config_path), current_mtime)
+        return _pool_cache[config_path][0]
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
         model_list = []
@@ -283,10 +296,15 @@ class ModelPool:
         fail), we add a cross-role fallback: judging/restoration calls can
         fall back to a translation-tier model rather than crashing. The
         translation role keeps its own fallbacks for primary translation.
+
+        2026-06-17 round 6 (FIX-#17): skip models with requests_per_minute
+        <= 0 from fallback chains — they'd be dead-on-arrival. The
+        Pydantic schema already enforces ge=1, this is belt-and-suspenders
+        for manually-constructed configs that bypass validation.
         """
         fallbacks = []
         for role in ("translation", "judging", "restoration"):
-            models = getattr(pool, role, [])
+            models = [m for m in getattr(pool, role, []) if m.requests_per_minute > 0]
             sorted_models = sorted(models, key=lambda m: m.priority)
             if len(sorted_models) > 1:
                 fallback_models = [
@@ -296,7 +314,10 @@ class ModelPool:
 
         # Cross-role safety net: if judging/restoration both fail, fall back
         # to the translation role's models. This trades quality for liveness.
-        translation_models = getattr(pool, "translation", [])
+        translation_models = [
+            m for m in getattr(pool, "translation", [])
+            if m.requests_per_minute > 0
+        ]
         if translation_models:
             translation_fallback_ids = [
                 f"{m.provider}/{m.model}"
