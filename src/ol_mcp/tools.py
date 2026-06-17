@@ -462,9 +462,9 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
 
             if shield_map:
                 translated = unshield_markdown(translated, shield_map)
+            repaired, repair_warnings = repair_pipeline.repair(translated, text, shield_map)
 
-            repaired = repair_pipeline.repair(translated, text, shield_map)
-            processed.append({"index": i, "success": True, "translated": repaired, "warnings": []})
+            processed.append({"index": i, "success": True, "translated": repaired, "warnings": repair_warnings})
             succeeded += 1
         except Exception as e:
             processed.append({"index": i, "success": False, "translated": "", "warnings": [str(e)]})
@@ -486,7 +486,9 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
 
 @mcp.tool()
 @mcp_error_boundary
-def translate_xliff(params: TranslateXliffInput) -> str:
+async def translate_xliff(params: TranslateXliffInput) -> str:
+    # 2026-06-17 round 9: was sync, used _resolve_async(asyncio.run) — failed
+    # inside running event loop. Now async to match translate_md_text.
     import json
 
     warnings: list[str] = []
@@ -545,8 +547,8 @@ def translate_xliff(params: TranslateXliffInput) -> str:
                         glossary_terms=terms,
                     )
 
-            translated = _resolve_async(
-                pool.translate(unit.source_text, params.source_lang, params.target_lang, context),
+            translated = await pool.translate(
+                unit.source_text, params.source_lang, params.target_lang, context,
             )
 
             if unit_shield_map:
