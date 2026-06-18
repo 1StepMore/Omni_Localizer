@@ -409,6 +409,7 @@ def _generate_frontmatter(
     target_lang: str,
     original_filename: str,
     ol_version: str | None = None,
+    request_id: str | None = None,
 ) -> str:
     if ol_version is None:
         ol_version = _get_ol_version()
@@ -419,6 +420,7 @@ def _generate_frontmatter(
         target_lang: Target language code (ISO 639-1)
         original_filename: Original input filename
         ol_version: OL version number
+        request_id: Optional UUID for end-to-end tracing (B2).
 
     Returns:
         YAML frontmatter string with leading and trailing ---
@@ -442,9 +444,10 @@ def _generate_frontmatter(
         'processor: "OL"',
         f'version: "{ol_version}"',
         f"translated_at: {timestamp}",
-        "---",
-        "",
     ]
+    if request_id:
+        frontmatter_lines.append(f"request_id: {request_id}")
+    frontmatter_lines.extend(["---", ""])
 
     return "\n".join(frontmatter_lines)
 
@@ -490,11 +493,42 @@ def _get_ol_version() -> str:
     return __version__
 
 
-def _build_xliff_header_note(src_lang: str, tgt_lang: str) -> str:
+def _extract_request_id(input_path: Path) -> str | None:
+    """Extract request_id from OPP manifest.json or XLIFF header (B2).
+
+    Looks for a sibling ``*_manifest.json`` first, then falls back to
+    scanning the XLIFF header for a ``request_id=...`` note.
+    Returns None if not found.
+    """
+    import re as _re
+    manifest_candidate = input_path.parent / f"{input_path.stem}_manifest.json"
+    if manifest_candidate.exists():
+        try:
+            import json as _json
+            data = _json.loads(manifest_candidate.read_text(encoding="utf-8"))
+            rid = data.get("request_id")
+            if rid:
+                return rid
+        except (OSError, ValueError):
+            pass
+    if input_path.suffix.lower() in (".xlf", ".xliff"):
+        try:
+            content = input_path.read_text(encoding="utf-8")
+            m = _re.search(r"request_id=([0-9a-fA-F-]{36})", content)
+            if m:
+                return m.group(1)
+        except OSError:
+            pass
+    return None
+
+
+def _build_xliff_header_note(src_lang: str, tgt_lang: str, request_id: str | None = None) -> str:
     """Build XLIFF-compliant header note element."""
     validated_src = _validate_lang_code(src_lang)
     validated_tgt = _validate_lang_code(tgt_lang)
     note_text = f"Translated from {validated_src} to {validated_tgt} by OL"
+    if request_id:
+        note_text += f" request_id={request_id}"
     return f'<header>\n    <note from="OL">{_escape_xml(note_text)}</note>\n  </header>'
 
 
@@ -732,7 +766,7 @@ async def _translate_md_async(
                 translated = original_text
 
         if shield_map:
-            repaired, _ = MDRepairPipeline().repair(translated, original_text, shield_map)
+            repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
             repaired = unshield_markdown(repaired, shield_map)
         else:
             repaired = translated
@@ -740,19 +774,32 @@ async def _translate_md_async(
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
         safe_tgt_lang = _validate_lang_code(tgt_lang)
+        # 2026-06-18 round 16 Phase B2: propagate request_id from OPP.
+        rid = _extract_request_id(input_path)
 
         frontmatter = _generate_frontmatter(
             source_lang=safe_src_lang,
             target_lang=safe_tgt_lang,
             original_filename=input_path.name,
             ol_version=_get_ol_version(),
+            request_id=rid,
         )
         output_content = frontmatter + repaired
     else:
         output_content = repaired
 
     from ol_post.punctuation import normalize_to_english, normalize_to_chinese
-    if tgt_lang.startswith("en"):
+    import re as _re
+    _fm_match = _re.match(r'^(---\s*\n.*?\n---\s*\n)', output_content, _re.DOTALL)
+    if _fm_match:
+        _fm = _fm_match.group(1)
+        _body = output_content[len(_fm):]
+        if tgt_lang.startswith("en"):
+            _body = normalize_to_english(_body)
+        elif tgt_lang.startswith("zh"):
+            _body = normalize_to_chinese(_body)
+        output_content = _fm + _body
+    elif tgt_lang.startswith("en"):
         output_content = normalize_to_english(output_content)
     elif tgt_lang.startswith("zh"):
         output_content = normalize_to_chinese(output_content)
@@ -1429,7 +1476,9 @@ async def _translate_xliff_async(
 
     output_path_obj = Path(output_file)
     translated_text = output_path_obj.read_text(encoding="utf-8")
-    header_note = _build_xliff_header_note(src_lang, tgt_lang)
+    # 2026-06-18 round 16 Phase B2: propagate request_id from OPP.
+    rid = _extract_request_id(input_path)
+    header_note = _build_xliff_header_note(src_lang, tgt_lang, request_id=rid)
     translated_text = _inject_xliff_header(translated_text, header_note)
     output_path_obj.write_text(translated_text, encoding="utf-8")
 
