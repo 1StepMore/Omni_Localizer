@@ -28,6 +28,8 @@ from ol_mcp._errors import mcp_error_boundary
 # 2026-06-18 round 16 Phase A1: PathValidator for file-path
 # inputs. Closes the OL MCP path-traversal gap (round-15 audit).
 from ol_mcp.security import get_default_validator
+# 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+from ol_mcp.auth import check_auth, auth_failure_response
 
 
 def _resolve_async(result):
@@ -76,6 +78,9 @@ class TranslateInput(BaseModel):
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
     config_path: str | None = Field(default=None, description="Path to LLM config")
     add_frontmatter: bool = Field(default=False, description="Add YAML frontmatter to output")
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth. Required
+    # only when MCP_SHARED_SECRET env var is set (dev mode: ignored).
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class JudgeInput(BaseModel):
@@ -86,6 +91,7 @@ class JudgeInput(BaseModel):
     source_lang: str = Field(default="en", description="Source language code")
     target_lang: str = Field(default="en", description="Target language code")
     glossary: dict[str, Any] | None = Field(default=None, description="Inline glossary dict")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class LoadGlossaryInput(BaseModel):
@@ -93,6 +99,7 @@ class LoadGlossaryInput(BaseModel):
 
     path: str = Field(description="Path to JSON glossary file")
     config_dir: str | None = Field(default=None, description="Base dir for relative paths")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class GetRelevantTermsInput(BaseModel):
@@ -101,6 +108,7 @@ class GetRelevantTermsInput(BaseModel):
     text: str = Field(description="Source text to match against")
     glossary: dict[str, dict[str, Any]] = Field(description="Glossary dict from load_glossary")
     top_k: int = Field(default=5, description="Maximum terms to return")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class SearchTMInput(BaseModel):
@@ -109,6 +117,7 @@ class SearchTMInput(BaseModel):
     source_text: str = Field(description="Text to search for in TM")
     tmx_path: str = Field(description="Path to .tmx translation memory file")
     threshold: float = Field(default=0.85, description="Minimum similarity threshold (0-1)")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class BatchTranslateInput(BaseModel):
@@ -119,6 +128,7 @@ class BatchTranslateInput(BaseModel):
     target_lang: str = Field(description="Target language code")
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary")
     concurrency: int = Field(default=5, description="Max parallel translations")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 class TranslateXliffInput(BaseModel):
@@ -130,6 +140,7 @@ class TranslateXliffInput(BaseModel):
     target_lang: str = Field(default="en", description="Target language code")
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
     config_path: str | None = Field(default=None, description="Path to LLM config")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +203,11 @@ async def _translate_single(
 @mcp.tool(description="Translate markdown text directly without file I/O.")
 @mcp_error_boundary
 async def translate_md_text(params: TranslateInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Translate markdown text using OL's translation pipeline.
 
@@ -266,6 +282,11 @@ async def translate_md_text(params: TranslateInput) -> str:
 @mcp.tool(description="Evaluate translation quality using LLM judge.")
 @mcp_error_boundary
 async def judge_text(params: JudgeInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Evaluate translation quality with rubric scores.
 
@@ -318,6 +339,11 @@ async def judge_text(params: JudgeInput) -> str:
 @mcp.tool(description="Load a JSON glossary file for use in translation.")
 @mcp_error_boundary
 async def load_glossary(params: LoadGlossaryInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Load a JSON glossary file.
 
@@ -369,6 +395,11 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
 @mcp.tool(description="Extract relevant glossary terms for a given text.")
 @mcp_error_boundary
 async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Select top-k terms from glossary relevant to the given text.
 
@@ -404,6 +435,11 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
 @mcp.tool(description="Search translation memory for similar past translations.")
 @mcp_error_boundary
 async def search_tm(params: SearchTMInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Search TMX file for similar past translations.
 
@@ -462,6 +498,11 @@ async def search_tm(params: SearchTMInput) -> str:
 @mcp.tool(description="Translate multiple texts in parallel.")
 @mcp_error_boundary
 def batch_translate_texts(params: BatchTranslateInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Translate multiple markdown texts through the shield → translate → repair → unshield pipeline.
 
@@ -533,6 +574,11 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
 @mcp.tool()
 @mcp_error_boundary
 async def translate_xliff(params: TranslateXliffInput) -> str:
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(params.shared_secret)
+    if not auth_ok:
+        import json as _json
+        return _json.dumps(auth_failure_response(), ensure_ascii=False)
     # 2026-06-17 round 9: was sync, used _resolve_async(asyncio.run) — failed
     # inside running event loop. Now async to match translate_md_text.
     import json
