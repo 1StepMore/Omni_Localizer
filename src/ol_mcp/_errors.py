@@ -64,15 +64,34 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
     may return a dict, str (already JSON), or any other JSON-serializable
     value. The wrapper ensures that the return is always a JSON string.
     """
+    tool_name = getattr(fn, "__name__", "<unknown>")
+
+    def _record_metrics(duration_ms: float, success: bool) -> None:
+        # 2026-06-18 round 16 Phase B5: Prometheus metrics.
+        try:
+            import os as _os
+            _suite_root = _os.path.dirname(
+                _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+            )
+            if _suite_root not in _os.sys.path:
+                _os.sys.path.insert(0, _suite_root)
+            from omni_metrics import record_tool_call
+            record_tool_call("ol", tool_name, duration_ms, success)
+        except Exception:
+            pass
 
     @functools.wraps(fn)
     async def async_wrapper(*args, **kwargs):
+        t0 = time.time()
         try:
-            return await fn(*args, **kwargs)
+            result = await fn(*args, **kwargs)
+            _record_metrics((time.time() - t0) * 1000, True)
+            return result
         except Exception as exc:
+            _record_metrics((time.time() - t0) * 1000, False)
             _logger.exception(
                 "MCP tool %s raised: %s",
-                getattr(fn, "__name__", "<unknown>"),
+                tool_name,
                 exc,
             )
             code = _classify(exc)
@@ -85,12 +104,16 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     @functools.wraps(fn)
     def sync_wrapper(*args, **kwargs):
+        t0 = time.time()
         try:
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+            _record_metrics((time.time() - t0) * 1000, True)
+            return result
         except Exception as exc:
+            _record_metrics((time.time() - t0) * 1000, False)
             _logger.exception(
                 "MCP tool %s raised: %s",
-                getattr(fn, "__name__", "<unknown>"),
+                tool_name,
                 exc,
             )
             code = _classify(exc)
