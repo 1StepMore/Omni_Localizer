@@ -4,6 +4,7 @@ All tools are async functions that wrap existing OL infrastructure.
 Each tool returns a dict with consistent success/warnings structure for agent-friendly error handling.
 """
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ _logger = logging.getLogger(__name__)
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from ol_mcp.auth import auth_failure_response, check_auth
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
@@ -731,3 +733,17 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             },
             ensure_ascii=False,
         )
+
+
+@mcp.tool(description="Health check endpoint.")
+async def ping(auth_token: str | None = None) -> str:
+    """Health check endpoint. Returns module name and version."""
+    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
+    auth_ok, _ = check_auth(auth_token)
+    if not auth_ok:
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
+    from ol_mcp import __version__ as _ol_version
+    return json.dumps(
+        {"success": True, "module": "ol", "version": _ol_version},
+        ensure_ascii=False,
+    )
