@@ -30,7 +30,14 @@ class LLMModelConfig(BaseModel):
     api_key: str | None = Field(None, description="API key. Can also use env var ${VAR} syntax.")
     base_url: str | None = Field(None, description="Custom API endpoint. Can use env var ${VAR} syntax.")
     role: LLMModelRole = Field(..., description="Role: translation, judging, or restoration")
-    timeout: float | None = Field(60.0, description="Timeout in seconds for this model. Defaults to 60s.")
+    timeout: float | None = Field(
+        120.0,
+        description=(
+            "Per-request LLM call timeout in seconds. Default 120s "
+            "(round 12: was 60s, too tight for long PPTX/XLIFF content — "
+            "tier 4 pptx en→zh hit litellm.Timeout at 62s on Sherlock)."
+        ),
+    )
     requests_per_minute: int = Field(
         500, ge=1,
         description=(

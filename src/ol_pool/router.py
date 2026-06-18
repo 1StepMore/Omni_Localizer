@@ -119,7 +119,11 @@ sys.modules.setdefault('src.ol_pool.router', sys.modules[__name__])
 # 2026-06-17 round 6: skip litellm's remote model-cost-map fetch
 # (would hit raw.githubusercontent.com on every Router init and log a
 # WARNING on timeout). MUST be set before `import litellm` below.
+# Round 12: LITELLM_LOCAL_MODEL_COST_MAP alone isn't enough — also
+# set DISABLE_LITELLM_TELEMETRY=True to skip the import-time fetch.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+os.environ.setdefault("DISABLE_LITELLM_TELEMETRY", "True")
+os.environ.setdefault("LITELLM_TELEMETRY", "False")
 
 import litellm
 from litellm.exceptions import AuthenticationError, RateLimitError, Timeout

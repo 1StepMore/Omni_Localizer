@@ -23,35 +23,35 @@ llm_pool:
       role: "translation"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "agnes-2.0-flash"
       priority: 2
       role: "translation"
       api_key: "${AGNES_API_KEY}"
       base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "deepseek-ai/deepseek-v4-flash"
       priority: 3
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "moonshotai/kimi-k2.6"
       priority: 4
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "deepseek-v4-flash"
       priority: 5
       role: "translation"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
+      timeout: 120.0
 
   judging:
     - provider: "openai"
@@ -60,21 +60,21 @@ llm_pool:
       role: "judging"
       api_key: "${AGNES_API_KEY}"
       base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "glm-4-flash"
       priority: 2
       role: "judging"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "deepseek-v4-flash"
       priority: 3
       role: "judging"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
+      timeout: 120.0
 
   restoration:
     - provider: "openai"
@@ -83,18 +83,18 @@ llm_pool:
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "agnes-2.0-flash"
       priority: 2
       role: "restoration"
       api_key: "${AGNES_API_KEY}"
       base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 60.0
+      timeout: 120.0
     - provider: "openai"
       model: "deepseek-v4-flash"
       priority: 3
       role: "restoration"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
+      timeout: 120.0
