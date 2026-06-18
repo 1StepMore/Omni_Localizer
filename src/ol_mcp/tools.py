@@ -25,6 +25,9 @@ from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
 # C12 fix: shared error boundary replaces 6+ try/except str(e) copies.
 from ol_mcp._errors import mcp_error_boundary
+# 2026-06-18 round 16 Phase A1: PathValidator for file-path
+# inputs. Closes the OL MCP path-traversal gap (round-15 audit).
+from ol_mcp.security import get_default_validator
 
 
 def _resolve_async(result):
@@ -324,6 +327,18 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
 
     warnings: list[str] = []
 
+    vresult = get_default_validator().validate_path(params.path)
+    if not vresult.success:
+        return json.dumps(
+            {
+                "success": False,
+                "glossary": {},
+                "term_count": 0,
+                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {vresult.error}"],
+            },
+            ensure_ascii=False,
+        )
+
     try:
         glossary = load_glossary_from_path(
             params.path,
@@ -399,6 +414,18 @@ async def search_tm(params: SearchTMInput) -> str:
     import json
 
     warnings: list[str] = []
+
+    vresult = get_default_validator().validate_path(params.tmx_path)
+    if not vresult.success:
+        return json.dumps(
+            {
+                "success": False,
+                "matches": [],
+                "count": 0,
+                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {vresult.error}"],
+            },
+            ensure_ascii=False,
+        )
 
     try:
         svc = TMService(params.tmx_path)
@@ -519,16 +546,45 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     else:
         output_path = params.output_path
 
+    _validator = get_default_validator()
+    _iv = _validator.validate_path(params.input_path)
+    if not _iv.success:
+        return json.dumps(
+            {
+                "success": False,
+                "output_path": output_path,
+                "units_processed": 0,
+                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {_iv.error}"],
+            },
+            ensure_ascii=False,
+        )
+    _ov = _validator.validate_path(output_path, allow_missing=True)
+    if not _ov.success:
+        return json.dumps(
+            {
+                "success": False,
+                "output_path": output_path,
+                "units_processed": 0,
+                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {_ov.error}"],
+            },
+            ensure_ascii=False,
+        )
+
     try:
         glossary: dict[str, dict[str, Any]] | None = None
         if params.glossary_path:
-            try:
-                glossary = load_glossary_from_path(
-                    params.glossary_path,
-                    config_dir=Path(params.glossary_path).parent if not Path(params.glossary_path).is_absolute() else None,
-                )
-            except Exception as e:
-                warnings.append(f"Glossary load failed: {e}")
+            _gv = _validator.validate_path(params.glossary_path)
+            if _gv.success:
+                try:
+                    glossary = load_glossary_from_path(
+                        params.glossary_path,
+                        config_dir=Path(params.glossary_path).parent if not Path(params.glossary_path).is_absolute() else None,
+                    )
+                except Exception as e:
+                    warnings.append(f"Glossary load failed: {e}")
+                    glossary = None
+            else:
+                warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
                 glossary = None
 
         parser = XliffParser()
