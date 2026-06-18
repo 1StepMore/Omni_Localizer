@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pybreaker
+
 
 # ULTRAREADY-FIX (2026-06-08): real E2E run discovered that MiniMax
 # models leak <think>...</think> chain-of-thought into their output.
@@ -200,6 +202,17 @@ def _resolve_env_vars(value: str) -> str:
     return re.sub(r'\$\{([^}]+)\}', replacer, value)
 
 
+# 2026-06-18 round 16 Phase B1: circuit breaker for LLM calls.
+class _LogBreakerListener(pybreaker.CircuitBreakerListener):
+    """Logs circuit breaker state transitions at WARNING level."""
+
+    def state_change(self, cb, old_state, new_state):
+        _logger.warning(
+            "Circuit breaker %r: %s -> %s",
+            cb.name, old_state.name, new_state.name,
+        )
+
+
 class ModelPool:
     _instance: "ModelPool | None" = None
 
@@ -219,6 +232,17 @@ class ModelPool:
         # 2026-06-17 round 5 (FIX-#18): per-process rate-limit hit counter
         # (lightweight dict; no Prometheus dep — CLI/test env).
         self._rate_limit_hits: dict[str, int] = {}
+        # 2026-06-18 round 16 Phase B1: one circuit breaker per role.
+        # 5 consecutive failures -> open, reset after 60s.
+        self._breakers: dict[str, pybreaker.CircuitBreaker] = {
+            role: pybreaker.CircuitBreaker(
+                fail_max=5,
+                reset_timeout=60,
+                name=role,
+                listeners=[_LogBreakerListener()],
+            )
+            for role in ("translation", "judging", "restoration")
+        }
         try:
             self._router = Router(
                 model_list=self._build_model_list(config.llm_pool),
@@ -249,6 +273,35 @@ class ModelPool:
         if entry is None or entry[1] != current_mtime:
             _pool_cache[config_path] = (cls(config_path), current_mtime)
         return _pool_cache[config_path][0]
+
+    async def _call_with_breaker(self, role: str, coro_func, *args, **kwargs):
+        """Run coro_func through the circuit breaker for the given role.
+
+        Reports success/failure to the breaker. Raises
+        ``pybreaker.CircuitBreakerError`` immediately if the breaker is open.
+        """
+        breaker = self._breakers[role]
+        if breaker.current_state == "open":
+            raise pybreaker.CircuitBreakerError(
+                f"Circuit breaker {role!r} is open"
+            )
+        try:
+            result = await coro_func(*args, **kwargs)
+        except Exception as exc:
+            def _raise(_e=exc):
+                raise _e
+            try:
+                breaker.call(_raise)
+            except pybreaker.CircuitBreakerError:
+                pass
+            raise
+        def _ok():
+            return None
+        try:
+            breaker.call(_ok)
+        except pybreaker.CircuitBreakerError:
+            pass
+        return result
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
         model_list = []
@@ -411,7 +464,9 @@ class ModelPool:
         model_str = "translation"  # role passed to acompletion; key for hit counter
         for attempt in range(4):  # 1 initial + 3 retries
             try:
-                response = await self._router.acompletion(
+                response = await self._call_with_breaker(
+                    "translation",
+                    self._router.acompletion,
                     model=model_str,
                     messages=messages,
                     temperature=temperature,
@@ -519,7 +574,9 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                 return cached
 
         try:
-            response = await self._router.acompletion(
+            response = await self._call_with_breaker(
+                "judging",
+                self._router.acompletion,
                 model="judging",
                 messages=messages,
                 temperature=temperature,
