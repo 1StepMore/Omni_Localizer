@@ -98,7 +98,7 @@ Translated content.
         with patch("ol_cli.asyncio.run", return_value=str(output_file)):
             result = runner.invoke(
                 app,
-                ["translate-md", temp_md, "-o", temp_output_dir, "-c", "config/default.yaml"],
+                ["translate-md", temp_md, "-o", temp_output_dir, "-c", str(Path(__file__).parent.parent / "config" / "default.yaml")],
             )
             assert result.exit_code == 0
 

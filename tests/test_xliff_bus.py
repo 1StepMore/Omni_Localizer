@@ -19,26 +19,26 @@ class TestXLIFFBus:
 
     def test_validate_xliff_structure_valid(self):
         """Test validation of valid XLIFF file."""
-        assert validate_xliff_structure('tests/fixtures/sample.xliff') == True
+        assert validate_xliff_structure(str(Path(__file__).parent / 'fixtures' / 'sample.xliff')) == True
 
     def test_validate_xliff_structure_invalid(self):
         """Test validation of invalid XLIFF file."""
-        assert validate_xliff_structure('tests/fixtures/sample.md') == False
+        assert validate_xliff_structure(str(Path(__file__).parent / 'fixtures' / 'sample.md')) == False
 
     def test_load_xliff_returns_context(self):
         """Test load_xliff returns TranslationContext with XLIFF channel."""
-        ctx = load_xliff('tests/fixtures/sample.xliff')
+        ctx = load_xliff(str(Path(__file__).parent / 'fixtures' / 'sample.xliff'))
         assert ctx.channel_type == ChannelType.XLIFF
         assert ctx.file_path.endswith('.xliff')
 
     def test_load_xliff_has_units(self):
         """Test XLIFF loading produces translation units."""
-        ctx = load_xliff('tests/fixtures/sample.xliff')
+        ctx = load_xliff(str(Path(__file__).parent / 'fixtures' / 'sample.xliff'))
         assert len(ctx.units) >= 1
 
     def test_iterate_trans_units(self):
         """Test iterating trans-units from XLIFF."""
-        units = list(iterate_trans_units(Path('tests/fixtures/sample.xliff')))
+        units = list(iterate_trans_units(Path(__file__).parent / 'fixtures' / 'sample.xliff'))
         assert len(units) >= 1
         assert all(u.unit_id for u in units)
 

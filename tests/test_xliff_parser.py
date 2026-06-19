@@ -1,7 +1,10 @@
 """Tests for XLIFF parser functionality."""
 import pytest
 
+from pathlib import Path
 from ol_xliff.parser import XliffParser, detect_xliff_version, extract_inline_elements
+
+_fixtures = Path(__file__).parent / "fixtures"
 
 
 class TestXLIFFParser:
@@ -10,7 +13,7 @@ class TestXLIFFParser:
     def test_parse_xliff_1x(self):
         """Test parsing XLIFF 1.x format with trans-unit elements."""
         parser = XliffParser()
-        units = parser.parse('tests/fixtures/sample.xliff')
+        units = parser.parse(str(_fixtures / 'sample.xliff'))
         assert len(units) >= 1
         assert units[0].unit_id == '1'
         assert 'Hello' in units[0].source_text
@@ -18,7 +21,7 @@ class TestXLIFFParser:
     def test_parse_xliff_2(self):
         """Test parsing XLIFF 2.0 format with segment elements."""
         parser = XliffParser()
-        units = parser.parse('tests/fixtures/sample-xliff2.xlf')
+        units = parser.parse(str(_fixtures / 'sample-xliff2.xlf'))
         assert len(units) >= 1
         # XLIFF 2.0 uses unit_id_seg_id format
         assert '_' in units[0].unit_id or 'segment' in units[0].unit_id.lower()
@@ -26,7 +29,7 @@ class TestXLIFFParser:
     def test_parse_xliff_12(self):
         """Test parsing XLIFF 1.2 format with trans-unit elements."""
         parser = XliffParser()
-        units = parser.parse('tests/fixtures/sample-xliff12.xlf')
+        units = parser.parse(str(_fixtures / 'sample-xliff12.xlf'))
         assert len(units) >= 6
         # Verify each unit has proper structure
         for unit in units:
@@ -82,7 +85,7 @@ class TestXLIFFParser:
     def test_multiple_segments_in_unit(self):
         """Test parsing unit with multiple segments."""
         parser = XliffParser()
-        units = parser.parse('tests/fixtures/sample-xliff2.xlf')
+        units = parser.parse(str(_fixtures / 'sample-xliff2.xlf'))
         # Unit 1 and 2 should have different segment IDs
         unit_ids = [u.unit_id for u in units]
         # Should have more than 1 unit

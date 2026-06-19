@@ -6,6 +6,7 @@ but writes empty `<target>` elements to the output file. The CLI
 path works correctly. This test pins the contract that the MCP path
 must also write real translations.
 """
+import asyncio
 import json
 import os
 import xml.etree.ElementTree as ET
@@ -80,15 +81,15 @@ class TestTranslateXliffEndToEnd:
         input_path.write_text(_make_minimal_xliff("爱上海尔"), encoding="utf-8")
         output_path = tmp_path / "small_translated.xlf"
 
-        result_str = translate_xliff(
+        result_str = asyncio.run(translate_xliff(
             TranslateXliffInput(
                 input_path=str(input_path),
                 output_path=str(output_path),
                 source_lang="zh",
                 target_lang="en",
-                config_path=str(Path(__file__).resolve().parents[2] / "config" / "default.yaml"),
+                config_path=str(Path(__file__).resolve().parent.parent / "config" / "default.yaml"),
             )
-        )
+        ))
         result = json.loads(result_str)
         assert result.get("success") is True, f"call failed: {result!r}"
         assert result.get("units_processed") == 1, f"wrong count: {result!r}"

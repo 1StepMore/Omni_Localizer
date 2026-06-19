@@ -206,14 +206,27 @@ class TestE2EMDPipelineFailure:
         assert '\x00OL_CODE_0000\x00' in result
 
     def test_is_complete_validation(self):
-        """Test is_complete method validates placeholder presence."""
+        """Test is_complete method validates placeholder presence.
+
+        The completion signal is the {{_OL_XTAG_<key>_}} shield format, which
+        the L2 span-aligner uses to indicate a preserved placeholder.
+        The legacy \x00OL_<key>\x00 active wrapper is treated as
+        "still in flight" (incomplete) by is_complete — by design, it triggers
+        the L3 LLM-restore path. See test_md_auto_repair.py for the
+        corresponding strict-mode tests.
+        """
         pipeline = MDRepairPipeline()
 
-        text_with_placeholder = "text \x00OL_CODE_0000\x00 end"
+        # Modern {{_OL_XTAG_..._}} format — considered complete
+        text_with_modern_placeholder = "text {{_OL_XTAG_CODE_0000_}} end"
         shield_map = {'CODE_0000': 'code'}
+        assert pipeline.is_complete(text_with_modern_placeholder, shield_map) is True
 
-        assert pipeline.is_complete(text_with_placeholder, shield_map) is True
+        # Plain key (no wrapper) — also complete (backward-compat path)
+        text_with_plain_key = "text CODE_0000 end"
+        assert pipeline.is_complete(text_with_plain_key, shield_map) is True
 
+        # No placeholder key at all — incomplete
         text_without_placeholder = "text end"
         assert pipeline.is_complete(text_without_placeholder, shield_map) is False
 

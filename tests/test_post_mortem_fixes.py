@@ -7,6 +7,7 @@ Covers:
 - OL-5: RetryResult has judge_exception and transport_error fields
 """
 
+import pybreaker
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,6 +35,7 @@ class TestModelPoolJudgeTransportErrors:
         # must set _cache_enabled to opt out of cache lookup (the cache
         # is what `pool._cache` would normally wrap).
         pool._cache_enabled = False
+        pool._breakers = {"translation": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "judging": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "restoration": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)}
         return pool
 
     @pytest.mark.asyncio
@@ -220,6 +222,7 @@ class TestModelPoolTranslateSystemMessage:
         pool._logger = MagicMock()
         pool._router = MagicMock()
         pool._cache_enabled = False
+        pool._breakers = {"translation": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "judging": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "restoration": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)}
         captured_messages: list[dict] = []
         async def _capture_acompletion(*args, **kwargs):
             captured_messages.extend(kwargs.get("messages", []))

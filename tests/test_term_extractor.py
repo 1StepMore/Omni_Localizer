@@ -27,7 +27,7 @@ class TestExtractTermsKeyBERTFallback:
 
         with patch("ol_terminology.extractor._KEYBERT_AVAILABLE", False):
             with patch("ol_terminology.extractor._YAKE_AVAILABLE", True):
-                with patch("ol_terminology.extractor.yake", mock_yake_module):
+                with patch("ol_terminology.extractor._yake", mock_yake_module):
                     result = extract_terms(["test text"])
 
                     assert result == {
@@ -48,7 +48,7 @@ class TestExtractTermsFiltersLowScore:
                 ("low priority term", 0.1),
             ]
 
-            with patch("ol_terminology.extractor.KeyBERT", return_value=mock_model):
+            with patch("ol_terminology.extractor._KeyBERT", return_value=mock_model):
                 result = extract_terms(["some test content"])
 
                 assert len(result) == 3
@@ -68,7 +68,7 @@ class TestExtractTermsSorting:
                 ("second term", 0.6),
             ]
 
-            with patch("ol_terminology.extractor.KeyBERT", return_value=mock_model):
+            with patch("ol_terminology.extractor._KeyBERT", return_value=mock_model):
                 result = extract_terms(["test content"])
 
                 assert "first term" in result
@@ -85,14 +85,14 @@ class TestExtractTermsYAKEFallback:
             mock_model = MagicMock()
             mock_model.extract_keywords.side_effect = Exception("KeyBERT failed")
 
-            with patch("ol_terminology.extractor.KeyBERT", return_value=mock_model):
+            with patch("ol_terminology.extractor._KeyBERT", return_value=mock_model):
                 with patch("ol_terminology.extractor._YAKE_AVAILABLE", True):
                     mock_yake_extractor = MagicMock()
                     mock_yake_extractor.extract_keywords.return_value = [
                         ("fallback term", 0.75),
                     ]
 
-                    with patch("ol_terminology.extractor.yake") as mock_yake_module:
+                    with patch("ol_terminology.extractor._yake") as mock_yake_module:
                         mock_yake_module.KeywordExtractor.return_value = mock_yake_extractor
 
                         result = extract_terms(["test content"])

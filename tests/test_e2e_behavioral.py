@@ -10,6 +10,7 @@ These tests verify OL's translate_xliff correctly:
 These tests are NOT mocked - they verify actual output state.
 """
 
+import asyncio
 import pytest
 import tempfile
 import xml.etree.ElementTree as ET
@@ -143,7 +144,7 @@ class TestOLTranslateXLIFFWithOPPStyle:
                 target_lang="zh",
             )
 
-            result = translate_xliff(params)
+            result = asyncio.run(translate_xliff(params))
 
         import json
         result_data = json.loads(result)
@@ -208,7 +209,7 @@ class TestOLTranslateXLIFFWithOPPStyle:
                 target_lang="zh",
             )
 
-            result = translate_xliff(params)
+            result = asyncio.run(translate_xliff(params))
 
         import json
         result_data = json.loads(result)
@@ -250,7 +251,7 @@ class TestOLTranslateXliffOutputContract:
                 input_path=str(xliff_input),
                 output_path=output_path,
             )
-            result = translate_xliff(params)
+            result = asyncio.run(translate_xliff(params))
 
         import json
         result_data = json.loads(result)

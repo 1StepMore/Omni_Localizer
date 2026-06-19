@@ -13,6 +13,7 @@ Cache is LRU (max 1000 entries) with TTL = 300 seconds.
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import pybreaker
 import pytest
 
 from ol_config.schema import (
@@ -50,6 +51,7 @@ def _make_model_pool(
     else:
         pool._router.acompletion = AsyncMock(return_value=acompletion_return)
     pool._cache_enabled = cache_enabled
+    pool._breakers = {"translation": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "judging": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "restoration": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)}
     pool._cache = _PromptCache(
         max_size=1000, ttl_seconds=300.0, time_func=time_func,
     )
@@ -177,6 +179,7 @@ class TestPromptCacheTTL:
             now[0] += seconds
 
         pool = _make_pool_with_translation_response("t")
+        pool._breakers = {"translation": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "judging": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60), "restoration": pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)}
         pool._cache = _PromptCache(max_size=1000, ttl_seconds=300.0, time_func=tick)
 
         # t=0 — first call: miss → store

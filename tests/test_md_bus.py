@@ -1,4 +1,5 @@
 """MD bus tests for Omni-Localizer."""
+from pathlib import Path
 from ol_buses.md_bus import (
     load_md,
     parse_md_to_tokens,
@@ -16,11 +17,11 @@ class TestMDBus:
 
     def test_validate_md_structure_valid(self):
         """Test validation of valid MD file."""
-        assert validate_md_structure('tests/fixtures/sample.md') == True
+        assert validate_md_structure(str(Path(__file__).parent / 'fixtures' / 'sample.md')) == True
 
     def test_load_md_returns_context(self):
         """Test load_md returns TranslationContext with MD channel."""
-        ctx = load_md('tests/fixtures/sample.md')
+        ctx = load_md(str(Path(__file__).parent / 'fixtures' / 'sample.md'))
         assert ctx.channel_type == ChannelType.MD
         assert ctx.file_path.endswith('.md')
 
