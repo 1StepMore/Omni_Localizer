@@ -1,0 +1,76 @@
+project_id: "ol-slim-real-llm"
+source_lang: "zh"
+target_lang: "en"
+glossary_path: null
+enable_lqa: true
+lqa_threshold: 4.0
+lqa_max_retries: 2
+cache_system_prompt: true
+# NOTE (2026-06-14): Slim-test config. llm_pool mirrors config/local.yaml.
+# Created because .omo/run-e2e-slim.sh references config/slim-test.yaml
+# (line 22) and the file was missing. If the model pool changes in
+# local.yaml, mirror it here.
+# 2026-06-17 round 3: lower to 5 (mirror OPT-12 fix in local.yaml).
+max_xliff_concurrent: 5
+llm_pool:
+  translation:
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 1
+      role: "translation"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-v3.1-think-250821"
+      priority: 2
+      role: "translation"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-r1-250528"
+      priority: 3
+      role: "translation"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 60.0
+
+  judging:
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 1
+      role: "judging"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
+    - provider: "openai"
+      model: "ernie-4.5-turbo-128k"
+      priority: 2
+      role: "judging"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 60.0
+    - provider: "openai"
+      model: "ernie-x1-turbo-32k"
+      priority: 3
+      role: "judging"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 60.0
+
+  restoration:
+    - provider: "openai"
+      model: "deepseek-v4-flash"
+      priority: 1
+      role: "restoration"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 60.0
+    - provider: "openai"
+      model: "deepseek-v3.1-think-250821"
+      priority: 2
+      role: "restoration"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 60.0
