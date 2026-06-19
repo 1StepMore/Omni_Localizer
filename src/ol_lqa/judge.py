@@ -22,6 +22,8 @@ class JudgeService:
             "format_preservation": JudgeService._rescale(result.get("score", 0)),
         }
 
+    _JUDGE_TEMPERATURE = 0.7
+
     async def judge(
         self,
         source: str,
@@ -33,7 +35,10 @@ class JudgeService:
     ) -> EvaluationResult:
         if self._model_pool:
             try:
-                result = await self._model_pool.judge(source, target, source_lang, target_lang, glossary)
+                result = await self._model_pool.judge(
+                    source, target, source_lang, target_lang, glossary,
+                    temperature=self._JUDGE_TEMPERATURE,
+                )
             except Exception as pool_err:
                 return EvaluationResult(
                     unit_id=unit_id,

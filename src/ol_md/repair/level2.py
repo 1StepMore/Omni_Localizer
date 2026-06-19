@@ -1,16 +1,39 @@
-try:
-    from span_aligner import SpanProjector
-    _has_span_aligner = True
-except ImportError:
-    _has_span_aligner = False
-
-
+import importlib
 import logging
 import re
 
 _logger = logging.getLogger(__name__)
 
-# Regex matching {{_OL_XTAG_<name>_}} shield placeholders
+_span_projector = None
+_has_span_aligner: bool = False
+
+
+def _get_span_projector():
+    """Lazy-init SpanProjector with HF_HUB_OFFLINE=1 to prevent model downloads."""
+    global _span_projector, _has_span_aligner
+    if _span_projector is not None:
+        return _span_projector
+    import os
+    old = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        mod = importlib.import_module("span_aligner")
+        _span_projector = mod.SpanProjector()
+        _has_span_aligner = True
+        return _span_projector
+    except Exception as e:
+        _logger.warning("span_aligner unavailable: %s", e)
+        return None
+    finally:
+        if old is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = old
+
+
+SpanProjector = None
+
+
 _SHIELD_RE = re.compile(r"\{\{_OL_XTAG_([^}]+)_\}\}")
 
 
@@ -64,17 +87,14 @@ def level2_span_align(
     l2_applied=False: span_aligner unavailable OR L2 raised; `text`
     is the upstream text (graceful degradation).
     """
-    if not _has_span_aligner:
+    projector = _get_span_projector()
+    if projector is None:
         return text, False
-    import os
-    old_offline = os.environ.get("HF_HUB_OFFLINE")
-    os.environ["HF_HUB_OFFLINE"] = "1"
     try:
         original_xml, rev_map = _shield_to_xml(original)
         text_xml, _ = _shield_to_xml(text)
         allowed = _get_shield_tag_names(original)
 
-        projector = SpanProjector()
         aligned, _ = projector.project_tagged_text(
             original_xml, text_xml, allowed_tags=allowed, max_gap=2,
         )
@@ -85,8 +105,3 @@ def level2_span_align(
             "L2 span_aligner unavailable, falling back to upstream text: %s", e
         )
         return text, False
-    finally:
-        if old_offline is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = old_offline

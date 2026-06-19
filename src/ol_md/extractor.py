@@ -64,6 +64,25 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
             warnings.warn(f"Unknown token type: {token_type}", RuntimeWarning)
 
 
+def extract_and_shield_md_units(md_text: str) -> list[TranslationUnit]:
+    """Parse MD text and extract translatable units for concurrent translation.
+
+    Each unit corresponds to an inline token's text content. Shield maps are
+    empty because markdown structure (code fences, images, links) is preserved
+    at the token level — only bare text reaches the LLM.
+
+    Args:
+        md_text: Raw markdown text
+
+    Returns:
+        List of TranslationUnits with source_text and empty shield_map,
+        in token order for 1:1 mapping with TokenPositionTracker.rebuild().
+    """
+    from ol_buses.md_bus import parse_md_to_tokens
+    tokens = parse_md_to_tokens(md_text)
+    return list(extract_translatable_tokens(tokens))
+
+
 def is_translatable(token) -> bool:
     """Check if a token type is translatable."""
     non_translatable = {

@@ -551,7 +551,8 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
 
             if shield_map:
                 translated = unshield_markdown(translated, shield_map)
-            repaired, repair_warnings = repair_pipeline.repair(translated, text, shield_map)
+            repaired = repair_pipeline.repair(translated, text, shield_map)
+            repair_warnings = []
 
             processed.append({"index": i, "success": True, "translated": repaired, "warnings": repair_warnings})
             succeeded += 1

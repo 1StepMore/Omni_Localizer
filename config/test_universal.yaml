@@ -2,38 +2,70 @@
 # language pair set via CLI: -s en -t zh or -s zh -t en
 # Usage: ol translate-md input.md -c config/test_universal.yaml -s en -t zh
 # Or use the .bat files: test_en_to_zh.bat input.md
+#
+# NOTE (2026-06-14): llm_pool is redirected to match config/local.yaml
+# (the only config with valid .env references). See local.yaml for
+# design rationale.
 
 llm_pool:
   translation:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "deepseek-v4-flash"
       priority: 1
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
       role: "translation"
+    - provider: "openai"
+      model: "deepseek-v3.1-think-250821"
+      priority: 2
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 120.0
+      role: "translation"
+    - provider: "openai"
+      model: "deepseek-r1-250528"
+      priority: 3
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 120.0
+      role: "translation"
+
   judging:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "deepseek-v4-flash"
       priority: 1
       role: "judging"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null
-    - provider: "anthropic"
-      model: "claude-3-haiku-20240307"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
+    - provider: "openai"
+      model: "ernie-4.5-turbo-128k"
       priority: 2
       role: "judging"
-      api_key: "${ANTHROPIC_API_KEY}"
-      base_url: null
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 120.0
+    - provider: "openai"
+      model: "ernie-x1-turbo-32k"
+      priority: 3
+      role: "judging"
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 120.0
+
   restoration:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "deepseek-v4-flash"
       priority: 1
       role: "restoration"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "deepseek-v3.1-think-250821"
       priority: 2
       role: "restoration"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: null
+      api_key: "${BAIDU_API_KEY}"
+      base_url: "${BAIDU_BASE_URL}"
+      timeout: 120.0

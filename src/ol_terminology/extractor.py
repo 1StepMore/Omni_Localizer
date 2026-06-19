@@ -1,23 +1,55 @@
-"""Term extraction using KeyBERT with YAKE fallback."""
+"""Term extraction using KeyBERT with YAKE fallback.
+
+KeyBERT and YAKE are imported lazily inside `_probe_keybert` /
+`_probe_yake` so that simply importing this module (e.g. via
+`ol_terminology.__init__` which eagerly pulls in this module) does
+not trigger sentence-transformers model download. This fixes
+E2E-04 where `from keybert import KeyBERT` at module top-level
+caused `ol_cli translate-xliff` to hang in environments without
+pre-downloaded HF models.
+"""
 import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    from keybert import KeyBERT
+_KeyBERT = None
+_yake = None
+_KEYBERT_AVAILABLE = False
+_YAKE_AVAILABLE = False
 
-    _KEYBERT_AVAILABLE = True
-except ImportError:
-    _KEYBERT_AVAILABLE = False
-    KeyBERT = None
 
-try:
-    import yake
+def _probe_keybert():
+    """Lazy probe for KeyBERT. Returns the class on success, None on failure."""
+    global _KeyBERT, _KEYBERT_AVAILABLE
+    if _KeyBERT is not None:
+        return _KeyBERT
+    try:
+        from keybert import KeyBERT as _ImportedKeyBERT
 
-    _YAKE_AVAILABLE = True
-except ImportError:
-    _YAKE_AVAILABLE = False
-    yake = None
+        _KeyBERT = _ImportedKeyBERT
+        _KEYBERT_AVAILABLE = True
+        return _KeyBERT
+    except Exception as e:
+        logger.debug(f"KeyBERT unavailable: {e}")
+        _KEYBERT_AVAILABLE = False
+        return None
+
+
+def _probe_yake():
+    """Lazy probe for YAKE. Returns the module on success, None on failure."""
+    global _yake, _YAKE_AVAILABLE
+    if _yake is not None:
+        return _yake
+    try:
+        import yake as _ImportedYake
+
+        _yake = _ImportedYake
+        _YAKE_AVAILABLE = True
+        return _yake
+    except Exception as e:
+        logger.debug(f"YAKE unavailable: {e}")
+        _YAKE_AVAILABLE = False
+        return None
 
 
 def extract_terms(texts: list[str]) -> dict[str, float]:
@@ -38,7 +70,8 @@ def extract_terms(texts: list[str]) -> dict[str, float]:
 
     combined_text = " ".join(texts)
 
-    if _KEYBERT_AVAILABLE:
+    KeyBERT = _probe_keybert()
+    if KeyBERT is not None:
         try:
             kw_model = KeyBERT()
             results = kw_model.extract_keywords(
@@ -53,9 +86,10 @@ def extract_terms(texts: list[str]) -> dict[str, float]:
         except Exception as e:
             logger.warning(f"KeyBERT extraction failed: {e}, falling back to YAKE")
 
-    if _YAKE_AVAILABLE:
+    yake_mod = _probe_yake()
+    if yake_mod is not None:
         try:
-            yake_model = yake.KeywordExtractor(
+            yake_model = yake_mod.KeywordExtractor(
                 lan="en",
                 n=2,
                 dedupLim=0.7,

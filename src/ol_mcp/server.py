@@ -12,7 +12,7 @@ __all__ = ["main"]
 
 async def main() -> None:
     """Run the OL MCP server with stdio transport."""
-    await mcp.run(transport="stdio")
+    await mcp.run_stdio_async()
 
 
 if __name__ == "__main__":
