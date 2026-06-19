@@ -1,4 +1,5 @@
 """Pytest configuration for Omni-Localizer tests."""
+import os
 import sys
 import types
 from importlib.machinery import ModuleSpec
@@ -8,6 +9,23 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
+
+# Set dummy API keys for tests so config validation passes.
+# FAKE_LLM mode creates _FakeModelPool and ignores these values;
+# config validators only check that the env vars are non-empty.
+_DUMMY_API_KEYS = {
+    "ZHIPU_API_KEY": "sk-dummy",
+    "AGNES_API_KEY": "sk-dummy",
+    "NVIDIA_NIM_API_KEY": "nvapi-dummy",
+    "BAIDU_API_KEY": "sk-dummy",
+    "BAIDU_SECRET_KEY": "sk-dummy",
+    "OPENAI_API_KEY": "sk-dummy",
+    "ANTHROPIC_API_KEY": "sk-dummy",
+    "MINIMAX_API_KEY": "sk-dummy",
+    "MINIMAX_BASE_URL": "http://localhost:8080/v1",
+}
+for _k, _v in _DUMMY_API_KEYS.items():
+    os.environ.setdefault(_k, _v)
 
 
 # Several test files transitively import litellm, torch, transformers,
@@ -209,3 +227,6 @@ class _HeavyImportBlocker:
 
 
 sys.meta_path.insert(0, _HeavyImportBlocker())
+
+# Set default OL config path so tests run from suite root can find the config.
+os.environ.setdefault("OL_CONFIG_PATH", str(Path(__file__).parent.parent / "config" / "default.yaml"))
