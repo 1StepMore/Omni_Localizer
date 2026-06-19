@@ -14,7 +14,7 @@ class TestOpenCodeSkill:
 
     @pytest.fixture
     def skill_path(self) -> Path:
-        return Path("src/.opencode/skills/ol-localizer")
+        return Path(__file__).parent.parent / "src" / ".opencode" / "skills" / "ol-localizer"
 
     def test_opencode_skill_exists(self, skill_path: Path):
         """Verify OpenCode skill directory and SKILL.md exist."""
