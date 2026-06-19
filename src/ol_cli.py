@@ -410,9 +410,8 @@ def _generate_frontmatter(
     original_filename: str,
     ol_version: str | None = None,
     request_id: str | None = None,
+    extra_frontmatter: dict | None = None,
 ) -> str:
-    if ol_version is None:
-        ol_version = _get_ol_version()
     """Generate YAML frontmatter header with translation metadata.
 
     Args:
@@ -421,6 +420,8 @@ def _generate_frontmatter(
         original_filename: Original input filename
         ol_version: OL version number
         request_id: Optional UUID for end-to-end tracing (B2).
+        extra_frontmatter: Optional dict of extra keys to merge before the
+            closing --- (e.g. email_headers from OPP manifest).
 
     Returns:
         YAML frontmatter string with leading and trailing ---
@@ -429,6 +430,8 @@ def _generate_frontmatter(
         ValueError: If language codes are invalid
 
     """
+    if ol_version is None:
+        ol_version = _get_ol_version()
     # Validate inputs to prevent injection
     source_lang = _validate_lang_code(source_lang)
     target_lang = _validate_lang_code(target_lang)
@@ -447,6 +450,19 @@ def _generate_frontmatter(
     ]
     if request_id:
         frontmatter_lines.append(f"request_id: {request_id}")
+
+    # Merge extra frontmatter keys (e.g. email_headers from OPP manifest)
+    if extra_frontmatter:
+        for key, value in extra_frontmatter.items():
+            if isinstance(value, dict):
+                frontmatter_lines.append(f"{key}:")
+                for sub_key, sub_value in value.items():
+                    escaped_val = _escape_yaml_value(str(sub_value))
+                    frontmatter_lines.append(f"  {sub_key}: {escaped_val}")
+            else:
+                escaped_val = _escape_yaml_value(str(value))
+                frontmatter_lines.append(f"{key}: {escaped_val}")
+
     frontmatter_lines.extend(["---", ""])
 
     return "\n".join(frontmatter_lines)
@@ -493,14 +509,18 @@ def _get_ol_version() -> str:
     return __version__
 
 
-def _extract_request_id(input_path: Path) -> str | None:
-    """Extract request_id from OPP manifest.json or XLIFF header (B2).
+def _extract_opp_metadata(input_path: Path) -> dict:
+    """Extract request_id and email_headers from OPP manifest.json (W2.1).
 
-    Looks for a sibling ``*_manifest.json`` first, then falls back to
-    scanning the XLIFF header for a ``request_id=...`` note.
-    Returns None if not found.
+    Looks for a sibling ``*_manifest.json``, extracts ``request_id`` and
+    ``metadata`` fields (where email headers live). Falls back to scanning
+    the XLIFF header for a ``request_id=...`` note.
+
+    Returns:
+        dict with keys ``request_id`` (str|None) and ``email_headers`` (dict|None).
     """
     import re as _re
+    result: dict = {"request_id": None, "email_headers": None}
     manifest_candidate = input_path.parent / f"{input_path.stem}_manifest.json"
     if manifest_candidate.exists():
         try:
@@ -508,7 +528,28 @@ def _extract_request_id(input_path: Path) -> str | None:
             data = _json.loads(manifest_candidate.read_text(encoding="utf-8"))
             rid = data.get("request_id")
             if rid:
-                return rid
+                result["request_id"] = rid
+            metadata = data.get("metadata")
+            if isinstance(metadata, dict):
+                headers = {}
+                sender = metadata.get("sender")
+                if sender:
+                    headers["from"] = str(sender)
+                to_val = metadata.get("to")
+                if to_val is not None:
+                    headers["to"] = str(to_val)
+                subject = metadata.get("subject")
+                if subject:
+                    headers["subject"] = str(subject)
+                cc_val = metadata.get("cc")
+                if cc_val is not None:
+                    headers["cc"] = str(cc_val)
+                date_val = metadata.get("date")
+                if date_val:
+                    headers["date"] = str(date_val)
+                if headers:
+                    result["email_headers"] = headers
+            return result
         except (OSError, ValueError):
             pass
     if input_path.suffix.lower() in (".xlf", ".xliff"):
@@ -516,10 +557,15 @@ def _extract_request_id(input_path: Path) -> str | None:
             content = input_path.read_text(encoding="utf-8")
             m = _re.search(r"request_id=([0-9a-fA-F-]{36})", content)
             if m:
-                return m.group(1)
+                result["request_id"] = m.group(1)
         except OSError:
             pass
-    return None
+    return result
+
+
+def _extract_request_id(input_path: Path) -> str | None:
+    """Backward-compat wrapper for _extract_opp_metadata (B2)."""
+    return _extract_opp_metadata(input_path)["request_id"]
 
 
 def _build_xliff_header_note(src_lang: str, tgt_lang: str, request_id: str | None = None) -> str:
@@ -776,8 +822,10 @@ async def _translate_md_async(
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
         safe_tgt_lang = _validate_lang_code(tgt_lang)
-        # 2026-06-18 round 16 Phase B2: propagate request_id from OPP.
-        rid = _extract_request_id(input_path)
+        opp_meta = _extract_opp_metadata(input_path)
+        rid = opp_meta["request_id"]
+        email_headers = opp_meta["email_headers"]
+        extra_fm = {"email_headers": email_headers} if email_headers else None
 
         frontmatter = _generate_frontmatter(
             source_lang=safe_src_lang,
@@ -785,6 +833,7 @@ async def _translate_md_async(
             original_filename=input_path.name,
             ol_version=_get_ol_version(),
             request_id=rid,
+            extra_frontmatter=extra_fm,
         )
         output_content = frontmatter + repaired
     else:
