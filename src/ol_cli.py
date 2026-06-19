@@ -685,15 +685,17 @@ async def _translate_md_async(
         if str(_suite_root) not in sys.path:
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        from ol_pool.router import ModelPool as _MP
-        pool = cast(_MP, cast(object, _FakeModelPool()))
+        # B1: Avoid importing ol_pool.router here — it transitively loads
+        # litellm → pydantic → importlib.metadata.entry_points() which blocks
+        # on filesystem I/O in certain environments (e.g. /mnt/d/ WSL2 mount).
+        pool = cast(object, _FakeModelPool())
         _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
         pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     from ol_config.loader import load_config
-    cfg, _ = load_config(config_path or "config/default.yaml")
+    cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
     src_lang = src_lang or cfg.source_lang
     tgt_lang = tgt_lang or cfg.target_lang
 
@@ -1372,8 +1374,10 @@ async def _translate_xliff_async(
         if str(_suite_root) not in sys.path:
             sys.path.insert(0, str(_suite_root))
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        from ol_pool.router import ModelPool as _MP
-        pool = cast(_MP, cast(object, _FakeModelPool()))
+        # B1: Avoid importing ol_pool.router here — it transitively loads
+        # litellm → pydantic → importlib.metadata.entry_points() which blocks
+        # on filesystem I/O in certain environments (e.g. /mnt/d/ WSL2 mount).
+        pool = cast(object, _FakeModelPool())
         _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool

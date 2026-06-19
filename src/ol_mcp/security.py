@@ -243,5 +243,6 @@ def get_default_validator() -> PathValidator:
     if allowed.strip():
         dirs = [Path(d).resolve() for d in allowed.split(",") if d.strip()]
     else:
-        dirs = [Path.cwd().resolve()]
+        # Default: allow cwd (project root) and /tmp (standard test workspace).
+        dirs = [Path.cwd().resolve(), Path("/tmp").resolve()]
     return PathValidator(allowed_directories=dirs)
