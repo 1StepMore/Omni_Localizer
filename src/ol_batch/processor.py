@@ -113,8 +113,6 @@ class BatchProcessor:
                     failed.append((file, "Unknown error"))
         except asyncio.CancelledError:
             raise
-        except Exception:
-            raise
 
         result = BatchResult(
             succeeded=succeeded,

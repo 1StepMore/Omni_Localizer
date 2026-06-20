@@ -32,6 +32,8 @@ from ol_mcp._errors import mcp_error_boundary
 from ol_mcp.security import get_default_validator
 # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
 from ol_mcp.auth import check_auth, auth_failure_response
+# H5: token bucket DoS rate limiter (2026-06-20)
+from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 
 
 def _resolve_async(result):
@@ -205,6 +207,11 @@ async def _translate_single(
 @mcp.tool(description="Translate markdown text directly without file I/O.")
 @mcp_error_boundary
 async def translate_md_text(params: TranslateInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -284,6 +291,11 @@ async def translate_md_text(params: TranslateInput) -> str:
 @mcp.tool(description="Evaluate translation quality using LLM judge.")
 @mcp_error_boundary
 async def judge_text(params: JudgeInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -341,6 +353,11 @@ async def judge_text(params: JudgeInput) -> str:
 @mcp.tool(description="Load a JSON glossary file for use in translation.")
 @mcp_error_boundary
 async def load_glossary(params: LoadGlossaryInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -397,6 +414,11 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
 @mcp.tool(description="Extract relevant glossary terms for a given text.")
 @mcp_error_boundary
 async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -437,6 +459,11 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
 @mcp.tool(description="Search translation memory for similar past translations.")
 @mcp_error_boundary
 async def search_tm(params: SearchTMInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -500,6 +527,11 @@ async def search_tm(params: SearchTMInput) -> str:
 @mcp.tool(description="Translate multiple texts in parallel.")
 @mcp_error_boundary
 def batch_translate_texts(params: BatchTranslateInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -545,9 +577,14 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
                         glossary_terms=terms,
                     )
 
-            translated = _resolve_async(
+            translated_raw = _resolve_async(
                 pool.translate(shielded, params.source_lang, params.target_lang, context),
             )
+            # _resolve_async may return (str, metadata) tuple from fake or async paths
+            if isinstance(translated_raw, tuple):
+                translated = str(translated_raw[0]) if translated_raw else ""
+            else:
+                translated = str(translated_raw) if translated_raw else ""
 
             if shield_map:
                 translated = unshield_markdown(translated, shield_map)
@@ -577,6 +614,11 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
 @mcp.tool()
 @mcp_error_boundary
 async def translate_xliff(params: TranslateXliffInput) -> str:
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        import json as _json
+        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -739,6 +781,10 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
 @mcp.tool(description="Health check endpoint.")
 async def ping(auth_token: str | None = None) -> str:
     """Health check endpoint. Returns module name and version."""
+    # H5: token bucket rate limiter
+    rate_ok, rate_err = check_rate_limit()
+    if not rate_ok:
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(auth_token)
     if not auth_ok:

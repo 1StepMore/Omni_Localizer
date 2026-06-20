@@ -55,7 +55,11 @@ def build_translate_prompt(
     if context_parts:
         parts.append("\n\n".join(context_parts))
 
-    parts.append(f"[Source Text ({src_lang} -> {tgt_lang})]\n{text}")
+    # H1-H3: Wrap source text in delimiters to isolate it from instructions
+    parts.append(
+        f"[Source Text ({src_lang} -> {tgt_lang})]\n"
+        f"[USER_TEXT_START]\n{text}\n[USER_TEXT_END]"
+    )
 
     instruction = f"Translate the following {src_lang} text to {tgt_lang}, using the above translation memory and glossary terms when applicable."
     parts.insert(0, instruction)

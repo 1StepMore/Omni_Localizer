@@ -149,9 +149,15 @@ class Glossary:
             primary = tgts[0] if tgts else ""
             term_strs.append(f"{src}→{primary}" if primary else src)
 
+        # H1-H3: Sanitize glossary terms against prompt injection — strip
+        # characters that could break out of the data context.
+        _safe_terms = [
+            t.replace("\n", " ").replace("\r", " ")
+            for t in term_strs
+        ]
         return (
             f"{prompt}\n\n"
-            f"Use these terms: {', '.join(term_strs)}"
+            f"Use these terms: {', '.join(_safe_terms)}"
         )
 
 

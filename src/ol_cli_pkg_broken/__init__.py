@@ -1,10 +1,8 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
 import asyncio
-import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any
 
 import typer
 

@@ -92,3 +92,6 @@ uv.lock
 
 # Output directory
 output/
+
+# Stale audit venv (Python 3.14, 2.2G)
+.audit-venv/

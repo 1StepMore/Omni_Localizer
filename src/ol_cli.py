@@ -733,7 +733,7 @@ async def _translate_md_async(
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
         # B1: Avoid importing ol_pool.router here — it transitively loads
         # litellm → pydantic → importlib.metadata.entry_points() which blocks
-        # on filesystem I/O in certain environments (e.g. /mnt/d/ WSL2 mount).
+        # on filesystem I/O over slow mounts (e.g. WSL2 /mnt/ drives).
         pool = cast(object, _FakeModelPool())
         _apply_fake_llm_seam()
     else:
@@ -1425,7 +1425,7 @@ async def _translate_xliff_async(
         from tests.test_e2e_pipeline_fixtures import _FakeModelPool
         # B1: Avoid importing ol_pool.router here — it transitively loads
         # litellm → pydantic → importlib.metadata.entry_points() which blocks
-        # on filesystem I/O in certain environments (e.g. /mnt/d/ WSL2 mount).
+        # on filesystem I/O over slow mounts (e.g. WSL2 /mnt/ drives).
         pool = cast(object, _FakeModelPool())
         _apply_fake_llm_seam()
     else:
