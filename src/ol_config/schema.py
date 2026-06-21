@@ -17,6 +17,11 @@ class LLMModelRole(str, Enum):
 def _check_env_vars(api_key: str | None) -> None:
     if api_key is None:
         return
+    # FAKE_LLM seam swaps the model pool for _FakeModelPool which never
+    # resolves ${ENV_VAR} keys, so the existence check is moot and would
+    # fail hermetic tests. See audit T1 (2026-06-21).
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        return
     env_vars = re.findall(r'\$\{([^}]+)\}', api_key)
     for var in env_vars:
         if var not in os.environ:

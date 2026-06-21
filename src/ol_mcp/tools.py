@@ -82,6 +82,18 @@ class TranslateInput(BaseModel):
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
     config_path: str | None = Field(default=None, description="Path to LLM config")
     add_frontmatter: bool = Field(default=False, description="Add YAML frontmatter to output")
+    glossary_max_terms: int = Field(
+        default=5, ge=1, le=50,
+        description="Max relevant glossary terms per unit (CLI: --glossary-max-terms)",
+    )
+    no_glossary: bool = Field(
+        default=False,
+        description="Disable glossary injection even if glossary_path is set (CLI: --no-glossary)",
+    )
+    no_restoration: bool = Field(
+        default=False,
+        description="Skip the A12.4 post-translation placeholder restoration (CLI: --no-restoration)",
+    )
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth. Required
     # only when MCP_SHARED_SECRET env var is set (dev mode: ignored).
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
@@ -165,6 +177,9 @@ async def _translate_single(
     target_lang: str,
     glossary: dict[str, dict[str, Any]] | None,
     config_path: str,
+    glossary_max_terms: int = 5,
+    no_glossary: bool = False,
+    no_restoration: bool = False,
 ) -> tuple[str, list[str]]:
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
@@ -173,8 +188,8 @@ async def _translate_single(
         shielded, shield_map = shield_markdown(content)
 
         context = None
-        if glossary:
-            terms = _get_relevant_terms(shielded, glossary=glossary, top_k=5)
+        if glossary and not no_glossary:
+            terms = _get_relevant_terms(shielded, glossary=glossary, top_k=glossary_max_terms)
             if terms:
                 context = build_translate_prompt(
                     text=shielded,
@@ -232,7 +247,7 @@ async def translate_md_text(params: TranslateInput) -> str:
 
     try:
         glossary: dict[str, dict[str, Any]] | None = None
-        if params.glossary_path:
+        if params.glossary_path and not params.no_glossary:
             try:
                 glossary = load_glossary_from_path(
                     params.glossary_path,
@@ -247,6 +262,9 @@ async def translate_md_text(params: TranslateInput) -> str:
             params.target_lang,
             glossary,
             config_path,
+            glossary_max_terms=params.glossary_max_terms,
+            no_glossary=params.no_glossary,
+            no_restoration=params.no_restoration,
         )
 
         from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
