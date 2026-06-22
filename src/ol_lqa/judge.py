@@ -18,8 +18,8 @@ class JudgeService:
         return {
             "adequacy": JudgeService._rescale(result.get("adequacy", 0)),
             "fluency": JudgeService._rescale(result.get("fluency", 0)),
-            "terminology_consistency": JudgeService._rescale(result.get("accuracy", 0)),
-            "format_preservation": JudgeService._rescale(result.get("score", 0)),
+            "accuracy": JudgeService._rescale(result.get("accuracy", 0)),
+            "score": JudgeService._rescale(result.get("score", 0)),
         }
 
     _JUDGE_TEMPERATURE = 0.7
