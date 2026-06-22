@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from ol_logging.constants import BACKUP_COUNT, LOG_FILE_PATTERN, MAX_BYTES
-from ol_logging.formatters import get_formatter
+from ol_logging.formatters import get_structlog_formatter
 
 
 class _AutoRolloverFileHandler(logging.handlers.RotatingFileHandler):
@@ -36,7 +36,7 @@ def get_file_handler(log_dir: Path, level: int) -> logging.Handler:
         backupCount=BACKUP_COUNT,
     )
     handler.setLevel(level)
-    handler.setFormatter(get_formatter())
+    handler.setFormatter(get_structlog_formatter())
     return handler
 
 
@@ -44,7 +44,7 @@ def get_console_handler(level: int) -> logging.Handler:
     """Create console handler for optional stdout output."""
     handler = logging.StreamHandler()
     handler.setLevel(level)
-    handler.setFormatter(get_formatter())
+    handler.setFormatter(get_structlog_formatter())
     return handler
 
 

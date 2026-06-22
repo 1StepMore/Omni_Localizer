@@ -1585,12 +1585,21 @@ def translate_md(
              "(default 5). Applies to --glossary / config glossary "
              "injection; ignored when --no-glossary is set.",
     ),
+    log_format: str | None = typer.Option(
+        None, "--log-format",
+        help="Log output format: 'console' (default) or 'json'. "
+             "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
+             "timestamp, level, module fields.",
+    ),
 ) -> int:
     try:
+        if log_format:
+            os.environ["OMNI_LOG_FORMAT"] = log_format
         input_path = validate_input_file(input)
     except typer.BadParameter as e:
         typer.echo(f"Error: {e.message}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
 
     if not output_dir:
         typer.echo("Error: --output-dir is required", err=True)
@@ -1911,12 +1920,21 @@ def translate_xliff(
              "(default 5). Applies to --glossary / config glossary "
              "injection; ignored when --no-glossary is set.",
     ),
+    log_format: str | None = typer.Option(
+        None, "--log-format",
+        help="Log output format: 'console' (default) or 'json'. "
+             "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
+             "timestamp, level, module fields.",
+    ),
 ) -> int:
     try:
+        if log_format:
+            os.environ["OMNI_LOG_FORMAT"] = log_format
         input_path = validate_input_file(input)
     except typer.BadParameter as e:
         typer.echo(f"Error: {e.message}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
 
     if not output_dir:
         typer.echo("Error: --output-dir is required", err=True)

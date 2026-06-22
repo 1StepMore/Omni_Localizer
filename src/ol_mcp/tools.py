@@ -1,21 +1,44 @@
 """MCP tools for Omni-Localizer.
 
 All tools are async functions that wrap existing OL infrastructure.
-Each tool returns a dict with consistent success/warnings structure for agent-friendly error handling.
+Each tool returns a dict with consistent success/warnings structure for
+agent-friendly error handling.
+
+Phase 1.4 rewrite: replaced ``mcp.server.fastmcp.FastMCP`` (which has a
+stdin-handshake stdio bug in this environment) with the standard
+``mcp.server.Server`` + ``stdio_server()`` pattern that the minimal
+test (``tests/mcp/test_minimal_stdio.py``) verified works.
 """
+from __future__ import annotations
+
 import asyncio
+import inspect
 import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 _logger = logging.getLogger(__name__)
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import Server
+from mcp.types import Tool, TextContent
 from pydantic import BaseModel, Field
 
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.metrics import (
+    STATUS_AUTH_FAILED as _OL_STATUS_AUTH_FAILED,
+    STATUS_ERROR as _OL_STATUS_ERROR,
+    STATUS_RATE_LIMITED as _OL_STATUS_RATE_LIMITED,
+    STATUS_SUCCESS as _OL_STATUS_SUCCESS,
+    record_request_from_arguments,
+    time_block as _ol_metrics_timer,
+)
+from ol_mcp.tracing import (
+    set_span_status as _ol_tracing_set_status,
+    start_call_tool_span as _ol_tracing_start_span,
+    inject_traceparent as _ol_tracing_inject_traceparent,
+)
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
@@ -25,14 +48,9 @@ from ol_tm.service import TMService
 from ol_xliff.parser import XliffParser
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
-# C12 fix: shared error boundary replaces 6+ try/except str(e) copies.
 from ol_mcp._errors import mcp_error_boundary
-# 2026-06-18 round 16 Phase A1: PathValidator for file-path
-# inputs. Closes the OL MCP path-traversal gap (round-15 audit).
 from ol_mcp.security import get_default_validator
-# 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
 from ol_mcp.auth import check_auth, auth_failure_response
-# H5: token bucket DoS rate limiter (2026-06-20)
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 
 
@@ -48,9 +66,6 @@ def _resolve_async(result):
         except RuntimeError:
             loop = None
         if loop is not None and loop.is_running():
-            # 2026-06-18 round 14: pytest-asyncio runs the test inside a
-            # running loop, so asyncio.run() would hang. Run the coroutine
-            # to completion in a fresh thread that owns its own loop.
             import concurrent.futures
             def _runner():
                 new_loop = asyncio.new_event_loop()
@@ -65,11 +80,45 @@ def _resolve_async(result):
         return asyncio.run(result)
     return result
 
-# Create the MCP server
-mcp = FastMCP("omni-localizer")
 
 # ---------------------------------------------------------------------------
-# Input models
+# Server instance + tool registry
+# ---------------------------------------------------------------------------
+#
+# Phase 1.4: the SDK's ``mcp.server.fastmcp.FastMCP`` swallows the first
+# JSON-RPC handshake on stdio in this environment. The minimal
+# ``tests/mcp/test_minimal_stdio.py`` reference test confirmed the
+# lower-level ``mcp.server.Server`` + ``stdio_server()`` pattern works
+# correctly, so we use it instead. Tool implementations are unchanged;
+# the dispatch happens in ``list_tools()`` / ``call_tool()`` below.
+mcp = Server("omni-localizer")
+
+# (callable, pydantic input model, description) — one entry per tool.
+TOOL_REGISTRY: dict[str, tuple[Callable[..., Awaitable[str] | str], type[BaseModel], str]] = {}
+
+
+def _register_tool(
+    name: str,
+    input_model: type[BaseModel],
+    description: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator: wrap a tool function and register it for MCP dispatch.
+
+    The wrapped function still matches the underlying callable (so direct
+    in-process callers like ``tests/test_ol_mcp.py`` work unchanged). MCP
+    dispatch goes through the registry, which feeds the ``list_tools()``
+    and ``call_tool()`` handlers below.
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        TOOL_REGISTRY[name] = (fn, input_model, description)
+        return fn
+
+    return decorator
+
+
+# ---------------------------------------------------------------------------
+# Input models (unchanged from Phase 1.3)
 # ---------------------------------------------------------------------------
 
 
@@ -94,9 +143,11 @@ class TranslateInput(BaseModel):
         default=False,
         description="Skip the A12.4 post-translation placeholder restoration (CLI: --no-restoration)",
     )
-    # 2026-06-18 round 16 Phase A4: MCP shared-secret auth. Required
-    # only when MCP_SHARED_SECRET env var is set (dev mode: ignored).
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+    traceparent: str | None = Field(
+        default=None,
+        description="Optional W3C Trace Context traceparent header to make this OL span a child of an upstream trace (e.g. from OPP extract_document).",
+    )
 
 
 class JudgeInput(BaseModel):
@@ -157,6 +208,10 @@ class TranslateXliffInput(BaseModel):
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
     config_path: str | None = Field(default=None, description="Path to LLM config")
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+    traceparent: str | None = Field(
+        default=None,
+        description="Optional W3C Trace Context traceparent header to make this OL span a child of an upstream trace (e.g. from OPP extract_document).",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -219,19 +274,21 @@ async def _translate_single(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(description="Translate markdown text directly without file I/O.")
+@_register_tool(
+    "translate_md_text",
+    TranslateInput,
+    "Translate markdown text directly without file I/O.",
+)
 @mcp_error_boundary
 async def translate_md_text(params: TranslateInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Translate markdown text using OL's translation pipeline.
 
@@ -240,7 +297,6 @@ async def translate_md_text(params: TranslateInput) -> str:
 
     Returns a JSON string with: success, translated, warnings, source_lang, target_lang
     """
-    import json
 
     warnings: list[str] = []
     config_path = _get_config_path(params.config_path)
@@ -306,25 +362,26 @@ async def translate_md_text(params: TranslateInput) -> str:
         )
 
 
-@mcp.tool(description="Evaluate translation quality using LLM judge.")
+@_register_tool(
+    "judge_text",
+    JudgeInput,
+    "Evaluate translation quality using LLM judge.",
+)
 @mcp_error_boundary
 async def judge_text(params: JudgeInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Evaluate translation quality with rubric scores.
 
     Returns: success, score (0-100), reason, judge_scores breakdown, warnings
     """
-    import json
 
     warnings: list[str] = []
 
@@ -368,25 +425,26 @@ async def judge_text(params: JudgeInput) -> str:
         )
 
 
-@mcp.tool(description="Load a JSON glossary file for use in translation.")
+@_register_tool(
+    "load_glossary",
+    LoadGlossaryInput,
+    "Load a JSON glossary file for use in translation.",
+)
 @mcp_error_boundary
 async def load_glossary(params: LoadGlossaryInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Load a JSON glossary file.
 
     Returns: success, glossary dict, term_count, warnings
     """
-    import json
 
     warnings: list[str] = []
 
@@ -429,19 +487,21 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
         )
 
 
-@mcp.tool(description="Extract relevant glossary terms for a given text.")
+@_register_tool(
+    "get_relevant_terms",
+    GetRelevantTermsInput,
+    "Extract relevant glossary terms for a given text.",
+)
 @mcp_error_boundary
 async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Select top-k terms from glossary relevant to the given text.
 
@@ -449,7 +509,6 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
 
     Returns: success, terms list, count
     """
-    import json
 
     try:
         terms = _get_relevant_terms(params.text, params.glossary, top_k=params.top_k)
@@ -474,19 +533,21 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
         )
 
 
-@mcp.tool(description="Search translation memory for similar past translations.")
+@_register_tool(
+    "search_tm",
+    SearchTMInput,
+    "Search translation memory for similar past translations.",
+)
 @mcp_error_boundary
 async def search_tm(params: SearchTMInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Search TMX file for similar past translations.
 
@@ -494,7 +555,6 @@ async def search_tm(params: SearchTMInput) -> str:
 
     Returns: success, matches list, count
     """
-    import json
 
     warnings: list[str] = []
 
@@ -542,25 +602,26 @@ async def search_tm(params: SearchTMInput) -> str:
         )
 
 
-@mcp.tool(description="Translate multiple texts in parallel.")
+@_register_tool(
+    "batch_translate_texts",
+    BatchTranslateInput,
+    "Translate multiple texts in parallel.",
+)
 @mcp_error_boundary
 def batch_translate_texts(params: BatchTranslateInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     """
     Translate multiple markdown texts through the shield → translate → repair → unshield pipeline.
 
     Returns: success, results list with per-item success/translated/warnings, total, succeeded, failed
     """
-    import json
 
     warnings: list[str] = []
     config_path = _get_config_path(None)
@@ -598,7 +659,6 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
             translated_raw = _resolve_async(
                 pool.translate(shielded, params.source_lang, params.target_lang, context),
             )
-            # _resolve_async may return (str, metadata) tuple from fake or async paths
             if isinstance(translated_raw, tuple):
                 translated = str(translated_raw[0]) if translated_raw else ""
             else:
@@ -616,35 +676,36 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
             failed += 1
 
     return json.dumps(
-            {
-                "success": failed == 0,
-                "results": processed,
-                "total": len(params.texts),
-                "succeeded": succeeded,
-                "failed": failed,
-                "warnings": warnings,
-                "assembled_document": "---".join([r["translated"] for r in processed]),
-            },
-            ensure_ascii=False,
-        )
+        {
+            "success": failed == 0,
+            "results": processed,
+            "total": len(params.texts),
+            "succeeded": succeeded,
+            "failed": failed,
+            "warnings": warnings,
+            "assembled_document": "---".join([r["translated"] for r in processed]),
+        },
+        ensure_ascii=False,
+    )
 
 
-@mcp.tool()
+@_register_tool(
+    "translate_xliff",
+    TranslateXliffInput,
+    "Translate an XLIFF file (writes <target> elements to the output file).",
+)
 @mcp_error_boundary
 async def translate_xliff(params: TranslateXliffInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        import json as _json
-        return _json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
-        import json as _json
-        return _json.dumps(auth_failure_response(), ensure_ascii=False)
+        return json.dumps(auth_failure_response(), ensure_ascii=False)
     # 2026-06-17 round 9: was sync, used _resolve_async(asyncio.run) — failed
     # inside running event loop. Now async to match translate_md_text.
-    import json
 
     warnings: list[str] = []
     config_path = _get_config_path(params.config_path)
@@ -796,8 +857,15 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
         )
 
 
-@mcp.tool(description="Health check endpoint.")
-async def ping(auth_token: str | None = None) -> str:
+# ---------------------------------------------------------------------------
+# ping — no Pydantic model, no @mcp_error_boundary
+# ---------------------------------------------------------------------------
+#
+# The signature is positional-and-optional ``auth_token=None``; the MCP
+# list_tools / call_tool dispatch below wraps it in a 0-arg schema and
+# forwards ``auth_token`` from the JSON-RPC arguments.
+
+async def _ping(auth_token: str | None = None) -> str:
     """Health check endpoint. Returns module name and version."""
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
@@ -812,3 +880,174 @@ async def ping(auth_token: str | None = None) -> str:
         {"success": True, "module": "ol", "version": _ol_version},
         ensure_ascii=False,
     )
+
+
+# Register ping separately because it has no Pydantic input model.
+TOOL_REGISTRY["ping"] = (
+    _ping,
+    None,
+    "Health check endpoint.",
+)
+
+
+# Backwards-compatible alias for the in-process caller contract.
+# (tests/test_ol_mcp.py, tests/observability/test_mcp_health.py)
+async def ping(auth_token: str | None = None) -> str:
+    return await _ping(auth_token)
+
+
+# ---------------------------------------------------------------------------
+# MCP dispatch handlers (list_tools / call_tool)
+# ---------------------------------------------------------------------------
+
+
+def _tool_input_schema(input_model: type[BaseModel] | None) -> dict[str, Any]:
+    """Build a JSON Schema for an MCP tool.
+
+    For Pydantic-typed tools, derive the schema from the model. For
+    ping (no model), declare a 0-arg schema with an optional
+    ``auth_token`` field.
+    """
+    if input_model is not None:
+        return input_model.model_json_schema()
+    return {
+        "type": "object",
+        "properties": {
+            "auth_token": {
+                "type": "string",
+                "description": "Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)",
+            },
+        },
+        "required": [],
+    }
+
+
+@mcp.list_tools()
+async def _list_tools() -> list[Tool]:
+    """Return the list of registered OL MCP tools."""
+    tools: list[Tool] = []
+    for name, (_fn, input_model, description) in TOOL_REGISTRY.items():
+        tools.append(
+            Tool(
+                name=name,
+                description=description,
+                inputSchema=_tool_input_schema(input_model),
+            )
+        )
+    return tools
+
+
+async def _invoke_tool(fn: Callable[..., Any], arguments: dict[str, Any]) -> list[TextContent]:
+    """Call a registered tool, validating arguments against its Pydantic model.
+
+    The wrapped function may be sync (e.g. ``batch_translate_texts``) or
+    async (all others). Always returns a single TextContent whose text
+    is the JSON string the function produced, matching the OL tool
+    contract (``str`` out).
+    """
+    _fn, input_model, _desc = TOOL_REGISTRY[fn.__name__] if fn.__name__ in TOOL_REGISTRY else (None, None, None)
+
+    if input_model is not None:
+        try:
+            params_obj = input_model.model_validate(arguments or {})
+        except Exception as e:
+            err = json.dumps(
+                {
+                    "success": False,
+                    "error_code": "OL_INVALID_INPUT",
+                    "message": f"Invalid arguments: {e}",
+                },
+                ensure_ascii=False,
+            )
+            return [TextContent(type="text", text=err)]
+        result = fn(params_obj)
+    else:
+        # ping: pass auth_token (may be absent) as a kwarg.
+        result = fn(**(arguments or {}))
+
+    if inspect.iscoroutine(result):
+        result = await result
+
+    # Tools return JSON strings; surface verbatim.
+    return [TextContent(type="text", text=str(result))]
+
+
+@mcp.call_tool()
+async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    """Dispatch an MCP tool call by name."""
+    if name not in TOOL_REGISTRY:
+        record_request_from_arguments(
+            name, arguments, _OL_STATUS_ERROR, 0.0,
+        )
+        with _ol_tracing_start_span(name, arguments) as _span:
+            _ol_tracing_set_status(_span, "error", error_code="OL_UNKNOWN_TOOL")
+        err = json.dumps(
+            {
+                "success": False,
+                "error_code": "OL_UNKNOWN_TOOL",
+                "message": f"Unknown tool: {name}",
+            },
+            ensure_ascii=False,
+        )
+        return [TextContent(type="text", text=err)]
+
+    fn, _input_model, _desc = TOOL_REGISTRY[name]
+    timer = _ol_metrics_timer()
+    _traceparent_arg = (arguments or {}).get("traceparent")
+    with _ol_tracing_start_span(name, arguments, traceparent=_traceparent_arg) as _span:
+        result_blocks = await _invoke_tool(fn, arguments or {})
+        try:
+            payload = json.loads(result_blocks[0].text) if result_blocks else {}
+        except Exception:
+            payload = {}
+        if name in ("translate_md_text", "translate_xliff") and isinstance(payload, dict):
+            tp = _ol_tracing_inject_traceparent(_span)
+            if tp is not None:
+                payload["traceparent"] = tp
+                result_blocks = [TextContent(
+                    type="text", text=json.dumps(payload, ensure_ascii=False),
+                )]
+        status = _ol_classify_status(payload)
+        record_request_from_arguments(
+            name, arguments, status, timer.seconds(),
+        )
+        _ol_tracing_set_status(
+            _span, status,
+            error_code=payload.get("error_code") if isinstance(payload, dict) else None,
+            duration_ms=timer.seconds() * 1000.0,
+        )
+        return result_blocks
+
+
+def _ol_classify_status(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return _OL_STATUS_ERROR
+    if payload.get("success") is True:
+        return _OL_STATUS_SUCCESS
+    code = payload.get("error_code")
+    if code == "OL_RATE_LIMITED" or code == "RATE_LIMITED":
+        return _OL_STATUS_RATE_LIMITED
+    if code == "AUTH_FAILED":
+        return _OL_STATUS_AUTH_FAILED
+    return _OL_STATUS_ERROR
+
+
+__all__ = [
+    "mcp",
+    "TOOL_REGISTRY",
+    "TranslateInput",
+    "JudgeInput",
+    "LoadGlossaryInput",
+    "GetRelevantTermsInput",
+    "SearchTMInput",
+    "BatchTranslateInput",
+    "TranslateXliffInput",
+    "translate_md_text",
+    "judge_text",
+    "load_glossary",
+    "get_relevant_terms",
+    "search_tm",
+    "batch_translate_texts",
+    "translate_xliff",
+    "ping",
+]

@@ -7,11 +7,24 @@ from .constants import (
     LOG_DIR,
     LOG_DIR_ENV,
     LOG_FILE_PATTERN,
+    LOG_FORMAT_ENV,
     LOG_LEVEL_ENV,
     MAX_BYTES,
+    REQUEST_ID_FIELD,
     WARNING,
 )
-from .core import get_logger, init_logger, is_initialized
+from .context import (
+    bind_request_id,
+    clear_context,
+    clear_request_id,
+    request_id,
+    set_batch_context,
+    set_file_context,
+    set_request_id,
+    set_session_context,
+)
+from .core import configure_structlog, get_logger, init_logger, is_initialized
+from .formatters import get_formatter, get_legacy_json_formatter, get_structlog_formatter
 
 __all__ = [
     "BACKUP_COUNT",
@@ -22,10 +35,24 @@ __all__ = [
     "LOG_DIR",
     "LOG_DIR_ENV",
     "LOG_FILE_PATTERN",
+    "LOG_FORMAT_ENV",
     "LOG_LEVEL_ENV",
     "MAX_BYTES",
+    "REQUEST_ID_FIELD",
     "WARNING",
+    "bind_request_id",
+    "clear_context",
+    "clear_request_id",
+    "configure_structlog",
+    "get_formatter",
+    "get_legacy_json_formatter",
+    "get_structlog_formatter",
     "get_logger",
     "init_logger",
     "is_initialized",
+    "request_id",
+    "set_batch_context",
+    "set_file_context",
+    "set_request_id",
+    "set_session_context",
 ]
