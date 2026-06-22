@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -1538,6 +1539,53 @@ async def _translate_xliff_async(
     return output_file
 
 
+async def _translate_md_by_paragraph(
+    input_path: Path,
+    output_path: Path,
+    config: str | None,
+    src: str,
+    tgt: str,
+    add_frontmatter: bool,
+) -> str:
+    from ol_mcp.tools import translate_md_text, TranslateInput
+
+    raw = input_path.read_text(encoding="utf-8")
+    parts = raw.split("---", 2)
+    body = parts[2].strip() if len(parts) >= 3 and parts[0].strip() == "" else raw
+    body = re.sub(r"^#+\s.*$", "", body, flags=re.MULTILINE)
+    paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
+
+    translated: list[str] = []
+    for i, p in enumerate(paragraphs):
+        result_json = await translate_md_text(TranslateInput(
+            content=p, source_lang=src, target_lang=tgt, add_frontmatter=False,
+        ))
+        result = json.loads(result_json)
+        if result.get("success"):
+            translated.append(result.get("translated", p))
+        else:
+            translated.append(p)
+            logger.warning(f"Para {i} translation failed: {result.get('error', '?')[:80]}")
+
+    full = "\n\n".join(translated)
+
+    if add_frontmatter:
+        from datetime import UTC, datetime
+        rid = hashlib.md5(f"{input_path}{datetime.now(UTC)}".encode()).hexdigest()[:12]
+        header = (
+            f"---\nsource_lang: {src}\ntarget_lang: {tgt}\n"
+            f"original_file: {input_path.name}\nprocessor: \"OL\"\n"
+            f"version: \"0.2.6\"\n"
+            f"translated_at: {datetime.now(UTC).isoformat()}\n"
+            f"request_id: {rid}\n---\n"
+        )
+        full = header + full
+
+    output_file = output_path / input_path.name
+    output_file.write_text(full, encoding="utf-8")
+    return str(output_file)
+
+
 @app.command()
 def translate_md(
     input: str = typer.Argument(..., help="Input markdown file path"),
@@ -1577,6 +1625,15 @@ def translate_md(
         help="Skip the post-translate placeholder restoration step (A12.4). "
              "The CLI will not ask the LLM to recover any {{_OL_*_*}} "
              "placeholders the translator stripped.",
+    ),
+    chunk_by_paragraph: bool = typer.Option(
+        False, "--chunk-by-paragraph",
+        help="Split the input by blank-line paragraph boundaries and translate "
+             "each paragraph as a separate LLM call, then stitch the results "
+             "back together. Improves quality for literary text with hard line "
+             "breaks (e.g., Project Gutenberg); the whole-document path can "
+             "leave English remnants in the output for such inputs. Slower "
+             "(one LLM call per paragraph).",
     ),
     glossary_max_terms: int = typer.Option(
         5, "--glossary-max-terms",
@@ -1664,11 +1721,18 @@ def translate_md(
             logger.info(f"Completed: translate_md {input} (cache hit)")
             raise typer.Exit(code=ExitCode.SUCCESS)
 
-        output_file = asyncio.run(
-            _translate_md_async(
-                input_path, output_path, config, src, tgt, add_frontmatter,
-            ),
-        )
+        if chunk_by_paragraph:
+            output_file = asyncio.run(
+                _translate_md_by_paragraph(
+                    input_path, output_path, config, src, tgt, add_frontmatter,
+                ),
+            )
+        else:
+            output_file = asyncio.run(
+                _translate_md_async(
+                    input_path, output_path, config, src, tgt, add_frontmatter,
+                ),
+            )
 
         # A12.4: post-translate restoration runs after the async pipeline
         # so pre-existing test fakes for ``_translate_md_async`` still
