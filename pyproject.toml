@@ -1,6 +1,6 @@
 [project]
 name = "omni-localizer"
-version = "0.4.5"
+version = "0.4.6"
 description = "AI-native localization pipeline with automated quality control"
 readme = "README.md"
 license = {text = "MIT"}
