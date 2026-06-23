@@ -70,6 +70,9 @@ _LITELLM_EXC_ATTRS = {
     "RateLimitError": type("RateLimitError", (Exception,), {}),
     "Timeout": type("Timeout", (Exception,), {}),
 }
+_LITELLM_TYPES_ROUTER_ATTRS = {
+    "RouterRateLimitError": type("RouterRateLimitError", (Exception,), {}),
+}
 class _FakeSTModel:
     """Stub embedding model.
 
@@ -168,6 +171,11 @@ _TYPER_ATTRS = {
 }
 
 sys.modules.setdefault("litellm", _make_stub("litellm", _LITELLM_ATTRS))
+# E2E-74 fix: give the litellm stub ``__path__`` so Python can walk into
+# submodules; the ``_HeavyImportBlocker`` then handles the deeper ones.
+_litellm_stub = sys.modules["litellm"]
+if not hasattr(_litellm_stub, "__path__"):
+    _litellm_stub.__path__ = []
 sys.modules.setdefault(
     "litellm.exceptions", _make_stub("litellm.exceptions", _LITELLM_EXC_ATTRS),
 )
@@ -203,6 +211,7 @@ _SPAN_ALIGNER_ATTRS = {
 _PRESET_BY_NAME = {
     "litellm": _LITELLM_ATTRS,
     "litellm.exceptions": _LITELLM_EXC_ATTRS,
+    "litellm.types.router": _LITELLM_TYPES_ROUTER_ATTRS,
     "sentence_transformers": _SENTENCE_TRANSFORMER_ATTRS,
     "torch.cuda": _TORCH_CUDA_ATTRS,
     "transformers": _TRANSFORMERS_ATTRS,
@@ -224,6 +233,13 @@ class _HeavyImportBlocker:
         if module.__name__ in _PRESET_BY_NAME:
             for k, v in _PRESET_BY_NAME[module.__name__].items():
                 setattr(module, k, v)
+        # E2E-74 fix: stubbed submodules of a blocked top-level package
+        # must look like packages so Python can walk further into them.
+        # Without ``__path__``, ``from litellm.types.router import X``
+        # would fail because the stubbed ``litellm.types`` is a Module,
+        # not a Package.
+        if "." in module.__name__ and not hasattr(module, "__path__"):
+            module.__path__ = []
 
 
 sys.meta_path.insert(0, _HeavyImportBlocker())
