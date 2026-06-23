@@ -239,3 +239,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Span alignment for content preservation
 - Agent skill support for OpenCode and Hermes
 - JSON output mode for machine-readable results
+## [0.4.5] - 2026-06-23
+
+### Fixed
+
+- **Prompt injection stripping (E2E-65)**: `level1_regex_clean()` now strips `CRITICAL/IMPORTANT/NOTE: Output ONLY the \w+ translation.` patterns from LLM output before XLIFF serialization. Defends against the LLM echoing the system-prompt instruction into the translation.
+  - `src/ol_xliff/repair/level1.py`
+- **Base64 image ref dedup (E2E-14)**: `_translate_single()` in MCP `tools.py` now post-processes LLM output through `_dedup_b64_image_refs()` to remove duplicate base64 image refs the LLM re-encoded inline.
+  - `src/ol_mcp/tools.py`
+- **XLIFF repair `is_complete()` check (E2E-64)**: `XLIFFRepairPipeline.is_complete()` now verifies actual XML tag presence when the placeholder string was consumed by `restore_tags()`, instead of only checking for the placeholder ID. Also adds `RouterRateLimitError` to retry-able exceptions in `ModelPool`.
+  - `src/ol_xliff/pipeline.py`
+  - `src/ol_pool/router.py`
