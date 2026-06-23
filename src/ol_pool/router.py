@@ -404,27 +404,47 @@ class ModelPool:
             f"{text}\n"
             "[USER_TEXT_END]"
         )
-        if isinstance(context, str):
+
+        # E2E-74 fix: build the user prompt based on the ``context`` type and
+        # ALWAYS assign ``prompt`` before use. The previous implementation
+        # only assigned ``prompt`` inside the ``isinstance(context, str)``
+        # branch AND tried to call ``context.get(...)`` on the str, so any
+        # caller passing ``context=None`` (the CLI's default) or
+        # ``context=dict`` (the type hint) hit ``UnboundLocalError`` /
+        # ``AttributeError`` at the message construction below.
+        prompt_parts: list[str] = []
+        if isinstance(context, str) and context:
+            # Pre-built prompt (e.g. from build_translate_prompt); it already
+            # contains the delimited text + TM/glossary section, so use it
+            # verbatim. The previous code overwrote it with a fresh build.
             prompt = context
-            prompt_parts = [f"Translate from {source_lang} to {target_lang}: {_delimited_text}"]
-            if context:
-                tm_matches = context.get("tm_matches", [])
-                glossary_terms = context.get("glossary_terms", [])
-                if tm_matches:
-                    top_tm = tm_matches[:3]
-                    tm_lines = "\n".join(
-                        f"- {m.get('source', '')} → {m.get('target', '')}"
-                        for m in top_tm
-                    )
-                    prompt_parts.insert(0, f"Translation Memory (top {len(top_tm)} matches):\n{tm_lines}")
-                if glossary_terms:
-                    top_glossary = glossary_terms[:5]
-                    glossary_lines = "\n".join(
-                        f"- {g.get('source', '')} → {g.get('target', '')}"
-                        for g in top_glossary
-                    )
-                    prompt_parts.insert(0, f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}")
+        elif isinstance(context, dict):
+            tm_matches = context.get("tm_matches") or []
+            glossary_terms = context.get("glossary_terms") or []
+            if tm_matches:
+                top_tm = tm_matches[:3]
+                tm_lines = "\n".join(
+                    f"- {m.get('source', '')} → {m.get('target', '')}"
+                    for m in top_tm
+                )
+                prompt_parts.append(
+                    f"Translation Memory (top {len(top_tm)} matches):\n{tm_lines}"
+                )
+            if glossary_terms:
+                top_glossary = glossary_terms[:5]
+                glossary_lines = "\n".join(
+                    f"- {g.get('source', '')} → {g.get('target', '')}"
+                    for g in top_glossary
+                )
+                prompt_parts.append(
+                    f"Glossary (top {len(top_glossary)} terms):\n{glossary_lines}"
+                )
+            prompt_parts.append(
+                f"Translate from {source_lang} to {target_lang}: {_delimited_text}"
+            )
             prompt = "\n\n".join(prompt_parts)
+        else:
+            prompt = f"Translate from {source_lang} to {target_lang}: {_delimited_text}"
 
         # A12.3: when a Glossary object is provided (PR12), inject the
         # top-N relevant terms into the user prompt. This is the
