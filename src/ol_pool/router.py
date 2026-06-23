@@ -251,11 +251,27 @@ class ModelPool:
                 num_retries=2,
                 timeout=120.0,
                 fallbacks=self._build_fallbacks(config.llm_pool),
-                # 2026-06-17 round 5 (OPT-13): enforce per-model RPM
-                # configured in `_build_model_list`. Calls exceeding the
-                # cap return litellm.RateLimitError (HTTP 429) immediately
-                # instead of waiting on provider 429 + backoff.
-                optional_pre_call_checks=["enforce_model_rate_limits"],
+                # E2E-83: the previous 'enforce_model_rate_limits' pre-call
+                # check maintained a per-model RPM token bucket and raised
+                # litellm.RouterRateLimitError synchronously. For large
+                # requests (>~50KB / >~20K tokens) the bucket empties
+                # fast and the check started rejecting requests even
+                # when the provider itself would accept them, and our
+                # outer translate() retry loop then waited 10/20/40
+                # seconds (cumulative ~70s) on backoffs the in-memory
+                # bucket could not recover from in time.
+                #
+                # Per-model RPM is still enforced via each model's
+                # litellm_params['rpm'] entry; rejection now comes from
+                # the provider's HTTP 429 (handled correctly with
+                # exponential backoff in the translate() retry loop)
+                # instead of from litellm's in-process token bucket.
+                #
+                # To re-enable the aggressive pre-call check (e.g.
+                # for a setup with very low RPM quotas that want local
+                # fast-fail), pass
+                #   optional_pre_call_checks=['enforce_model_rate_limits']
+                # directly to the Router here.
             )
         except Exception:
             # Real Router init can fail in test envs (no API keys, version
@@ -490,6 +506,18 @@ class ModelPool:
             if cached is not None:
                 _logger.debug("Translation cache hit")
                 return cached
+
+        # E2E-83: log a warning for unusually large requests so the
+        # caller has visibility into slow translations. We don't block
+        # the request — the previous pre-call check that fast-failed
+        # on size has been removed.
+        _prompt_chars = sum(len(m.get("content") or "") for m in messages)
+        if _prompt_chars > 50_000:
+            _logger.warning(
+                f"Large translation request: ~{_prompt_chars} chars across "
+                f"{len(messages)} message(s). Translation may take 60-180s "
+                f"and may exceed some model context windows."
+            )
 
         model_str = "translation"  # role passed to acompletion; key for hit counter
         for attempt in range(4):  # 1 initial + 3 retries
