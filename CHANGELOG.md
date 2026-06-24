@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-06-24
+
+### Fixed
+- **Issue #5 — `normalize_to_chinese` corrupts fenced code-block punctuation** (`src/ol_post/punctuation.py:54-110`): The post-translate punctuation pass called `text.translate(_EN_TO_ZH)` on the full body, which replaced ASCII `:,.();?!()` inside ```json``` / ```yaml``` / ```csv``` code fences with their full-width Chinese equivalents. The LLM never sees fence content (the shield at `src/ol_md/shield.py:CODE_PATTERN` replaces it with markers and `unshield` restores the original ASCII on the way out), so the LLM pass preserved the syntax correctly — but this post-pass then corrupted it. Output JSON / YAML / CSV inside fences became syntactically invalid even though every upstream step did the right thing. Fix: split on the same triple-backtick fence regex the shield uses, translate only the non-fence spans, leave fence content verbatim. Mirrors the shield's fence coverage exactly (no tilde-fence support, no inline-code support) so the post-pass protects the same content the LLM pass protected. The symmetric `normalize_to_english` direction is unaffected — it only ever converts Chinese punctuation back to ASCII, which is the desired behavior for code blocks too. 16 new regression tests in `tests/test_post_punctuation_code_blocks.py` pin the contract (json/yaml/csv fence preservation, multi-fence, edge cases, fence pattern shape, inline-code scope boundary, symmetric direction unchanged).
+
 ## [0.4.6] - 2026-06-24
 
 ### Fixed
