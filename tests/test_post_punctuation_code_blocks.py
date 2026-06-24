@@ -193,8 +193,8 @@ class TestNormalizeToChineseFencePreservation:
 class TestNormalizeToEnglishUnchanged:
     """normalize_to_english is the reverse — must not be affected by the fix."""
 
-    def test_zh_punct_in_fence_translated_back(self):
-        """If a fence somehow contains 中文标点 (shouldn't, but defensively), it should be translated back."""
+    def test_zh_punct_in_fence_preserved(self):
+        """Fence content is preserved across all directions (Issue #7)."""
         text = (
             "Some prose：\n"
             "\n"
@@ -203,10 +203,10 @@ class TestNormalizeToEnglishUnchanged:
             "```\n"
         )
         out = normalize_to_english(text)
-        # Prose translated.
+        # Prose outside fence is translated.
         assert "Some prose:" in out
-        # Code block also translated (this direction is the safe one).
-        assert "code: with: colons" in out
+        # Code block: preserved verbatim (fence logic now in normalize() for all pairs).
+        assert "code： with： colons" in out
 
     def test_zh_punct_no_fence_unchanged(self):
         text = "中文：测试，结束。"

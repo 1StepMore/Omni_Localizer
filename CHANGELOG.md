@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-06-24
+
+### Added
+- **Multi-language punctuation normalization** (`src/ol_post/punctuation.py`): refactored from
+  two hardcoded functions (`normalize_to_english`, `normalize_to_chinese`) to per-language-pair
+  dispatch via `normalize(text, source_lang, target_lang)`. Added Japanese (en→ja) mapping:
+  `,→、` `.→。` `?→？` `!→！` `:→：` `;→；` `(→（` `)→）`. Other languages (fr/de/ru/ko) use
+  ASCII punctuation that was already correct. The dispatch site in `ol_cli.py` now passes
+  `source_lang` and `target_lang` to the new `normalize()` function. Existing
+  `normalize_to_chinese` and `normalize_to_english` remain as backward-compatible wrappers.
+
 ## [0.5.0] - 2026-06-24
 
 ### Changed

@@ -840,21 +840,27 @@ async def _translate_md_async(
     else:
         output_content = repaired
 
-    from ol_post.punctuation import normalize_to_english, normalize_to_chinese
+    from ol_post.punctuation import normalize
     import re as _re
     _fm_match = _re.match(r'^(---\s*\n.*?\n---\s*\n)', output_content, _re.DOTALL)
     if _fm_match:
         _fm = _fm_match.group(1)
         _body = output_content[len(_fm):]
         if tgt_lang.startswith("en"):
-            _body = normalize_to_english(_body)
+            _body = normalize(_body, "zh", "en")
         elif tgt_lang.startswith("zh"):
-            _body = normalize_to_chinese(_body)
+            _body = normalize(_body, "en", "zh")
+        elif tgt_lang.startswith("ja"):
+            _body = normalize(_body, "en", "ja")
+        # Other languages: no normalization (fr/de/ru/ko etc use ASCII punctuation)
         output_content = _fm + _body
     elif tgt_lang.startswith("en"):
-        output_content = normalize_to_english(output_content)
+        output_content = normalize(output_content, "zh", "en")
     elif tgt_lang.startswith("zh"):
-        output_content = normalize_to_chinese(output_content)
+        output_content = normalize(output_content, "en", "zh")
+    elif tgt_lang.startswith("ja"):
+        output_content = normalize(output_content, "en", "ja")
+    # Other languages: no normalization (fr/de/ru/ko etc use ASCII punctuation)
 
     output_file = output_path / input_path.name
     output_file.write_text(output_content, encoding="utf-8")
