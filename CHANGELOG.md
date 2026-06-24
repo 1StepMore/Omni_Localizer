@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-24
+
+### Changed
+- **ML dependencies moved to optional `[ml]` extra** (`pyproject.toml`): `keybert`, `yake`, `sentence-transformers`, `transformers` are no longer required deps. These packages cause `import transformers` to hang in Python 3.13 (circular import via `regex._regex`) and pull in ~1GB of nvidia-*/torch C extensions. They are now available via `pip install omni-localizer[ml]`. `import ol` no longer triggers the ML stack. ML features (KeyBERT term extraction, YAKE fallback, TM semantic search) raise a clean `ImportError` when the extra is not installed. The `torch>=2.0.0` dep was already in `[ml]` — unchanged.
+
 ## [0.4.7] - 2026-06-24
 
 ### Fixed

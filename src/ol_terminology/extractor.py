@@ -103,5 +103,9 @@ def extract_terms(texts: list[str]) -> dict[str, float]:
         except Exception as e:
             logger.warning(f"YAKE extraction failed: {e}")
 
+    if not _KEYBERT_AVAILABLE and not _YAKE_AVAILABLE:
+        raise ImportError(
+            "ML dependencies not available. Install: pip install omni-localizer[ml]"
+        )
     logger.error("Both KeyBERT and YAKE failed to extract terms")
     return {}

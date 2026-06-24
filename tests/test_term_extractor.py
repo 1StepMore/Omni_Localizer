@@ -1,6 +1,8 @@
 """Unit tests for ol_terminology.extractor module."""
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ol_terminology.extractor import extract_terms
 
 
@@ -103,8 +105,11 @@ class TestExtractTermsYAKEFallback:
 class TestExtractTermsBothUnavailable:
     """Test behavior when both extractors are unavailable."""
 
-    def test_returns_empty_dict_when_both_unavailable(self):
-        with patch("ol_terminology.extractor._KEYBERT_AVAILABLE", False):
-            with patch("ol_terminology.extractor._YAKE_AVAILABLE", False):
-                result = extract_terms(["some text"])
-                assert result == {}
+    def test_raises_importerror_when_both_unavailable(self):
+        """extract_terms raises ImportError with install hint when ML deps missing."""
+        with patch("ol_terminology.extractor._probe_keybert", return_value=None):
+            with patch("ol_terminology.extractor._probe_yake", return_value=None):
+                with patch("ol_terminology.extractor._KEYBERT_AVAILABLE", False):
+                    with patch("ol_terminology.extractor._YAKE_AVAILABLE", False):
+                        with pytest.raises(ImportError, match="pip install omni-localizer"):
+                            extract_terms(["some text"])

@@ -149,7 +149,13 @@ class TMService:
 
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError:
+                raise ImportError(
+                    "sentence-transformers not available. "
+                    "Install ML deps: pip install omni-localizer[ml]"
+                )
             self._model = SentenceTransformer(self._embedding_model)
         return self._model
 
