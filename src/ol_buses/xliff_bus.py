@@ -19,6 +19,11 @@ _BARE_AMP_RE = re.compile(
     r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)'
 )
 
+# Matches XLIFF structural inline elements (<x/>, <bx/>, <ex/>) that must
+# remain as actual XML in <target>, NOT be entity-escaped.  Used by the
+# tag-aware escape helper so that restore_tags output is handled correctly.
+_XLIFF_INLINE_TAG_RE = re.compile(r'<(?:x|bx|ex)\s[^>]*/>')
+
 
 def _escape_xml_entities(text: str) -> str:
     """Escape XML special characters in LLM-produced text.
@@ -39,6 +44,25 @@ def _escape_xml_entities(text: str) -> str:
     text = _BARE_AMP_RE.sub('&amp;', text)
     text = text.replace('<', '&lt;').replace('>', '&gt;')
     return text
+
+
+def _escape_xml_entities_preserving_xliff_tags(text: str) -> str:
+    """Escape XML entities but leave XLIFF inline tags (<x/>, <bx/>, <ex/>) as-is.
+
+    After ``restore_tags()`` puts structural XLIFF elements back into the
+    text, we must entity-escape user-visible content (``<code>``, ``&``)
+    while preserving the structural tags as valid XML.
+    """
+    if not text:
+        return text
+    parts: list[str] = []
+    last_end = 0
+    for m in _XLIFF_INLINE_TAG_RE.finditer(text):
+        parts.append(_escape_xml_entities(text[last_end:m.start()]))
+        parts.append(m.group(0))
+        last_end = m.end()
+    parts.append(_escape_xml_entities(text[last_end:]))
+    return ''.join(parts)
 
 
 def _ensure_target_tags(content: str) -> str:
@@ -230,12 +254,12 @@ def write_target_back(
         )
 
         from ol_buses.xliff_shield import restore_tags
-        escaped_target = _escape_xml_entities(unit.target_text)
         restored_target = (
-            restore_tags(escaped_target, unit.shield_map)
+            restore_tags(unit.target_text, unit.shield_map)
             if unit.shield_map
-            else escaped_target
+            else unit.target_text
         )
+        escaped_target = _escape_xml_entities_preserving_xliff_tags(restored_target)
 
         unit_warnings = warnings_per_unit.get(unit.unit_id, [])
         notes_xml = ''.join(
@@ -244,7 +268,7 @@ def write_target_back(
         )
 
         content = target_pattern.sub(
-            lambda m: m.group(1) + f'<target>{restored_target}</target>' + notes_xml + m.group(2),
+            lambda m: m.group(1) + f'<target>{escaped_target}</target>' + notes_xml + m.group(2),
             content,
         )
 

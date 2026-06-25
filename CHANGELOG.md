@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-06-25
+
+### Fixed
+
+- **OL#10 — XLIFF target contains unescaped HTML from shield map** (`src/ol_buses/xliff_bus.py:write_target_back`). The function called `_escape_xml_entities()` BEFORE `restore_tags()`, so HTML content restored from the shield map (e.g. `<code>foo</code>`) was written into the `<target>` element as raw HTML — producing invalid XLIFF. Fixed by restoring first, then escaping with a new `_escape_xml_entities_preserving_xliff_tags()` helper that entity-escapes user-visible content while preserving XLIFF structural inline tags (`<x/>`, `<bx/>`, `<ex/>`) as valid XML.
+
 ## [0.5.2] - 2026-06-25
 
 ### Fixed
