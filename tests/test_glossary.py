@@ -320,3 +320,47 @@ class TestPromptInjectionIncludesRelevantTerms:
             assert term in injected, (
                 f"top term {term!r} missing from injected prompt: {injected!r}"
             )
+
+
+class TestGlossaryTargetLang:
+    """OL#8: Glossary must track optional target_lang metadata and validate it."""
+
+    def test_load_with_target_lang_sets_field(self, tmp_path):
+        """When the glossary JSON has a top-level target_lang, it is extracted."""
+        from ol_terminology import Glossary
+
+        p = tmp_path / "glossary_with_lang.json"
+        p.write_text('{"target_lang": "zh", "terms": [{"source": "API", "targets": ["接口"]}]}')
+        g = Glossary.load(p)
+        assert g.target_lang == "zh"
+
+    def test_load_without_target_lang_leaves_none(self):
+        """When the glossary JSON has no target_lang, it defaults to None."""
+        from ol_terminology import Glossary
+
+        g = Glossary.load(SAMPLE_GLOSSARY)
+        assert g.target_lang is None
+
+    def test_for_target_matching_lang_returns_self(self):
+        """for_target() with matching lang returns the same glossary instance."""
+        from ol_terminology import Glossary
+
+        g = Glossary(terms={"API": ["接口"]}, target_lang="zh")
+        result = g.for_target("zh")
+        assert result is g
+
+    def test_for_target_mismatched_lang_raises(self):
+        """for_target() with mismatched lang raises ValueError."""
+        from ol_terminology import Glossary
+
+        g = Glossary(terms={"API": ["接口"]}, target_lang="zh")
+        with pytest.raises(ValueError, match="mismatch"):
+            g.for_target("fr")
+
+    def test_for_target_none_lang_passes(self):
+        """for_target() with target_lang=None skips validation (multi-target glossary)."""
+        from ol_terminology import Glossary
+
+        g = Glossary(terms={"API": ["接口"]}, target_lang=None)
+        result = g.for_target("fr")
+        assert result is g

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-06-25
+
+### Fixed
+
+- **OL#8 — Cache key and TM search were not language-pair aware** (Hermes audit). Four related issues, all causing silent cross-language data corruption:
+  1. **CLI output file cache** (`src/ol_cli.py:_cache_key`): the hash did not include `src_lang`/`tgt_lang`, so translating the same input to two different target languages would return the first language's cached output for the second call. Fixed by adding `src_lang`/`tgt_lang` parameters to `_cache_key`/`_check_cache`/`_write_cache` and threading them through both call sites.
+  2. **LLM prompt cache** (`src/ol_pool/router.py:_make_cache_key`): the hash relied on the prompt text embedding the language pair (hidden coupling). Refactored to make `source_lang`/`target_lang` explicit key dimensions, removing the implicit dependency. Fixes the same anti-pattern in both translate and judge paths.
+  3. **TM search language filter** (`src/ol_tm/service.py:search`): the method signature was `search(source_text, threshold)` with NO language filter, so a TM containing both en→zh and en→fr entries would return matches from BOTH language pairs for any English query. This would silently inject French TM matches into a Chinese translation prompt. Fixed by making `src_lang`/`tgt_lang` required parameters and filtering entries before similarity computation. Updated all callers (`ol_batch/processor.py`, `ol_mcp/tools.py`, tests).
+  4. **Glossary language awareness** (`src/ol_terminology/glossary_class.py`): the `Glossary` dataclass had no language metadata, so a Chinese glossary could be silently injected into a French translation. Added optional `target_lang` field (extracted from JSON/YAML top-level if present), `for_target()` validator method, and a CLI-side warning when the loaded glossary's target_lang doesn't match the requested translation target.
+
+- **Cross-language regression test** (`tests/test_ol_cache_cross_language.py`): new test class `TestCrossLanguageNoCacheCollision` covers the file cache, prompt cache, and TM cache paths. Locks in the new contract that translating the same input to two different target languages must produce different outputs.
+
+### Migration
+
+- `TMService.search()` now REQUIRES `src_lang` and `tgt_lang` parameters (keyword-only). This is a breaking change to the public API. All internal callers updated. External callers (MCP clients, batch scripts) must be updated to pass the language pair.
+- `Glossary.load()` now reads an optional top-level `target_lang` field. Existing glossary files without this field continue to work (target_lang is None, no validation enforced).
+
 ## [0.5.1] - 2026-06-24
 
 ### Added

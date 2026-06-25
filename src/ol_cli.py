@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 # CACHE_DIR_NAME is the per-module subdirectory under OMNI_CACHE_DIR.
 CACHE_DIR_NAME = "ol"
 _cache_logger = get_logger("cli.cache")
+_glossary_logger = get_logger("cli.glossary")
 
 
 # ========== A12: Glossary single-use module state ==========
@@ -219,13 +220,19 @@ def _cache_key(
     no_glossary: bool = False,
     glossary: str | None = None,
     glossary_max_terms: int = 5,
+    src_lang: str = "",
+    tgt_lang: str = "",
 ) -> str:
     """Return sha256(input_bytes + config_bytes_if_any + behavioral_flags).
 
     Behavioral CLI flags that affect the produced output bytes (frontmatter
     on/off, concurrency for batch, language-detection, LQA, restoration,
-    glossary, glossary-max-terms) are mixed into the digest so a flag
-    change invalidates the cached output. See T24a.
+    glossary, glossary-max-terms, src_lang, tgt_lang) are mixed into the
+    digest so a flag change invalidates the cached output. See T24a.
+
+    ``src_lang`` and ``tgt_lang`` are included so that translating the same
+    input to two different target languages does not produce a cache
+    collision (OL#8).
     """
     h = hashlib.sha256()
     h.update(input_path.read_bytes())
@@ -241,6 +248,8 @@ def _cache_key(
     h.update(f"|nglo={int(no_glossary)}".encode())
     h.update(f"|glo={glossary or ''}".encode())
     h.update(f"|gmt={int(glossary_max_terms)}".encode())
+    h.update(f"|src={src_lang}".encode())
+    h.update(f"|tgt={tgt_lang}".encode())
     return h.hexdigest()
 
 
@@ -258,6 +267,8 @@ def _check_cache(
     no_glossary: bool = False,
     glossary: str | None = None,
     glossary_max_terms: int = 5,
+    src_lang: str = "",
+    tgt_lang: str = "",
 ) -> bool:
     """If cached, copy ``<input_stem><ext>`` to ``output_path`` and return True.
 
@@ -277,6 +288,8 @@ def _check_cache(
         no_glossary=no_glossary,
         glossary=glossary,
         glossary_max_terms=glossary_max_terms,
+        src_lang=src_lang,
+        tgt_lang=tgt_lang,
     )
     cache_file = _cache_root() / f"{key}{ext}"
     if cache_file.exists():
@@ -302,6 +315,8 @@ def _write_cache(
     no_glossary: bool = False,
     glossary: str | None = None,
     glossary_max_terms: int = 5,
+    src_lang: str = "",
+    tgt_lang: str = "",
 ) -> None:
     """Copy the produced output into the cache for next run.
 
@@ -324,6 +339,8 @@ def _write_cache(
         no_glossary=no_glossary,
         glossary=glossary,
         glossary_max_terms=glossary_max_terms,
+        src_lang=src_lang,
+        tgt_lang=tgt_lang,
     )
     cache_file = _cache_root() / f"{key}{ext}"
     cache_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -342,7 +359,7 @@ def _clear_ol_cache() -> int:
     return count
 
 
-def _load_glossary_or_none(path: str | None) -> 'Glossary | None':
+def _load_glossary_or_none(path: str | None, tgt_lang: str = "") -> 'Glossary | None':
     """Load a glossary file, or return None if ``path`` is None.
 
     ``--glossary`` is OPTIONAL — when the flag is not passed we return
@@ -352,6 +369,10 @@ def _load_glossary_or_none(path: str | None) -> 'Glossary | None':
     On load failure (malformed JSON/YAML, schema error, missing file),
     we exit with a clear error message — never silently fall back, the
     user passed the flag intentionally and wants to know.
+
+    When ``tgt_lang`` is set and the glossary has a ``target_lang``
+    metadata field that doesn't match, a WARNING is logged (not an error)
+    — the user may know what they're doing with a multi-target glossary.
     """
     if path is None:
         return None
@@ -362,10 +383,16 @@ def _load_glossary_or_none(path: str | None) -> 'Glossary | None':
         typer.echo(f"Error: glossary file not found: {path}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
     try:
-        return Glossary.load(p)
+        g = Glossary.load(p)
     except (ValueError, FileNotFoundError) as e:
         typer.echo(f"Error: failed to load glossary {path}: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+    if g.target_lang and tgt_lang and g.target_lang != tgt_lang:
+        _glossary_logger.warning(
+            f"Glossary target_lang '{g.target_lang}' does not match "
+            f"translation target '{tgt_lang}' — using anyway"
+        )
+    return g
 
 
 def _escape_yaml_value(value: str) -> str:
@@ -1700,7 +1727,7 @@ def translate_md(
 
         # A12.1: --glossary CLI flag (PR12). When set, it takes precedence
         # over any glossary path declared in the config file.
-        loaded_glossary = _load_glossary_or_none(glossary)
+        loaded_glossary = _load_glossary_or_none(glossary, tgt_lang=tgt)
         # A12.5: --no-glossary overrides both --glossary and the config glossary.
         if no_glossary:
             loaded_glossary = None
@@ -1716,6 +1743,8 @@ def translate_md(
             no_glossary=no_glossary,
             glossary=glossary,
             glossary_max_terms=glossary_max_terms,
+            src_lang=src,
+            tgt_lang=tgt,
         ):
             cached_output = output_path / input_path.name
             if json_output:
@@ -1761,6 +1790,8 @@ def translate_md(
             no_glossary=no_glossary,
             glossary=glossary,
             glossary_max_terms=glossary_max_terms,
+            src_lang=src,
+            tgt_lang=tgt,
         )
 
         if json_output:
@@ -2047,6 +2078,8 @@ def translate_xliff(
             no_glossary=no_glossary,
             glossary=glossary,
             glossary_max_terms=glossary_max_terms,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
         ):
             cached_output = output_path / input_path.name
             if json_output:
@@ -2059,7 +2092,7 @@ def translate_xliff(
             raise typer.Exit(code=ExitCode.SUCCESS)
 
         # A12.1: --glossary CLI flag (PR12). Same precedence as translate-md.
-        loaded_glossary = _load_glossary_or_none(glossary)
+        loaded_glossary = _load_glossary_or_none(glossary, tgt_lang=tgt_lang)
         if no_glossary:
             loaded_glossary = None
         _apply_glossary_max_terms(loaded_glossary, glossary_max_terms)
@@ -2092,6 +2125,8 @@ def translate_xliff(
             no_glossary=no_glossary,
             glossary=glossary,
             glossary_max_terms=glossary_max_terms,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
         )
 
         output_file = output_path / Path(input).name

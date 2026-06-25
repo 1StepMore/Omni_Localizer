@@ -184,7 +184,7 @@ class BatchProcessor:
 
         context = None
         if self._tm_service:
-            tm_matches = self._tm_service.search(shielded, threshold=0.85)[:3]
+            tm_matches = self._tm_service.search(shielded, threshold=0.85, src_lang=self.src_lang, tgt_lang=self.tgt_lang)[:3]
             if tm_matches:
                 # Convert TMMatch dataclass instances to dicts for build_translate_prompt
                 tm_match_dicts = [

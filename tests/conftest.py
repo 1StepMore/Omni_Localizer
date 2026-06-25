@@ -27,6 +27,9 @@ _DUMMY_API_KEYS = {
 for _k, _v in _DUMMY_API_KEYS.items():
     os.environ.setdefault(_k, _v)
 
+os.environ.setdefault("OMNI_RATE_LIMIT_RPM", "0")
+os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
+
 
 # Several test files transitively import litellm, torch, transformers,
 # sentence_transformers, keybert, yake, and typer via:

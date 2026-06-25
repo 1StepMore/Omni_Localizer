@@ -36,9 +36,15 @@ class Glossary:
     :meth:`find_relevant` to get the top-N terms that match a source
     text. Use :meth:`inject_into_prompt` to build a translation prompt
     that includes those matched terms.
+
+    ``target_lang`` is an optional metadata field extracted from the
+    glossary file's top-level ``target_lang`` key. When set, it records
+    the intended target language for this glossary. Use :meth:`for_target`
+    to validate that the glossary matches a requested target language.
     """
 
     terms: dict[str, list[str]] = field(default_factory=dict)
+    target_lang: str | None = None
 
     # ---------------------------------------------------------------- load
 
@@ -72,8 +78,10 @@ class Glossary:
         # ``model_dump()`` gives us a dict-shaped payload with the validated
         # terms; we re-shape into the dataclass's flat ``{source: [targets]}``
         # dict for fast lookup.
+        dump = validated.model_dump()
         return Glossary(
-            terms={entry["source"]: list(entry["targets"]) for entry in validated.model_dump()["terms"]}
+            terms={entry["source"]: list(entry["targets"]) for entry in dump["terms"]},
+            target_lang=dump.get("target_lang"),
         )
 
     # ---------------------------------------------------------- find_relevant
@@ -116,6 +124,32 @@ class Glossary:
         scored.sort(key=lambda item: item[0], reverse=True)
 
         return [(src, tgts) for _, src, tgts in scored[:max_terms]]
+
+    # -------------------------------------------------------------- for_target
+
+    def for_target(self, target_lang: str) -> "Glossary":
+        """Validate that this glossary's target_lang matches the requested language.
+
+        If the glossary has no ``target_lang`` metadata (loaded from a file
+        without the field), the check is skipped and the glossary is returned
+        as-is — the user may be using a multi-target glossary.
+
+        Args:
+            target_lang: The requested target language code.
+
+        Returns:
+            ``self`` if validation passes.
+
+        Raises:
+            ValueError: if ``target_lang`` is set on the glossary and does not
+                match the requested language.
+        """
+        if self.target_lang is not None and self.target_lang != target_lang:
+            raise ValueError(
+                f"Glossary target_lang mismatch: glossary is for '{self.target_lang}', "
+                f"but translation targets '{target_lang}'"
+            )
+        return self
 
     # ---------------------------------------------------- inject_into_prompt
 

@@ -153,7 +153,7 @@ class _PromptCache:
 
     Only safe for deterministic responses (temperature=0). The router
     bypasses the cache when temperature != 0 OR when the config disables
-    it. Key = (model_role, sha256(messages_json), temperature).
+    it. Key = (model_role, source_lang, target_lang, sha256(messages_json), temperature).
     """
 
     def __init__(
@@ -346,10 +346,11 @@ class ModelPool:
 
     def _make_cache_key(
         self, model: str, messages: list[dict], temperature: float,
+        source_lang: str = "", target_lang: str = "",
     ) -> tuple:
         payload = json.dumps(messages, sort_keys=True, ensure_ascii=False)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        return (model, digest, float(temperature))
+        return (model, source_lang, target_lang, digest, float(temperature))
 
     def metrics(self) -> dict[str, int]:
         """Return a copy of the rate-limit hit counter (role → hits).
@@ -500,7 +501,7 @@ class ModelPool:
             {"role": "user", "content": prompt},
         ]
 
-        cache_key = self._make_cache_key("translation", messages, temperature)
+        cache_key = self._make_cache_key("translation", messages, temperature, source_lang=source_lang, target_lang=target_lang)
         if self._cache_enabled and temperature == 0.0:
             cached = self._cache.get(cache_key)
             if cached is not None:
@@ -636,7 +637,7 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
             {"role": "user", "content": prompt},
         ]
 
-        cache_key = self._make_cache_key("judging", messages, temperature)
+        cache_key = self._make_cache_key("judging", messages, temperature, source_lang=source_lang, target_lang=target_lang)
         if self._cache_enabled and temperature == 0.0:
             cached = self._cache.get(cache_key)
             if cached is not None:

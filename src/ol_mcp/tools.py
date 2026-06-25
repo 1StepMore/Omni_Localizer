@@ -186,6 +186,8 @@ class SearchTMInput(BaseModel):
     source_text: str = Field(description="Text to search for in TM")
     tmx_path: str = Field(description="Path to .tmx translation memory file")
     threshold: float = Field(default=0.85, description="Minimum similarity threshold (0-1)")
+    source_lang: str = Field(default="en", description="Source language code (OL#8: required for language-pair filtering)")
+    target_lang: str = Field(default="zh", description="Target language code (OL#8: required for language-pair filtering)")
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
@@ -614,7 +616,7 @@ async def search_tm(params: SearchTMInput) -> str:
 
     try:
         svc = TMService(params.tmx_path)
-        matches = svc.search(params.source_text, threshold=params.threshold)
+        matches = svc.search(params.source_text, threshold=params.threshold, src_lang=params.source_lang, tgt_lang=params.target_lang)
         return json.dumps(
             {
                 "success": True,

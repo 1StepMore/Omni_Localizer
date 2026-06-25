@@ -193,15 +193,30 @@ class TMService:
                 tmx.add_unit(entry.source, entry.target)
             tmx.write()
 
-    def search(self, source_text: str, threshold: float = 0.85) -> list[TMMatch]:
+    def search(self, source_text: str, threshold: float = 0.85, *, src_lang: str, tgt_lang: str) -> list[TMMatch]:
+        """Search for similar translations, filtered by language pair.
+
+        Args:
+            source_text: The text to search for.
+            threshold: Minimum similarity score (0-1).
+            src_lang: Source language code (required, OL#8).
+            tgt_lang: Target language code (required, OL#8).
+
+        Returns:
+            List of matching TMMatch objects, sorted by similarity descending.
+        """
         if not self._entries:
+            return []
+        lang_pair = f"{src_lang}-{tgt_lang}"
+        entries = [e for e in self._entries if e.language_pair == lang_pair]
+        if not entries:
             return []
         model = self._get_model()
         source_emb = model.encode([source_text])[0]
-        entries_emb = model.encode([e.source for e in self._entries])
+        entries_emb = model.encode([e.source for e in entries])
         similarities = self._cosine_sim(source_emb, entries_emb)
         results = []
-        for entry, sim in zip(self._entries, similarities):
+        for entry, sim in zip(entries, similarities):
             if sim >= threshold:
                 results.append(TMMatch(
                     source=entry.source,

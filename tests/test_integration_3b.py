@@ -114,7 +114,7 @@ class TestTMServiceIntegration:
             TMMatch(source="thank you", target="gracias", similarity=0.75, language_pair="en-es"),
         ]
 
-        results = svc.search("hello world", threshold=0.85)
+        results = svc.search("hello world", threshold=0.85, src_lang="en", tgt_lang="es")
 
         assert len(results) == 2
         assert results[0].source == "hello world"
@@ -242,7 +242,7 @@ class TestFullPipeline3B:
             TMMatch(source="world", target="mundo", similarity=0.90, language_pair="en-es"),
         ]
 
-        matches = svc.search("hello", threshold=0.85)
+        matches = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="es")
         assert len(matches) == 1
         assert matches[0].target == "hola"
 
@@ -345,7 +345,7 @@ class TestErrorRecoveryIntegration:
         tmx_path = os.path.join(temp_dir, "empty.tmx")
         svc = TMService(tmx_path)
 
-        results = svc.search("hello", threshold=0.85)
+        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="es")
         assert results == []
 
 

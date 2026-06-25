@@ -82,7 +82,7 @@ class TestTMService:
 
     def test_search_empty(self):
         svc = TMService("/tmp/test_empty.tmx")
-        results = svc.search("hello", threshold=0.85)
+        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="zh")
         assert results == []
 
     def test_search_threshold(self):
@@ -91,7 +91,7 @@ class TestTMService:
             TMMatch(source="hello", target="hola", similarity=0.90, language_pair="en-es"),
             TMMatch(source="world", target="mundo", similarity=0.80, language_pair="en-es"),
         ]
-        results = svc.search("hello", threshold=0.85)
+        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="es")
         assert len(results) == 1
         assert results[0].source == "hello"
 
@@ -102,7 +102,7 @@ class TestTMService:
             TMMatch(source="b", target="y", similarity=0.95, language_pair="en-es"),
             TMMatch(source="c", target="z", similarity=0.90, language_pair="en-es"),
         ]
-        results = svc.search("test", threshold=0.80)
+        results = svc.search("test", threshold=0.80, src_lang="en", tgt_lang="es")
         assert len(results) == 3
         assert results[0].similarity == 0.95
         assert results[1].similarity == 0.90
@@ -184,7 +184,7 @@ class TestTMServiceFlush:
         assert svc._embedding_model == "paraphrase-multilingual-MiniLM-L12-v2"
 
         # search() on an empty service returns [] without loading the embedding model
-        results = svc.search("test", threshold=0.85)
+        results = svc.search("test", threshold=0.85, src_lang="en", tgt_lang="es")
         assert results == []
 
         # add() signature unchanged: (source, target, src_lang, tgt_lang)
@@ -193,3 +193,70 @@ class TestTMServiceFlush:
         assert svc._entries[0].source == "a"
         assert svc._entries[0].target == "A"
         assert svc._entries[0].language_pair == "en-es"
+
+
+class TestTMSearchLanguageFilter:
+    """OL#8: TM search must filter by language pair so entries from
+    one language pair don't leak into another pair's results."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_embedding_model(self, monkeypatch):
+        def _mock_get_model(self):
+            m = MagicMock()
+            m.encode = lambda texts: [[1.0, 0.0, 0.0] for _ in texts]
+            return m
+
+        def _mock_cosine_sim(self, source_emb, target_embs):
+            return [0.95 for _ in target_embs]
+
+        monkeypatch.setattr(TMService, "_get_model", _mock_get_model)
+        monkeypatch.setattr(TMService, "_cosine_sim", _mock_cosine_sim)
+
+    def test_search_filters_by_language_pair(self):
+        """en→zh entries must NOT appear in en→fr search results."""
+        svc = TMService("/tmp/test_lang_filter.tmx")
+        svc._entries = [
+            TMMatch(source="hello", target="你好", similarity=0.95, language_pair="en-zh"),
+            TMMatch(source="hello", target="bonjour", similarity=0.93, language_pair="en-fr"),
+        ]
+
+        # Search en→zh: must only return the zh entry
+        results_zh = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="zh")
+        assert len(results_zh) == 1
+        assert results_zh[0].target == "你好"
+        assert results_zh[0].language_pair == "en-zh"
+
+        # Search en→fr: must only return the fr entry
+        results_fr = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="fr")
+        assert len(results_fr) == 1
+        assert results_fr[0].target == "bonjour"
+        assert results_fr[0].language_pair == "en-fr"
+
+    def test_search_unknown_pair_returns_empty(self):
+        """Searching for a language pair not in the TM returns empty."""
+        svc = TMService("/tmp/test_lang_unknown.tmx")
+        svc._entries = [
+            TMMatch(source="hello", target="你好", similarity=0.95, language_pair="en-zh"),
+        ]
+
+        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="de")
+        assert results == []
+
+    def test_search_mixed_pairs_only_matching_pair_returned(self):
+        """With en→zh, en→fr, and en→de entries, each search returns only its pair."""
+        svc = TMService("/tmp/test_lang_mixed.tmx")
+        svc._entries = [
+            TMMatch(source="hello", target="你好", similarity=0.95, language_pair="en-zh"),
+            TMMatch(source="hello", target="bonjour", similarity=0.93, language_pair="en-fr"),
+            TMMatch(source="hello", target="hallo", similarity=0.91, language_pair="en-de"),
+        ]
+
+        for tgt, expected_target, expected_pair in [
+            ("zh", "你好", "en-zh"),
+            ("fr", "bonjour", "en-fr"),
+            ("de", "hallo", "en-de"),
+        ]:
+            results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang=tgt)
+            assert len(results) == 1, f"Expected 1 result for en→{tgt}, got {len(results)}"
+            assert results[0].target == expected_target
+            assert results[0].language_pair == expected_pair

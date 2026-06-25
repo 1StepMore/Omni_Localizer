@@ -44,6 +44,7 @@ class _GlossaryFile(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    target_lang: str | None = Field(default=None, description="Optional target language code for this glossary")
     terms: List[_TermEntry] = Field(..., min_length=0)
 
 
