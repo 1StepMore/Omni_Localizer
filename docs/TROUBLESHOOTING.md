@@ -24,7 +24,7 @@ You ran the command from a checkout but `src/` is not on `PYTHONPATH`. The wheel
 Activate the Omni_Suite venv (it has all three submodules installed):
 
 ```bash
-source ../Omni_Suite/.venv_ol/bin/activate
+source ../.venv_ol/bin/activate
 python -m ol_cli translate-md in.md -o out/ -s en -t zh
 ```
 

@@ -1,7 +1,7 @@
 # AGENTS.md — Omni_Localizer (OL)
 
 Developer + agent context for the **OL** sub-repo. The suite-level
-[`Omni_Suite/AGENTS.md`](../../Omni_Suite/AGENTS.md) covers cross-module
+[Omni_Suite AGENTS.md](https://github.com/1StepMore/Omni_Suite/blob/main/AGENTS.md) covers cross-module
 orchestration (OPP → OL → ORF); this file is for working **inside**
 OL.
 
@@ -270,12 +270,38 @@ Key test files:
   model per role.
 - **Circuit breaker**: 5 consecutive failures → open for 60s.
 
+### translate-md vs translate-xliff
+
+OL offers two translation channels for different pipeline paths:
+
+| Aspect | `translate-md` | `translate-xliff` |
+|--------|---------------|-------------------|
+| Input | `.md` file | `.xlf` / `.xliff` file |
+| Output | Translated `.md` | XLIFF with `<target>` filled |
+| Downstream | ORF `apply-md` (16 formats) | ORF `apply-xliff` (needs skeleton) |
+| Layout preservation | Text-only (pandoc renders) | Full original layout retained |
+| Image handling | Via `images.json` + `--separate-images` | Auto-reinjected from skeleton |
+| When to use | Web content, docs, e-books | Contracts, branded docs, exact-layout |
+
+**Decision flow:**
+
+1. Is your source an OPP XLIFF that came with a skeleton.zip? → **`translate-xliff`**
+2. Do you need the output to look exactly like the source? → **`translate-xliff`**
+3. Otherwise → **`translate-md`** (faster, more format choices)
+
+**Both paths can run in parallel** if OPP extracted with `--target-format both`.
+The MD and XLIFF channels share no state — translate both simultaneously.
+
+**Full pipeline comparison**: See the suite-level
+[Pipeline Selection Strategy](https://github.com/1StepMore/Omni_Suite/blob/main/README.md#pipeline-selection-strategy)
+for the complete decision tree and format support matrix.
+
 ## Pointers to the suite-level docs
 
-- Cross-module orchestration: `Omni_Suite/AGENTS.md`
-- MCP tool full parameter reference: `Omni_Suite/docs/API.md`
-- Pre-commit hooks: `Omni_Suite/.pre-commit-config.yaml`
-- Compatibility matrix: `Omni_Suite/COMPATIBILITY.md`
+- Cross-module orchestration: [Omni_Suite AGENTS.md](https://github.com/1StepMore/Omni_Suite/blob/main/AGENTS.md)
+- MCP tool full parameter reference: [Omni_Suite API.md](https://github.com/1StepMore/Omni_Suite/blob/main/docs/API.md)
+- Pre-commit hooks: [Omni_Suite .pre-commit-config.yaml](https://github.com/1StepMore/Omni_Suite/blob/main/.pre-commit-config.yaml)
+- Compatibility matrix: [Omni_Suite COMPATIBILITY.md](https://github.com/1StepMore/Omni_Suite/blob/main/COMPATIBILITY.md)
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
 - Per-Agent skill files: `src/.opencode/skills/ol-localizer/SKILL.md`
   and `src/.hermes/skills/ol-localizer/SKILL.md`

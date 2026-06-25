@@ -12,7 +12,7 @@ Translate `chapter1.md` from English to Simplified Chinese.
 
 ```bash
 # 1. Activate the venv the Omni_Suite setup script built
-source ../Omni_Suite/.venv_ol/bin/activate
+source ../.venv_ol/bin/activate
 
 # 2. (Hermetic) skip the real LLM — set this if you have no key
 export OMNI_TEST_FAKE_LLM=1
