@@ -1,7 +1,7 @@
 # AGENTS.md — Omni_Localizer (OL)
 
 Developer + agent context for the **OL** sub-repo. The suite-level
-[Omni_Suite AGENTS.md](../AGENTS.md) covers cross-module
+[suite-level AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md) covers cross-module
 orchestration (OPP → OL → ORF); this file is for working **inside**
 OL.
 
@@ -12,7 +12,7 @@ OL.
 ## Quick start
 
 ```bash
-# Install (from Omni_Suite root)
+# Install
 bash scripts/setup_dev.sh
 
 # CLI: translate a single MD file
@@ -106,9 +106,9 @@ src/ol/
 | `batch_translate_texts` | Translate multiple texts in parallel |
 | `ping` | Health check |
 
-For full per-tool parameter reference, see
-`docs/API.md` in the suite root, or the suite-level
-`AGENTS.md → MCP Tool Reference` table.
+For full per-tool parameter reference, see the suite-level
+[AGENTS.md → MCP Tool Reference](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md) table,
+or [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md).
 
 ## Translation pipeline (MD channel)
 
@@ -294,15 +294,15 @@ OL offers two translation channels for different pipeline paths:
 The MD and XLIFF channels share no state — translate both simultaneously.
 
 **Full pipeline comparison**: See the suite-level
-[Pipeline Selection Strategy](../README.md#pipeline-selection-strategy)
+[Pipeline Selection Strategy](https://github.com/1StepMore/e2e-test-suite/blob/main/README.md#pipeline-selection-strategy)
 for the complete decision tree and format support matrix.
 
 ## Pointers to the suite-level docs
 
-- Cross-module orchestration: [Omni_Suite AGENTS.md](../AGENTS.md)
-- MCP tool full parameter reference: [Omni_Suite API.md](../docs/API.md)
-- Pre-commit hooks: [Omni_Suite .pre-commit-config.yaml](../.pre-commit-config.yaml)
-- Compatibility matrix: [Omni_Suite COMPATIBILITY.md](../COMPATIBILITY.md)
+- Cross-module orchestration: [AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
+- MCP tool full parameter reference: [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md)
+- Pre-commit hooks: [.pre-commit-config.yaml](https://github.com/1StepMore/e2e-test-suite/blob/main/.pre-commit-config.yaml)
+- Compatibility matrix: [COMPATIBILITY.md](https://github.com/1StepMore/e2e-test-suite/blob/main/COMPATIBILITY.md)
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
 - Per-Agent skill files: `src/.opencode/skills/ol-localizer/SKILL.md`
   and `src/.hermes/skills/ol-localizer/SKILL.md`
