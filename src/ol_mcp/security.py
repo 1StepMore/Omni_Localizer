@@ -10,10 +10,13 @@ accepting file paths (``load_glossary``, ``search_tm``,
 read arbitrary files on the host.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+
+_logger = logging.getLogger(__name__)
 
 SYSTEM_DIRS: set = {
     "/etc",
@@ -229,17 +232,23 @@ class PathValidator:
 
 
 def get_default_validator() -> PathValidator:
-    """Build PathValidator from OL_ALLOWED_DIRECTORIES env var.
+    """Build PathValidator from OL_MCP_ALLOWED_DIRS env var.
 
     Comma-separated list of allowed directories (e.g.,
-    ``OL_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``). If
+    ``OL_MCP_ALLOWED_DIRS=/tmp/ol-work,/data/corpus``). If
     empty or unset, defaults to the current working directory.
+
+    The old name ``OL_ALLOWED_DIRECTORIES`` is still accepted as
+    a backward-compat fallback.
 
     The validator is created fresh on each call so that env-var
     changes (e.g., between tests) are picked up. For long-running
     servers that need a stable validator, instantiate directly.
     """
-    allowed = os.environ.get("OL_ALLOWED_DIRECTORIES", "")
+    allowed = os.environ.get("OL_MCP_ALLOWED_DIRS",
+                 os.environ.get("OL_ALLOWED_DIRECTORIES", ""))
+    if os.environ.get("OL_ALLOWED_DIRECTORIES") and not os.environ.get("OL_MCP_ALLOWED_DIRS"):
+        _logger.warning("OL_ALLOWED_DIRECTORIES is deprecated, use OL_MCP_ALLOWED_DIRS")
     if allowed.strip():
         dirs = [Path(d).resolve() for d in allowed.split(",") if d.strip()]
     else:
