@@ -224,6 +224,7 @@ exponential backoff handles it.
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
+| `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. Unset vars emit a startup warning (not error). Only set those for providers you actually use. |
 
 The MCP server is configured separately in `src/ol_mcp/config.py` —
 OL's MCP server is `ol-mcp` (no `-server` suffix, **different** from

@@ -307,8 +307,9 @@ class TestLoadConfigSecurityIntegration:
         """The committed default.yaml (after round 8 fix) must load cleanly.
 
         Only runs if required env vars are set; otherwise the Pydantic
-        _check_env_vars validator raises before our security check gets a
-        chance to pass. Skip in that case.
+        _check_env_vars validator emits a warning (not error) — but the
+        config may still fail at runtime without credentials. Skip in that
+        case.
         """
         import os
         required = ["ZHIPU_API_KEY", "AGNES_API_KEY", "NVIDIA_NIM_API_KEY",

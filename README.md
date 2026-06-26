@@ -37,6 +37,15 @@ test_en_to_zh.bat your_document.md -o output/
 
 ## Configuration
 
+## BYOK (Bring Your Own Key) Configuration
+
+OL supports environment variable substitution in `api_key` and `base_url` 
+fields using `${ENV_VAR}` syntax. You only need to set env vars for 
+providers you actually use — unset vars produce a startup warning, 
+not an error. The corresponding model config fails gracefully at 
+runtime if invoked without credentials. Set `OMNI_TEST_FAKE_LLM=1` 
+to bypass all env var checks for local dev/testing.
+
 `config/default.yaml` — Example LLM pool configuration:
 
 ```yaml
