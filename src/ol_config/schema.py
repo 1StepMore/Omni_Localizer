@@ -1,4 +1,5 @@
 """Config schema using pydantic."""
+import logging
 import os
 import re
 from enum import Enum
@@ -14,18 +15,22 @@ class LLMModelRole(str, Enum):
     RESTORATION = "restoration"
 
 
-def _check_env_vars(api_key: str | None) -> None:
-    if api_key is None:
+def _check_env_vars(value: str | None, field_name: str = "api_key") -> None:
+    if value is None:
         return
     # FAKE_LLM seam swaps the model pool for _FakeModelPool which never
     # resolves ${ENV_VAR} keys, so the existence check is moot and would
     # fail hermetic tests. See audit T1 (2026-06-21).
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         return
-    env_vars = re.findall(r'\$\{([^}]+)\}', api_key)
+    env_vars = re.findall(r'\$\{([^}]+)\}', value)
     for var in env_vars:
         if var not in os.environ:
-            raise ValueError(f"Environment variable '{var}' referenced in api_key but not set")
+            logging.warning(
+                "Environment variable '%s' referenced in %s but not set. "
+                "This model config may fail at runtime if used.",
+                var, field_name,
+            )
 
 
 class LLMModelConfig(BaseModel):
@@ -57,8 +62,8 @@ class LLMModelConfig(BaseModel):
 
     @model_validator(mode='after')
     def validate_env_vars(self) -> 'LLMModelConfig':
-        _check_env_vars(self.api_key)
-        _check_env_vars(self.base_url)
+        _check_env_vars(self.api_key, "api_key")
+        _check_env_vars(self.base_url, "base_url")
         return self
 
 class LLMPoolConfig(BaseModel):
