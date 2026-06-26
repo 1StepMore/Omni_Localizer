@@ -37,6 +37,14 @@ The server uses `config/default.yaml` for LLM pool configuration by default. Ove
 OL_CONFIG_PATH=/path/to/config.yaml python -m ol_mcp
 ```
 
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OL_MCP_ALLOWED_DIRS` | `[cwd, /tmp]` | Comma-separated allowlist of directories the MCP can read. Falls back to `OL_ALLOWED_DIRECTORIES` (deprecated). |
+| `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
+| `MCP_SHARED_SECRET` | (none) | Shared-secret auth (omit for dev). |
+
 ## Tools Detail
 
 ### translate_md_text
