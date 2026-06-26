@@ -56,6 +56,35 @@ from ol_mcp.auth import check_auth, auth_failure_response
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 
 
+# ---------------------------------------------------------------------------
+# Wave 0.2 (OL#13): Standardized MCP response helpers
+# ---------------------------------------------------------------------------
+
+
+def _error_response(code: str, message: str, **extra: Any) -> dict:
+    """Standardized error response per cross-repo MCP response spec.
+
+    Shape: ``{success: false, error: {code, message}}`` plus backward-compat
+    top-level ``error_code`` and ``message`` fields.
+    """
+    resp: dict[str, Any] = {
+        "success": False,
+        "error": {"code": code, "message": message},
+        "error_code": code,
+        "message": message,
+    }
+    resp.update(extra)
+    return resp
+
+
+def _success_response(content: dict) -> dict:
+    """Standardized success response wrapping payload under ``content``.
+
+    Shape: ``{success: true, content: {…}}``
+    """
+    return {"success": True, "content": content}
+
+
 def _resolve_async(result):
     """Resolve a potentially async result.
 
@@ -328,7 +357,7 @@ async def translate_md_text(params: TranslateInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -380,28 +409,21 @@ async def translate_md_text(params: TranslateInput) -> str:
             )
             result = frontmatter + result
 
-        return json.dumps(
-            {
-                "success": True,
-                "translated": result,
-                "warnings": warnings,
-                "source_lang": params.source_lang,
-                "target_lang": params.target_lang,
-            },
-            ensure_ascii=False,
-        )
+        content = {
+            "translated": result,
+            "warnings": warnings,
+            "source_lang": params.source_lang,
+            "target_lang": params.target_lang,
+        }
+        resp = _success_response(content)
+        resp["translated"] = result  # backward-compat alias (1 release)
+        return json.dumps(resp, ensure_ascii=False)
 
     except Exception as e:
         error_msg = str(e) if str(e) else type(e).__name__
         _logger.error("translate_md_text failed: error=%s", error_msg, exc_info=True)
         return json.dumps(
-            {
-                "success": False,
-                "translated": "",
-                "warnings": warnings + [error_msg],
-                "source_lang": params.source_lang,
-                "target_lang": params.target_lang,
-            },
+            _error_response("OL_TRANSLATE_FAILED", error_msg),
             ensure_ascii=False,
         )
 
@@ -416,7 +438,7 @@ async def judge_text(params: JudgeInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -426,6 +448,15 @@ async def judge_text(params: JudgeInput) -> str:
 
     Returns: success, score (0-100), reason, judge_scores breakdown, warnings
     """
+
+    if params.source_lang == params.target_lang:
+        return json.dumps(
+            _error_response(
+                "OL_INVALID_INPUT",
+                "Source and target languages must be different.",
+            ),
+            ensure_ascii=False,
+        )
 
     warnings: list[str] = []
 
@@ -440,31 +471,22 @@ async def judge_text(params: JudgeInput) -> str:
             params.glossary,
         )
 
-        return json.dumps(
-            {
-                "success": True,
-                "score": result.get("score", 50),
-                "reason": result.get("reason", ""),
-                "judge_scores": {
-                    "adequacy": result.get("adequacy", 50),
-                    "fluency": result.get("fluency", 50),
-                    "terminology_consistency": result.get("terminology_consistency", 50),
-                    "format_preservation": result.get("format_preservation", 50),
-                },
-                "warnings": warnings,
+        content = {
+            "score": result.get("score", 50),
+            "reason": result.get("reason", ""),
+            "judge_scores": {
+                "adequacy": result.get("adequacy", 50),
+                "fluency": result.get("fluency", 50),
+                "terminology_consistency": result.get("terminology_consistency", 50),
+                "format_preservation": result.get("format_preservation", 50),
             },
-            ensure_ascii=False,
-        )
+            "warnings": warnings,
+        }
+        return json.dumps(_success_response(content), ensure_ascii=False)
 
     except Exception as e:
         return json.dumps(
-            {
-                "success": False,
-                "score": 0,
-                "reason": "",
-                "judge_scores": {},
-                "warnings": warnings + [str(e)],
-            },
+            _error_response("OL_JUDGE_FAILED", str(e)),
             ensure_ascii=False,
         )
 
@@ -479,7 +501,7 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -495,12 +517,10 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
     vresult = get_default_validator().validate_path(params.path)
     if not vresult.success:
         return json.dumps(
-            {
-                "success": False,
-                "glossary": {},
-                "term_count": 0,
-                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {vresult.error}"],
-            },
+            _error_response(
+                "OL_INVALID_INPUT",
+                f"OL_PATH_NOT_ALLOWED: {vresult.error}",
+            ),
             ensure_ascii=False,
         )
 
@@ -509,24 +529,16 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
             params.path,
             config_dir=Path(params.config_dir) if params.config_dir else None,
         )
-        return json.dumps(
-            {
-                "success": True,
-                "glossary": glossary,
-                "term_count": len(glossary),
-                "warnings": warnings,
-            },
-            ensure_ascii=False,
-        )
+        content = {
+            "glossary": glossary,
+            "term_count": len(glossary),
+            "warnings": warnings,
+        }
+        return json.dumps(_success_response(content), ensure_ascii=False)
 
     except Exception as e:
         return json.dumps(
-            {
-                "success": False,
-                "glossary": {},
-                "term_count": 0,
-                "warnings": warnings + [str(e)],
-            },
+            _error_response("OL_GLOSSARY_LOAD_FAILED", str(e)),
             ensure_ascii=False,
         )
 
@@ -541,7 +553,7 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -556,23 +568,15 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
 
     try:
         terms = _get_relevant_terms(params.text, params.glossary, top_k=params.top_k)
-        return json.dumps(
-            {
-                "success": True,
-                "terms": terms,
-                "count": len(terms),
-            },
-            ensure_ascii=False,
-        )
+        content = {
+            "terms": terms,
+            "count": len(terms),
+        }
+        return json.dumps(_success_response(content), ensure_ascii=False)
 
     except Exception as e:
         return json.dumps(
-            {
-                "success": False,
-                "terms": [],
-                "count": 0,
-                "warnings": [str(e)],
-            },
+            _error_response("OL_TERMS_FAILED", str(e)),
             ensure_ascii=False,
         )
 
@@ -587,7 +591,7 @@ async def search_tm(params: SearchTMInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -605,43 +609,33 @@ async def search_tm(params: SearchTMInput) -> str:
     vresult = get_default_validator().validate_path(params.tmx_path)
     if not vresult.success:
         return json.dumps(
-            {
-                "success": False,
-                "matches": [],
-                "count": 0,
-                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {vresult.error}"],
-            },
+            _error_response(
+                "OL_INVALID_INPUT",
+                f"OL_PATH_NOT_ALLOWED: {vresult.error}",
+            ),
             ensure_ascii=False,
         )
 
     try:
         svc = TMService(params.tmx_path)
         matches = svc.search(params.source_text, threshold=params.threshold, src_lang=params.source_lang, tgt_lang=params.target_lang)
-        return json.dumps(
-            {
-                "success": True,
-                "matches": [
-                    {
-                        "source": m.source,
-                        "target": m.target,
-                        "similarity": m.similarity,
-                        "language_pair": m.language_pair,
-                    }
-                    for m in matches
-                ],
-                "count": len(matches),
-            },
-            ensure_ascii=False,
-        )
+        content = {
+            "matches": [
+                {
+                    "source": m.source,
+                    "target": m.target,
+                    "similarity": m.similarity,
+                    "language_pair": m.language_pair,
+                }
+                for m in matches
+            ],
+            "count": len(matches),
+        }
+        return json.dumps(_success_response(content), ensure_ascii=False)
 
     except Exception as e:
         return json.dumps(
-            {
-                "success": False,
-                "matches": [],
-                "count": 0,
-                "warnings": warnings + [str(e)],
-            },
+            _error_response("OL_TM_SEARCH_FAILED", str(e)),
             ensure_ascii=False,
         )
 
@@ -656,7 +650,7 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -719,18 +713,23 @@ def batch_translate_texts(params: BatchTranslateInput) -> str:
             processed.append({"index": i, "success": False, "translated": "", "warnings": [str(e)]})
             failed += 1
 
-    return json.dumps(
-        {
-            "success": failed == 0,
-            "results": processed,
-            "total": len(params.texts),
-            "succeeded": succeeded,
-            "failed": failed,
-            "warnings": warnings,
-            "assembled_document": "---".join([r["translated"] for r in processed]),
-        },
-        ensure_ascii=False,
-    )
+    content = {
+        "results": processed,
+        "total": len(params.texts),
+        "succeeded": succeeded,
+        "failed": failed,
+        "warnings": warnings,
+        "assembled_document": "---".join([r["translated"] for r in processed]),
+    }
+    if failed == 0:
+        resp = _success_response(content)
+    else:
+        resp = _error_response(
+            "OL_BATCH_PARTIAL_FAILURE",
+            f"{failed} of {len(params.texts)} translations failed",
+        )
+        resp["content"] = content
+    return json.dumps(resp, ensure_ascii=False)
 
 
 @_register_tool(
@@ -743,7 +742,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
@@ -764,23 +763,13 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     _iv = _validator.validate_path(params.input_path)
     if not _iv.success:
         return json.dumps(
-            {
-                "success": False,
-                "output_path": output_path,
-                "units_processed": 0,
-                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {_iv.error}"],
-            },
+            _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_iv.error}"),
             ensure_ascii=False,
         )
     _ov = _validator.validate_path(output_path, allow_missing=True)
     if not _ov.success:
         return json.dumps(
-            {
-                "success": False,
-                "output_path": output_path,
-                "units_processed": 0,
-                "warnings": warnings + [f"OL_PATH_NOT_ALLOWED: {_ov.error}"],
-            },
+            _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_ov.error}"),
             ensure_ascii=False,
         )
 
@@ -807,12 +796,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
 
         if units_processed == 0:
             return json.dumps(
-                {
-                    "success": False,
-                    "output_path": output_path,
-                    "units_processed": 0,
-                    "warnings": warnings + ["No translation units found in XLIFF file"],
-                },
+                _error_response("OL_INVALID_INPUT", "No translation units found in XLIFF file"),
                 ensure_ascii=False,
             )
 
@@ -869,34 +853,21 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
         )
         write_target_back(ctx, output_path, warnings_per_unit=warnings_per_unit)
 
-        return json.dumps(
-            {
-                "success": True,
-                "output_path": output_path,
-                "units_processed": units_processed,
-                "warnings": warnings,
-            },
-            ensure_ascii=False,
-        )
+        content = {
+            "output_path": output_path,
+            "units_processed": units_processed,
+            "warnings": warnings,
+        }
+        return json.dumps(_success_response(content), ensure_ascii=False)
 
     except FileNotFoundError as e:
         return json.dumps(
-            {
-                "success": False,
-                "output_path": output_path,
-                "units_processed": 0,
-                "warnings": warnings + [f"File not found: {e}"],
-            },
+            _error_response("OL_FILE_NOT_FOUND", f"File not found: {e}"),
             ensure_ascii=False,
         )
     except Exception as e:
         return json.dumps(
-            {
-                "success": False,
-                "output_path": output_path,
-                "units_processed": 0,
-                "warnings": warnings + [str(e)],
-            },
+            _error_response("OL_INTERNAL_ERROR", str(e)),
             ensure_ascii=False,
         )
 
@@ -914,14 +885,14 @@ async def _ping(auth_token: str | None = None) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
-        return json.dumps({**rate_limit_failure_response(), "error": rate_err}, ensure_ascii=False)
+        return json.dumps(rate_limit_failure_response(), ensure_ascii=False)
     # 2026-06-18 round 16 Phase A4: MCP shared-secret auth.
     auth_ok, _ = check_auth(auth_token)
     if not auth_ok:
         return json.dumps(auth_failure_response(), ensure_ascii=False)
     from ol_mcp import __version__ as _ol_version
     return json.dumps(
-        {"success": True, "module": "ol", "version": _ol_version},
+        _success_response({"module": "ol", "version": _ol_version}),
         ensure_ascii=False,
     )
 
@@ -996,11 +967,7 @@ async def _invoke_tool(fn: Callable[..., Any], arguments: dict[str, Any]) -> lis
             params_obj = input_model.model_validate(arguments or {})
         except Exception as e:
             err = json.dumps(
-                {
-                    "success": False,
-                    "error_code": "OL_INVALID_INPUT",
-                    "message": f"Invalid arguments: {e}",
-                },
+                _error_response("OL_INVALID_INPUT", f"Invalid arguments: {e}"),
                 ensure_ascii=False,
             )
             return [TextContent(type="text", text=err)]
@@ -1026,11 +993,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         with _ol_tracing_start_span(name, arguments) as _span:
             _ol_tracing_set_status(_span, "error", error_code="OL_UNKNOWN_TOOL")
         err = json.dumps(
-            {
-                "success": False,
-                "error_code": "OL_UNKNOWN_TOOL",
-                "message": f"Unknown tool: {name}",
-            },
+            _error_response("OL_UNKNOWN_TOOL", f"Unknown tool: {name}"),
             ensure_ascii=False,
         )
         return [TextContent(type="text", text=err)]
