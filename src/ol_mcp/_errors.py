@@ -98,6 +98,7 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
             code = _classify(exc)
             payload = {
                 "success": False,
+                "error": {"code": code, "message": _safe_user_message(exc)},
                 "error_code": code,
                 "message": _safe_user_message(exc),
             }
@@ -120,6 +121,7 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
             code = _classify(exc)
             payload = {
                 "success": False,
+                "error": {"code": code, "message": _safe_user_message(exc)},
                 "error_code": code,
                 "message": _safe_user_message(exc),
             }

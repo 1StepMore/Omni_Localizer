@@ -78,6 +78,7 @@ def check_rate_limit() -> tuple[bool, str | None]:
 def rate_limit_failure_response() -> dict:
     return {
         "success": False,
+        "error": {"code": "RATE_LIMITED", "message": "Rate limit exceeded."},
         "error_code": "RATE_LIMITED",
         "message": "Rate limit exceeded.",
     }

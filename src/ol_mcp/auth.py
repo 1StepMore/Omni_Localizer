@@ -40,6 +40,7 @@ def auth_failure_response() -> dict:
     """Standard error response for AUTH_FAILED."""
     return {
         "success": False,
+        "error": {"code": "AUTH_FAILED", "message": "Authentication failed: shared_secret is missing or incorrect."},
         "error_code": "AUTH_FAILED",
         "message": "Authentication failed: shared_secret is missing or incorrect.",
     }
