@@ -41,10 +41,13 @@ python -m ol_cli translate-md your_document.md -c config/default.yaml -s en -t z
 
 OL supports environment variable substitution in `api_key` and `base_url` 
 fields using `${ENV_VAR}` syntax. You only need to set env vars for 
-providers you actually use — unset vars produce a startup warning, 
-not an error. The corresponding model config fails gracefully at 
-runtime if invoked without credentials. Set `OMNI_TEST_FAKE_LLM=1` 
-to bypass all env var checks for local dev/testing.
+providers you actually use.
+
+**Two-layer behavior:**
+1. `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset
+2. `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked
+
+Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
 `config/default.yaml` — Example LLM pool configuration:
 
