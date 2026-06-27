@@ -17,19 +17,19 @@ llm_pool:
       timeout: 120.0
       role: "translation"
     - provider: "openai"
-      model: "deepseek-v3.1-think-250821"
+      model: "glm-4-flash"
       priority: 2
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
-      timeout: 120.0
       role: "translation"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
     - provider: "openai"
-      model: "deepseek-r1-250528"
+      model: "agnes-2.0-flash"
       priority: 3
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
-      timeout: 120.0
       role: "translation"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
+      timeout: 120.0
 
   judging:
     - provider: "openai"
@@ -40,18 +40,18 @@ llm_pool:
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
     - provider: "openai"
-      model: "ernie-4.5-turbo-128k"
+      model: "glm-4-flash"
       priority: 2
       role: "judging"
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "ernie-x1-turbo-32k"
+      model: "agnes-2.0-flash"
       priority: 3
       role: "judging"
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
 
   restoration:
@@ -63,9 +63,9 @@ llm_pool:
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
     - provider: "openai"
-      model: "deepseek-v3.1-think-250821"
+      model: "glm-4-flash"
       priority: 2
       role: "restoration"
-      api_key: "${BAIDU_API_KEY}"
-      base_url: "${BAIDU_BASE_URL}"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
