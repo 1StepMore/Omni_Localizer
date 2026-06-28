@@ -17,6 +17,7 @@ glossary_path: null
 max_xliff_concurrent: 5
 llm_pool:
   translation:
+    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
       model: "glm-4-flash"
       priority: 1
@@ -24,6 +25,7 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
+    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
     - provider: "openai"
       model: "agnes-2.0-flash"
       priority: 2
@@ -31,6 +33,7 @@ llm_pool:
       api_key: "${AGNES_API_KEY}"
       base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
+    # Note: openai-compat endpoint (NVIDIA NIM uses OpenAI API protocol)
     - provider: "openai"
       model: "deepseek-ai/deepseek-v4-flash"
       priority: 3
@@ -38,6 +41,7 @@ llm_pool:
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
+    # Note: openai-compat endpoint (Moonshot Kimi uses OpenAI API protocol)
     - provider: "openai"
       model: "moonshotai/kimi-k2.6"
       priority: 4
@@ -54,6 +58,7 @@ llm_pool:
       timeout: 120.0
 
   judging:
+    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
     - provider: "openai"
       model: "agnes-2.0-flash"
       priority: 1
@@ -61,6 +66,7 @@ llm_pool:
       api_key: "${AGNES_API_KEY}"
       base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
+    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
       model: "glm-4-flash"
       priority: 2
@@ -77,6 +83,7 @@ llm_pool:
       timeout: 120.0
 
   restoration:
+    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
       model: "glm-4-flash"
       priority: 1
@@ -84,6 +91,7 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
+    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
     - provider: "openai"
       model: "agnes-2.0-flash"
       priority: 2

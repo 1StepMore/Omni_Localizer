@@ -1,3 +1,6 @@
+> **Note:** This file covers OL internals only. For cross-module pipeline architecture
+> (OPP → OL → ORF), see the [suite-level ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
 # OL Architecture
 
 How Omni-Localizer (OL) is put together: module layout, the per-text pipeline, the model pool and its failover, and the design decisions that shaped the current shape. Source paths are relative to `Omni_Localizer/`.
