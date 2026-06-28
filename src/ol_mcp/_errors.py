@@ -78,7 +78,7 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
                 _os.sys.path.insert(0, _suite_root)
             from omni_metrics import record_tool_call
             record_tool_call("ol", tool_name, duration_ms, success)
-        except Exception:
+        except Exception:  # expected — metrics recording is best-effort
             pass
 
     @functools.wraps(fn)

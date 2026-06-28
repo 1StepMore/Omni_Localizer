@@ -62,7 +62,7 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
     if params.glossary_path:
         try:
             glossary = load_glossary_from_path(params.glossary_path)
-        except Exception as e:
+        except Exception as e:  # expected — glossary load is best-effort
             warnings.append(f"Glossary load failed: {e}")
 
     pool = ModelPool.get_instance(config_path)

@@ -79,7 +79,7 @@ async def _run_translate_xliff_async(
                         glossary_path,
                         config_dir=Path(glossary_path).parent if not Path(glossary_path).is_absolute() else None,
                     )
-                except Exception as e:
+                except Exception as e:  # expected — glossary load is best-effort
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
@@ -143,7 +143,7 @@ async def _run_translate_xliff_async(
             "warnings": warnings,
         }
         _task_tracker.update_progress(request_id, TaskStatus.COMPLETED, progress=1.0, result=payload)
-    except Exception as e:
+    except Exception as e:  # expected — background task failure, update tracker
         _task_tracker.update_progress(
             request_id, TaskStatus.FAILED,
             error={"code": "OL_INTERNAL_ERROR", "message": str(e)},
@@ -218,7 +218,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                         params.glossary_path,
                         config_dir=Path(params.glossary_path).parent if not Path(params.glossary_path).is_absolute() else None,
                     )
-                except Exception as e:
+                except Exception as e:  # expected — glossary load is best-effort
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
@@ -300,7 +300,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             _error_response("OL_FILE_NOT_FOUND", f"File not found: {e}"),
             ensure_ascii=False,
         )
-    except Exception as e:
+    except Exception as e:  # expected — return error response for sync translate failures
         return json.dumps(
             _error_response("OL_INTERNAL_ERROR", str(e)),
             ensure_ascii=False,

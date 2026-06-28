@@ -86,7 +86,7 @@ def _version() -> str:
     try:
         from ol import __version__
         return str(__version__)
-    except Exception:
+    except Exception:  # expected — fallback version on import failure
         return "unknown"
 
 
@@ -102,7 +102,7 @@ def _extract_traceparent_context(traceparent: str) -> Context | None:
         return None
     try:
         return TraceContextTextMapPropagator().extract({"traceparent": traceparent})
-    except Exception:
+    except Exception:  # expected — return None on invalid traceparent
         return None
 
 
@@ -117,7 +117,7 @@ def inject_traceparent(span: Span | None) -> str | None:
         return None
     try:
         ctx = span.get_span_context()
-    except Exception:
+    except Exception:  # expected — return None on span context access failure
         return None
     if ctx is None or not ctx.is_valid:
         return None

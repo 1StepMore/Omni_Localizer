@@ -144,7 +144,7 @@ async def _translate_xliff_pipelined(
                     unit.source_text, src_lang, tgt_lang,
                     context=None, glossary=glossary,
                 )
-        except Exception as exc:
+        except Exception as exc:  # expected — store exception, continue pipeline
             first_pass_translate_excs[idx] = exc
             async with _fp_lock:
                 _fp_count[0] += 1
@@ -155,7 +155,7 @@ async def _translate_xliff_pipelined(
                 unit.source_text, first_pass_translations[idx], unit.unit_id,
                 source_lang=src_lang, target_lang=tgt_lang,
             )
-        except Exception as exc:
+        except Exception as exc:  # expected — store exception, continue pipeline
             first_pass_judge_excs[idx] = exc
         async with _fp_lock:
             _fp_count[0] += 1
@@ -199,7 +199,7 @@ async def _translate_xliff_pipelined(
                         units[idx].source_text, src_lang, tgt_lang,
                         context=None, glossary=glossary,
                     )
-            except Exception as exc:
+            except Exception as exc:  # expected — retry translate failed, skip
                 return
             try:
                 retry_results[idx] = await judge.judge(
@@ -207,7 +207,7 @@ async def _translate_xliff_pipelined(
                     units[idx].unit_id,
                     source_lang=src_lang, target_lang=tgt_lang,
                 )
-            except Exception as exc:
+            except Exception as exc:  # expected — retry judge failed, set None
                 retry_results[idx] = None
             async with _rt_lock:
                 _rt_count[0] += 1
@@ -474,7 +474,7 @@ def translate_xliff(
 
     try:
         output_path = ensure_output_dir(output_dir)
-    except Exception as e:
+    except Exception as e:  # expected — CLI error, echoes then exits
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 

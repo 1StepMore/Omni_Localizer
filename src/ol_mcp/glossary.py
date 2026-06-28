@@ -67,7 +67,7 @@ async def load_glossary(params: LoadGlossaryInput) -> str:
         }
         return json.dumps(_success_response(content), ensure_ascii=False)
 
-    except Exception as e:
+    except Exception as e:  # expected — return error response for loading failures
         return json.dumps(
             _error_response("OL_GLOSSARY_LOAD_FAILED", str(e)),
             ensure_ascii=False,
@@ -105,7 +105,7 @@ async def get_relevant_terms(params: GetRelevantTermsInput) -> str:
         }
         return json.dumps(_success_response(content), ensure_ascii=False)
 
-    except Exception as e:
+    except Exception as e:  # expected — return error response for term extraction failures
         return json.dumps(
             _error_response("OL_TERMS_FAILED", str(e)),
             ensure_ascii=False,

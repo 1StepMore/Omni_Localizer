@@ -72,7 +72,7 @@ async def search_tm(params: SearchTMInput) -> str:
         }
         return json.dumps(_success_response(content), ensure_ascii=False)
 
-    except Exception as e:
+    except Exception as e:  # expected — return error response for TM search failures
         return json.dumps(
             _error_response("OL_TM_SEARCH_FAILED", str(e)),
             ensure_ascii=False,

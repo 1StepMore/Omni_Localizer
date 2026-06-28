@@ -76,7 +76,7 @@ async def judge_text(params: JudgeInput) -> str:
         }
         return json.dumps(_success_response(content), ensure_ascii=False)
 
-    except Exception as e:
+    except Exception as e:  # expected — return error response for judge failures
         return json.dumps(
             _error_response("OL_JUDGE_FAILED", str(e)),
             ensure_ascii=False,

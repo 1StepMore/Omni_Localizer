@@ -764,7 +764,7 @@ def translate_md(
 
     try:
         output_path = ensure_output_dir(output_dir)
-    except Exception as e:
+    except Exception as e:  # expected — CLI error, echoes then exits
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 

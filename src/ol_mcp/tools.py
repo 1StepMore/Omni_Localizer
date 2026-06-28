@@ -375,7 +375,7 @@ async def _invoke_tool(fn: Callable[..., Any], arguments: dict[str, Any]) -> lis
     if input_model is not None:
         try:
             params_obj = input_model.model_validate(arguments or {})
-        except Exception as e:
+        except Exception as e:  # expected — return error response for invalid input
             err = json.dumps(
                 _error_response("OL_INVALID_INPUT", f"Invalid arguments: {e}"),
                 ensure_ascii=False,
@@ -415,7 +415,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         result_blocks = await _invoke_tool(fn, arguments or {})
         try:
             payload = json.loads(result_blocks[0].text) if result_blocks else {}
-        except Exception:
+        except Exception:  # expected — fallback payload on JSON parse failure
             payload = {}
         if name in ("translate_md_text", "translate_xliff") and isinstance(payload, dict):
             tp = _ol_tracing_inject_traceparent(_span)

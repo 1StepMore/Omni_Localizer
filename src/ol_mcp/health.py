@@ -36,7 +36,7 @@ def _version() -> str:
     try:
         from ol import __version__
         return str(__version__)
-    except Exception:
+    except Exception:  # expected — fallback version on import failure
         return "unknown"
 
 

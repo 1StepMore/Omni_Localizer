@@ -60,9 +60,9 @@ class _JsonlFileSpanExporter(SpanExporter):
                                 },
                             }
                             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
-                        except Exception:
+                        except Exception:  # expected — skip individual span serialization failures
                             continue
-        except Exception:
+        except Exception:  # expected — return failure on export error
             return SpanExportResult.FAILURE
         return SpanExportResult.SUCCESS
 

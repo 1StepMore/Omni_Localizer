@@ -140,5 +140,5 @@ def validate_config(config: ProjectConfig) -> bool:
     try:
         cfg_dict = config.model_dump()
         return cfg_dict is not None and cfg_dict.get("project_id") is not None
-    except Exception:
+    except Exception:  # expected — return False on validation failure
         return False

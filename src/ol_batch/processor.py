@@ -135,7 +135,7 @@ class BatchProcessor:
             raise QueueTimeoutError(
                 f"Translation timed out for {input_path.name} after {self._config.timeout}s",
             )
-        except Exception as e:
+        except Exception as e:  # expected — wrap in RuntimeError for caller
             raise RuntimeError(f"Failed to process {input_path.name}: {e}")
 
     async def _translate_file(

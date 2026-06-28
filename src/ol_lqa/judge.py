@@ -39,7 +39,7 @@ class JudgeService:
                     source, target, source_lang, target_lang, glossary,
                     temperature=self._JUDGE_TEMPERATURE,
                 )
-            except Exception as pool_err:
+            except Exception as pool_err:  # expected — return safe fallback result
                 return EvaluationResult(
                     unit_id=unit_id,
                     scorer_scores={},
@@ -78,7 +78,7 @@ class JudgeService:
                 source,
                 target,
             )
-        except Exception as sync_err:
+        except Exception as sync_err:  # expected — return safe fallback result
             return EvaluationResult(
                 unit_id=unit_id,
                 scorer_scores={},

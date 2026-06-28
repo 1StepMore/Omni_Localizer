@@ -48,7 +48,7 @@ class RetryManager:
         for attempt in range(self._max_retries + 1):
             try:
                 translation = await translate_fn() if asyncio.iscoroutinefunction(translate_fn) else translate_fn()
-            except Exception as translate_err:
+            except Exception as translate_err:  # expected — return safe fallback
                 # Translation failed; fall back to the source text and flag
                 # transport_error so downstream consumers can distinguish this
                 # from a genuine low-score retry.
@@ -67,7 +67,7 @@ class RetryManager:
 
             try:
                 result = await judge_fn(source_text, translation, unit_id)
-            except Exception as judge_err:
+            except Exception as judge_err:  # expected — return safe fallback
                 # LQA judge call itself failed (e.g. provider content moderation,
                 # network error). Fall back to the translation we already have
                 # rather than crashing the whole pipeline for this file.

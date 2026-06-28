@@ -45,7 +45,7 @@ def _try_decode_b64_image(s: str) -> str:
         decoded = base64.b64decode(s.encode('ascii')).decode('utf-8', errors='strict')
         if decoded.startswith('![Image ') and '](' in decoded:
             return decoded
-    except Exception:
+    except Exception:  # expected — best-effort base64 decode
         pass
     return s
 
@@ -140,7 +140,7 @@ async def _run_translate_md_async(
                     glossary_path,
                     config_dir=Path(glossary_path).parent if not Path(glossary_path).is_absolute() else None,
                 )
-            except Exception as e:
+            except Exception as e:  # expected — glossary load is best-effort
                 warnings.append(f"Glossary load failed: {e}")
 
         result, _ = await _translate_single(
@@ -168,7 +168,7 @@ async def _run_translate_md_async(
             "target_lang": target_lang,
         }
         _task_tracker.update_progress(request_id, TaskStatus.COMPLETED, progress=1.0, result=payload)
-    except Exception as e:
+    except Exception as e:  # expected — background task failure, update tracker
         _task_tracker.update_progress(
             request_id, TaskStatus.FAILED,
             error={"code": "OL_TRANSLATE_FAILED", "message": str(e)},
@@ -230,7 +230,7 @@ async def translate_md_text(params: TranslateInput) -> str:
                     params.glossary_path,
                     config_dir=Path(params.glossary_path).parent if not Path(params.glossary_path).is_absolute() else None,
                 )
-            except Exception as e:
+            except Exception as e:  # expected — glossary load is best-effort
                 warnings.append(f"Glossary load failed: {e}")
 
         result, _ = await _translate_single(

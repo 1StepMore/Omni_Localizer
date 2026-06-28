@@ -159,7 +159,7 @@ def parse_xliff_1x(content: str) -> list[TranslationUnit]:
         xliff_1_parser = xlifffile()
         xliff_1_parser.parse(content.encode('utf-8'))
         use_toolkit = True
-    except Exception:
+    except Exception:  # expected — fall back to regex parser
         use_toolkit = False
 
     if use_toolkit:
@@ -242,7 +242,7 @@ def parse_xliff_2(content: str) -> list[TranslationUnit]:
         xliff_2_parser = xlifffile()
         xliff_2_parser.parse(content.encode('utf-8'))
         use_toolkit = True
-    except Exception:
+    except Exception:  # expected — fall back to regex parser
         use_toolkit = False
 
     if use_toolkit:
