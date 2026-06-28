@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Clarify two-layer env var behavior** (`AGENTS.md`, `README.md`): documented the dual-layer design — `schema.py` emits a `logging.warning()` at startup for unset env vars (non-blocking), while `router.py` raises `ValueError` when a model with missing credentials is actually invoked. Replaces the previously ambiguous "warning, not error" phrasing.
 
+- **normalize() now protects emails, URLs, IPs, and version numbers** (`src/ol_post/punctuation.py`): added regex-based pattern protection (`_PROTECTED_RE`) that splits text on email/URL/IP/version patterns, translates only the gaps, and restores the protected spans. Previously, the period → Chinese period translation silently corrupted:
+  - `alice@example.com` → `alice@example。com`
+  - `https://example.com/path` → `https：//example。com/path`
+  - `192.168.1.1` → `192。168。1。1`
+  - `v1.2.3` → `v1。2。3`
+- **ARCHITECTURE.md self-referential link** (`docs/ARCHITECTURE.md`): fixed `../docs/ARCHITECTURE.md` → `../../docs/ARCHITECTURE.md` (was resolving to itself, now correctly points to suite-level).
+
 ### Added
 
 - **ARCHITECTURE.md cross-reference and openai-compat endpoint comments** (`ARCHITECTURE.md`, `config/default.yaml`): added cross-reference to suite-level `ARCHITECTURE.md` in the OL architecture doc. Added "openai-compat endpoint" comments for non-OpenAI providers (Zhipu, Agnes, NVIDIA NIM, Moonshot Kimi) in the default config to clarify that these providers use OpenAI-compatible APIs despite not being OpenAI.
