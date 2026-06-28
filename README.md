@@ -20,19 +20,19 @@ pip install -e .
 
 ### 2. Configure API Keys
 
-Create a `.bat` file (gitignored) with your API keys:
+Set the required environment variables in your shell:
 
-```bat
-@echo off
-set OPENAI_API_KEY=your_api_key
-set PYTHONPATH=src
-python -m ol_cli translate-md %* -c config/default.yaml -s en -t zh
+```bash
+export ZHIPU_API_KEY=your_zhipu_api_key
+export PYTHONPATH=src
 ```
+
+See `.env.example` for the full list of supported provider keys.
 
 ### 3. Run
 
-```cmd
-test_en_to_zh.bat your_document.md -o output/
+```bash
+python -m ol_cli translate-md your_document.md -c config/default.yaml -s en -t zh -o output/
 ```
 
 ## Configuration

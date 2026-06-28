@@ -1,7 +1,7 @@
 # Universal test config - LLM pool only, no language pair
 # language pair set via CLI: -s en -t zh or -s zh -t en
 # Usage: ol translate-md input.md -c config/test_universal.yaml -s en -t zh
-# Or use the .bat files: test_en_to_zh.bat input.md
+# (no .bat files — use the CLI directly)
 #
 # NOTE (2026-06-14): llm_pool is redirected to match config/local.yaml
 # (the only config with valid .env references). See local.yaml for

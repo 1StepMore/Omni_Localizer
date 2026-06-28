@@ -20,9 +20,11 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
 
 3. **Configure API keys** in environment:
    ```
-   export OPENAI_API_KEY=sk-...
-   export MINIMAX_API_KEY=...    # if using MiniMax
-   export BAIDU_API_KEY=...    # if using Baidu
+   export ZHIPU_API_KEY=...   # if using Zhipu AI (primary)
+   export AGNES_API_KEY=...   # if using Agnes AI (judging)
+   export NVIDIA_NIM_API_KEY=... # if using NVIDIA NIM (free-tier)
+   export OPENCODE_GO_KEY=...    # if using OpenCode Go (backup)
+   export OPENCODE_GO_BASE_URL=...
    ```
 
 4. **Invoke via CLI**:
@@ -78,9 +80,11 @@ On error:
 ### Environment Variables
 Set in shell before running:
 ```bash
-export OPENAI_API_KEY=sk-your-key
-export MINIMAX_API_KEY=your-minimax-key  # optional
-export BAIDU_API_KEY=your-baidu-key    # optional
+export ZHIPU_API_KEY=your-zhipu-key    # required for primary model
+export AGNES_API_KEY=your-agnes-key    # required for judging
+export NVIDIA_NIM_API_KEY=...          # optional, for free-tier fallback
+export OPENCODE_GO_KEY=...             # optional, for backup
+export OPENCODE_GO_BASE_URL=...
 ```
 
 ### Config Structure
@@ -91,21 +95,24 @@ target_lang: "zh"
 llm_pool:
   translation:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "glm-4-flash"
       priority: 1
-      api_key: "${OPENAI_API_KEY}"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "translation"
   judging:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "agnes-2.0-flash"
       priority: 1
-      api_key: "${OPENAI_API_KEY}"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
       role: "judging"
   restoration:
     - provider: "openai"
-      model: "gpt-4o-mini"
+      model: "glm-4-flash"
       priority: 1
-      api_key: "${OPENAI_API_KEY}"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "restoration"
 ```
 
@@ -193,7 +200,7 @@ ls src/.hermes/skills/ol-localizer/SKILL.md
 1. Read SKILL.md Configuration section
 2. Set required environment variables:
 ```bash
-export OPENAI_API_KEY=sk-...
+export ZHIPU_API_KEY=your-zhipu-key
 ```
 
 ### Scenario 4: Translation Fails
@@ -205,7 +212,7 @@ python -m ol_cli translate-md input.md -c config/default.yaml -s en -t zh -o out
 ```
 
 2. Common fixes:
-   - Missing API key → Set `OPENAI_API_KEY`
+   - Missing API key → Set `ZHIPU_API_KEY` (or one of the other provider keys)
    - Invalid config → Check `config/default.yaml` exists
    - File not found → Verify input path
    - Rate limit → Wait and retry

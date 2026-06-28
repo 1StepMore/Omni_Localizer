@@ -15,8 +15,8 @@ require explicit user authorization for ongoing spend.
 | Environment | Trigger | What happens |
 |---|---|---|
 | Normal CI (`.github/workflows/test.yml`) | every PR, every push to main | `OMNI_RUN_REAL_LLM` is unset → all 4 real-LLM tests SKIP. The 2 cost-estimator unit tests RUN (pure stdlib, no LLM). |
-| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `MINIMAX_API_KEY` set → 4 real-LLM tests RUN against the real MiniMax/M2.7 pool. |
-| Local dev (you) | `OMNI_RUN_REAL_LLM=1 MINIMAX_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
+| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `OPENCODE_GO_KEY` set → 4 real-LLM tests RUN against the real model pool. |
+| Local dev (you) | `OMNI_RUN_REAL_LLM=1 OPENCODE_GO_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
 
 **Promote weekly → nightly** after 1 month of stable green runs (per
 plan A11 risk register). The cadence change is a one-line edit in
@@ -44,9 +44,10 @@ is well below the budget.
 
 ## API key rotation
 
-**Cadence**: quarterly. The MiniMax API key (`MINIMAX_API_KEY` GitHub
-secret) and the Baidu API key (`BAIDU_API_KEY` GitHub secret) must be
-rotated every 90 days. Set a calendar reminder when you rotate.
+**Cadence**: quarterly. The OpenCode Go API key (`OPENCODE_GO_KEY` GitHub
+secret) must be rotated every 90 days. See the provider dashboard for
+additional keys (Zhipu, Agnes, NVIDIA NIM) that may need rotation. Set a
+calendar reminder when you rotate.
 
 **Owner**: whoever has GitHub repo write access. As of 2026-06-07, the
 sole owner is `@1StepMore`. When that changes, update this section
@@ -55,12 +56,11 @@ and the calendar reminder.
 ### How to rotate
 
 1. Generate a new key in the provider's console:
-   - MiniMax: provider dashboard → API keys → "Create new"
-   - Baidu: Qianfan console → API key management
+   - OpenCode Go: provider dashboard → API keys → "Create new"
+   - Repeat for any other providers in use (Zhipu, Agnes, NVIDIA NIM)
 2. Update the GitHub secret:
    - Repo → Settings → Secrets and variables → Actions
-   - `MINIMAX_API_KEY` → "Update secret" → paste the new value
-   - `BAIDU_API_KEY` → same
+   - `OPENCODE_GO_KEY` → "Update secret" → paste the new value
 3. Trigger a manual nightly run to verify the new key works:
    ```bash
    gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer
@@ -95,8 +95,8 @@ signal — see "When the nightly job fails" below.
      nightly is FOR. Open an issue, decide whether to roll back the
      provider or wait for the issue to clear.
    - **API key expired / auth error**: rotate the key (see above).
-     If rotation doesn't fix it, check `secrets.MINIMAX_API_KEY` is
-     still set in repo settings.
+      If rotation doesn't fix it, check `secrets.OPENCODE_GO_KEY` is
+      still set in repo settings.
    - **Cost overrun**: the pre-call gate should have prevented this.
      If it didn't, recalibrate the rates in `cost_estimator.py` (see
      "Recalibration cadence" below).
@@ -115,9 +115,9 @@ signal — see "When the nightly job fails" below.
 `tests/real_llm/cost_estimator._RATES_PER_1M_TOKENS` to match the
 provider's current list price:
 
-- **MiniMax-M3**: input $3/M, output $15/M tokens (as of 2026-05)
-- **MiniMax-M2.7**: input $2/M, output $10/M tokens (as of 2026-05)
-- **ernie-4.5-turbo-32k**: input $1/M, output $4/M tokens (as of 2026-05)
+- **glm-4-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
+- **agnes-2.0-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
+- **deepseek-v4-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
 
 To recalibrate:
 
@@ -142,10 +142,10 @@ in this runbook too.
 ```bash
 cd Omni_Localizer
 export OMNI_RUN_REAL_LLM=1
-export MINIMAX_API_KEY=…  # your own key
-export MINIMAX_BASE_URL=… # if using a proxy
-export BAIDU_API_KEY=…
-export BAIDU_BASE_URL=…
+export ZHIPU_API_KEY=…     # your own key
+export AGNES_API_KEY=…     # your own key
+export OPENCODE_GO_KEY=…   # your own key
+export OPENCODE_GO_BASE_URL=…
 export PYTHONPATH=src
 pytest tests/real_llm/ -v --tb=long --durations=10
 ```
@@ -156,7 +156,7 @@ LLM's actual response — useful for diagnosing provider degradation.
 
 **Do not commit your real API key** to the repo. The `.env` file (if
 you use one) is gitignored at the repo root, and GitHub secrets
-(`${{ secrets.MINIMAX_API_KEY }}`) are the only path the workflow
+(`${{ secrets.OPENCODE_GO_KEY }}`) are the only path the workflow
 uses. See `.gitignore` for the full list.
 
 ## Adding a new real-LLM test
