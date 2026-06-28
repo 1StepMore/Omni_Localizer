@@ -109,7 +109,7 @@ class TestGlossaryCLIFlagLoadsFile:
 
         monkeypatch.setattr(Glossary, "load", staticmethod(spy_load))
 
-        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+        with patch("cli.translate_md._translate_md_async", side_effect=fake_translate_md_async):
             rc = runner.invoke(
                 app,
                 ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
@@ -168,7 +168,7 @@ class TestGlossaryCLIFlagLoadsFile:
 
         monkeypatch.setattr(Glossary, "load", staticmethod(spy_load))
 
-        with patch.object(ol_cli, "_translate_xliff_async", side_effect=fake_translate_xliff_async):
+        with patch("cli.translate_xliff._translate_xliff_async", side_effect=fake_translate_xliff_async):
             rc = runner.invoke(
                 app,
                 ["translate-xliff", str(sample_xliff), "-o", str(tmp_path / "out"),
@@ -203,7 +203,7 @@ class TestGlossaryCLIFlagLoadsFile:
             output_file.write_text("translated", encoding="utf-8")
             return str(output_file)
 
-        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+        with patch("cli.translate_md._translate_md_async", side_effect=fake_translate_md_async):
             rc = runner.invoke(
                 app,
                 ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
@@ -247,7 +247,7 @@ class TestGlossaryCLINewFlags:
             SAMPLE_GLOSSARY.read_text(encoding="utf-8"), encoding="utf-8",
         )
 
-        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+        with patch("cli.translate_md._translate_md_async", side_effect=fake_translate_md_async):
             rc = runner.invoke(
                 app,
                 ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
@@ -286,7 +286,7 @@ class TestGlossaryCLINewFlags:
             SAMPLE_GLOSSARY.read_text(encoding="utf-8"), encoding="utf-8",
         )
 
-        with patch.object(ol_cli, "_translate_xliff_async", side_effect=fake_translate_xliff_async):
+        with patch("cli.translate_xliff._translate_xliff_async", side_effect=fake_translate_xliff_async):
             rc = runner.invoke(
                 app,
                 ["translate-xliff", str(sample_xliff), "-o", str(tmp_path / "out"),
@@ -332,7 +332,7 @@ class TestGlossaryCLINewFlags:
             output_file.write_text("translated", encoding="utf-8")
             return str(output_file)
 
-        with patch.object(ol_cli, "_translate_md_async", side_effect=fake_translate_md_async):
+        with patch("cli.translate_md._translate_md_async", side_effect=fake_translate_md_async):
             rc = runner.invoke(
                 app,
                 ["translate-md", str(sample_md), "-o", str(tmp_path / "out"),
@@ -384,7 +384,7 @@ class TestGlossaryCLINewFlags:
             output_file.write_text("translated", encoding="utf-8")
             return str(output_file)
 
-        with patch.object(ol_cli, "_translate_xliff_async", side_effect=fake_translate_xliff_async):
+        with patch("cli.translate_xliff._translate_xliff_async", side_effect=fake_translate_xliff_async):
             rc = runner.invoke(
                 app,
                 ["translate-xliff", str(sample_xliff), "-o", str(tmp_path / "out"),
