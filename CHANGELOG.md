@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.3] - 2026-06-25
+## [Unreleased]
+
+### Fixed
+
+- **Replace stale provider env vars** (`.env.example`, `AGENT_USAGE.md`, `real_llm_runbook.md`, `README.md`, `config/test_universal.yaml`): replaced 4 stale provider env vars (`MINIMAX`/`BAIDU`/`OPENAI`/`ANTHROPIC`) with current 5 (`ZHIPU`/`AGNES`/`NVIDIA_NIM`/`OPENCODE_GO`). All documentation and config references now reflect the active provider lineup.
+
+- **Clarify two-layer env var behavior** (`AGENTS.md`, `README.md`): documented the dual-layer design — `schema.py` emits a `logging.warning()` at startup for unset env vars (non-blocking), while `router.py` raises `ValueError` when a model with missing credentials is actually invoked. Replaces the previously ambiguous "warning, not error" phrasing.
+
+### Added
+
+- **ARCHITECTURE.md cross-reference and openai-compat endpoint comments** (`ARCHITECTURE.md`, `config/default.yaml`): added cross-reference to suite-level `ARCHITECTURE.md` in the OL architecture doc. Added "openai-compat endpoint" comments for non-OpenAI providers (Zhipu, Agnes, NVIDIA NIM, Moonshot Kimi) in the default config to clarify that these providers use OpenAI-compatible APIs despite not being OpenAI.
+
+- **Replace BAIDU model entries in test configs** (`config/test_universal.yaml`, `config/slim-test.yaml`): replaced `BAIDU` model entries (which had `account_overdue` errors) with current working providers (`glm-4-flash`, `agnes-2.0-flash`). Test configs now use functional credentials for CI/test reliability.
 
 ### Fixed
 
