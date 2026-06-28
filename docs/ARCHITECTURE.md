@@ -1,5 +1,5 @@
 > **Note:** This file covers OL internals only. For cross-module pipeline architecture
-> (OPP → OL → ORF), see the [suite-level ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+> (OPP → OL → ORF), see the [suite-level ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
 # OL Architecture
 

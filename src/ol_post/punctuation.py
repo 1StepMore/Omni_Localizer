@@ -60,6 +60,22 @@ _EN_TO_ZH = str.maketrans({
 # them either; matching shield coverage is the right scope boundary.
 _FENCE_RE = re.compile(r"```[\w]*\n[\s\S]*?```")
 
+# ── Protected inline patterns (preserved verbatim during punctuation norm.) ──
+# Emails, URLs, IP addresses, and version numbers must not have their
+# periods/colons/slashes converted to full-width variants.
+_PROTECTED_RE = re.compile(
+    r"(?:"
+    r"[\w.+-]+@[\w.-]+\.\w{2,}"                           # email
+    r"|"
+    r"https?://[^\s<>\"'()]+"                              # URL
+    r"|"
+    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"                 # IPv4
+    r"|"
+    r"v?\d+\.\d+(?:\.\d+)*(?:[a-zA-Z][\w]*)?"             # version (v1.2.3, 1.2.3-alpha)
+    r")",
+    re.IGNORECASE,
+)
+
 
 # ── Per-language-pair normalization tables ───────────────────────────────────
 # Keyed by "source_target" string.  Unknown pairs fall through to identity.
@@ -101,18 +117,30 @@ def normalize(text: str, source_lang: str, target_lang: str) -> str:
     if not table:
         return text
 
-    # Fast path: no fences → no split overhead, single translate.
-    if _FENCE_RE.search(text) is None:
+    # Fast path: nothing to protect → single translate.
+    if _FENCE_RE.search(text) is None and _PROTECTED_RE.search(text) is None:
         return text.translate(table)
 
-    # Slow path: split text on fence spans, translate only the gaps.
-    parts = _FENCE_RE.split(text)  # [pre, mid1, mid2, ...] (len = fences+1)
-    fences = _FENCE_RE.findall(text)  # [fence1, fence2, ...]
+    # Slow path: split on fences, protect inline patterns inside gaps.
+    parts = _FENCE_RE.split(text)
+    fences = _FENCE_RE.findall(text)
     out = []
     for i, gap in enumerate(parts):
-        out.append(gap.translate(table))
+        # Protect inline patterns inside the gap
+        protected_spans = list(_PROTECTED_RE.finditer(gap))
+        if not protected_spans:
+            out.append(gap.translate(table))
+        else:
+            buf = []
+            pos = 0
+            for m in protected_spans:
+                buf.append(gap[pos : m.start()].translate(table))
+                buf.append(m.group(0))  # kept verbatim
+                pos = m.end()
+            buf.append(gap[pos:].translate(table))
+            out.append("".join(buf))
         if i < len(fences):
-            out.append(fences[i])  # code block: untouched
+            out.append(fences[i])
     return "".join(out)
 
 
