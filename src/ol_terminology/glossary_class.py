@@ -215,7 +215,7 @@ def _read_yaml(path: Path) -> Any:
     the ``ImportError`` branch is a defense-in-depth for stripped-down envs.
     """
     try:
-        import yaml  # type: ignore
+        import yaml
     except ImportError as exc:
         raise ValueError(
             f"Cannot read YAML glossary {path}: PyYAML is not installed"
@@ -223,5 +223,5 @@ def _read_yaml(path: Path) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
-    except yaml.YAMLError as exc:  # type: ignore[union-attr]
+    except yaml.YAMLError as exc:
         raise ValueError(f"Malformed YAML in {path}: {exc}") from exc

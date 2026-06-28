@@ -34,7 +34,7 @@ _start_time: float = time.monotonic()
 
 def _version() -> str:
     try:
-        from ol import __version__  # type: ignore
+        from ol import __version__
         return str(__version__)
     except Exception:
         return "unknown"

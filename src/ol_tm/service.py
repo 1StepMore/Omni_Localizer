@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -6,8 +8,13 @@ import sys
 import threading
 import weakref
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 _logger = logging.getLogger("tm")
+_MODEL_CACHE: dict[str, SentenceTransformer] = {}
 
 
 def _ensure_hypomnema_tmxfile() -> None:
@@ -148,7 +155,7 @@ class TMService:
         self._load()
 
     def _get_model(self):
-        if self._model is None:
+        if self._embedding_model not in _MODEL_CACHE:
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError:
@@ -156,8 +163,8 @@ class TMService:
                     "sentence-transformers not available. "
                     "Install ML deps: pip install omni-localizer[ml]"
                 )
-            self._model = SentenceTransformer(self._embedding_model)
-        return self._model
+            _MODEL_CACHE[self._embedding_model] = SentenceTransformer(self._embedding_model)
+        return _MODEL_CACHE[self._embedding_model]
 
     def _load(self) -> None:
         if not self._tmx_path.exists():

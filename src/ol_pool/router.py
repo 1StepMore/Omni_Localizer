@@ -193,14 +193,34 @@ class _PromptCache:
 
 
 def _resolve_env_vars(value: str) -> str:
+    """Resolve ${ENV_VAR} patterns in a value.
+
+    Wave 4 (L-C2): replaced regex-based implementation with a simple split-join
+    loop to prevent ReDoS on nested ${...${...}...} patterns. The old regex
+    ``\\$\\{([^}]+)\\}`` could cause catastrophic backtracking under adversarial
+    input. The new implementation is O(n) with no backtracking.
+    """
     if value is None:
         return None
-    def replacer(m):
-        env_val = os.environ.get(m.group(1))
+    parts = value.split("${")
+    if len(parts) == 1:
+        return value
+    result = [parts[0]]
+    for part in parts[1:]:
+        close_idx = part.find("}")
+        if close_idx == -1:
+            result.append("${" + part)
+            continue
+        var_name = part[:close_idx]
+        env_val = os.environ.get(var_name)
         if env_val is None:
-            raise ValueError(f"Environment variable '{m.group(1)}' not set - cannot resolve config value")
-        return env_val
-    return re.sub(r'\$\{([^}]+)\}', replacer, value)
+            raise ValueError(
+                f"Environment variable '{var_name}' not set - "
+                f"cannot resolve config value"
+            )
+        result.append(env_val)
+        result.append(part[close_idx + 1:])
+    return "".join(result)
 
 
 # 2026-06-18 round 16 Phase B1: circuit breaker for LLM calls.
@@ -273,10 +293,16 @@ class ModelPool:
                 #   optional_pre_call_checks=['enforce_model_rate_limits']
                 # directly to the Router here.
             )
-        except Exception:
+        except Exception as _router_init_exc:
             # Real Router init can fail in test envs (no API keys, version
             # mismatch, or @patch not applied). Fall back to placeholder
             # mode so translate/judge still return predictable values.
+            # Wave 4 (L-C3): log the full traceback at ERROR level instead
+            # of silently swallowing. The exception is NOT re-raised so the
+            # pool can still serve placeholder responses in test envs.
+            _logger.exception(
+                "ModelPool Router init failed: %s", _router_init_exc,
+            )
             self._router = None
             self._test_mode = True
 

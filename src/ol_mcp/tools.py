@@ -76,11 +76,23 @@ def _success_response(content: dict) -> dict:
     return {"success": True, "content": content}
 
 
+# Module-level shared executor for _resolve_async to avoid thread leaks
+# and deadlocks. Wave 4 (L-C5): one executor shared across all callers
+# instead of creating a new ThreadPoolExecutor(max_workers=1) per coroutine.
+import concurrent.futures as _concurrent_futures
+_shared_executor = _concurrent_futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="ol_resolve_async",
+)
+
+
 def _resolve_async(result):
     """Resolve a potentially async result.
 
     ModelPool.translate is async in production but tests mock it with a sync
     function that returns a string. This helper handles both shapes.
+
+    Wave 4 (L-C5): uses a module-level shared ThreadPoolExecutor instead of
+    creating a new one per coroutine, preventing thread leaks and deadlocks.
     """
     if asyncio.iscoroutine(result):
         try:
@@ -88,15 +100,13 @@ def _resolve_async(result):
         except RuntimeError:
             loop = None
         if loop is not None and loop.is_running():
-            import concurrent.futures
             def _runner():
                 new_loop = asyncio.new_event_loop()
                 try:
                     return new_loop.run_until_complete(result)
                 finally:
                     new_loop.close()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                return ex.submit(_runner).result()
+            return _shared_executor.submit(_runner).result()
         if loop is not None:
             return loop.run_until_complete(result)
         return asyncio.run(result)

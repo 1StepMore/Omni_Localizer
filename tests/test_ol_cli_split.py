@@ -117,12 +117,6 @@ class TestBackwardCompatImports:
             _translate_units_concurrent,
             _translate_one_unit,
             _UnitTranslationResult,
-            _set_glossary_for_next_translation,
-            _consume_glossary_for_translation,
-            _set_restoration_for_next_translation,
-            _consume_restoration_for_translation,
-            _set_glossary_max_terms_for_next_translation,
-            _consume_glossary_max_terms_for_translation,
             _apply_glossary_max_terms,
             _apply_post_translate_restoration,
             _build_restoration_pool,
@@ -131,7 +125,6 @@ class TestBackwardCompatImports:
             _load_dotenv,
         )
         assert callable(_translate_md_async)
-        assert callable(_consume_glossary_for_translation)
 
     def test_import_translate_xliff_helpers(self):
         """XLIFF translation helpers importable from ol_cli."""

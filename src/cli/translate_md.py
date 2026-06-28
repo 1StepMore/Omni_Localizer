@@ -55,84 +55,12 @@ from ol_core.dataclass import TranslationUnit
 logger = get_logger("cli")
 
 
-# ========== A12: Glossary single-use module state ==========
-# The typer command sets ``_pending_glossary`` before calling
-# ``asyncio.run(_translate_*_async(...))``; the async entry point
-# reads it via ``_consume_glossary_for_translation()`` and clears it.
-#
-# Why module state? Because the pre-existing ``test_ol_cache.py`` and
-# ``test_xliff_translate.py`` fakes mock the async functions with a
-# fixed-arity signature; adding a ``glossary`` positional param would
-# break them. Module state lets us thread the glossary through without
-# changing the function's public signature. The CLI is a sequential
-# command path (set state → asyncio.run → read state → clear), so
-# concurrent state corruption is not a concern.
-_pending_glossary: 'Glossary | None' = None
-
-
-def _set_glossary_for_next_translation(glossary: 'Glossary | None') -> None:
-    """Set the glossary for the next ``_translate_*_async`` call.
-
-    Single-use: the next consume clears it. Subsequent consumes
-    return ``None`` until another ``_set_glossary_for_next_translation``
-    is issued.
-    """
-    global _pending_glossary
-    _pending_glossary = glossary
-
-
-def _consume_glossary_for_translation() -> 'Glossary | None':
-    """Read the pending glossary (set by the typer command) and clear it."""
-    global _pending_glossary
-    g = _pending_glossary
-    _pending_glossary = None
-    return g
-
-
-# ========== A12.4: Restoration enabled-flag single-use module state ==========
-# ``--no-restoration`` is the user-visible switch. The typer command sets
-# the flag (True = restoration enabled, default) before
-# ``asyncio.run(_translate_*_async(...))``; the async entry point reads
-# it via ``_consume_restoration_for_translation()`` and clears it.
-# Same rationale as the glossary module state: we don't want to change
-# ``_translate_*_async``'s positional signature because pre-existing
-# test_ol_cache.py fakes mock it with a fixed 5-arg signature.
-_pending_restoration_enabled: bool = True
-
-
-def _set_restoration_for_next_translation(enabled: bool) -> None:
-    global _pending_restoration_enabled
-    _pending_restoration_enabled = enabled
-
-
-def _consume_restoration_for_translation() -> bool:
-    """Defaults to ``True`` (restoration enabled) so callers that don't
-    set it explicitly keep working. Reset to the default after consume."""
-    global _pending_restoration_enabled
-    v = _pending_restoration_enabled
-    _pending_restoration_enabled = True
-    return v
-
-
-# ========== A12.5: glossary_max_terms single-use module state ==========
-# ``--glossary-max-terms N`` overrides the default top-5 in
-# ``Glossary.inject_into_prompt``. We don't add a positional arg to
-# ``_translate_*_async`` for the same reason as glossary/restoration.
-_pending_glossary_max_terms: int = 5
-
-
-def _set_glossary_max_terms_for_next_translation(n: int) -> None:
-    global _pending_glossary_max_terms
-    if not isinstance(n, int) or n < 1:
-        n = 5
-    _pending_glossary_max_terms = n
-
-
-def _consume_glossary_max_terms_for_translation() -> int:
-    global _pending_glossary_max_terms
-    v = _pending_glossary_max_terms
-    _pending_glossary_max_terms = 5
-    return v
+# ========== A12: Glossary settings — passed as function args, not globals ==========
+# Wave 4 (L-C1): removed concurrency-unsafe module-level globals
+# (_pending_glossary, _pending_restoration_enabled, _pending_glossary_max_terms).
+# Glossary params are now passed directly as function arguments to
+# _translate_md_async and _translate_xliff_async. The set/consume helpers
+# are removed.
 
 
 def _apply_glossary_max_terms(
@@ -524,22 +452,17 @@ async def _translate_md_async(
     src_lang: str,
     tgt_lang: str,
     add_frontmatter: bool = True,
+    glossary: 'Glossary | None' = None,
+    restoration_enabled: bool = True,
+    glossary_max_terms: int = 5,
 ) -> str:
-    # A12.3: read the glossary from module state (set by the typer command
-    # before asyncio.run). We intentionally keep this function's POSITIONAL
-    # signature unchanged so the pre-existing test_ol_cache.py fakes
-    # (which mock this function with a fixed 5-arg signature) still work.
-    glossary = _consume_glossary_for_translation()
+    # Wave 4 (L-C1): glossary is now passed as a direct function argument,
+    # not via concurrency-unsafe module-level globals.
+    # The glossary param may be None (no glossary configured).
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-        import sys
-        from pathlib import Path as _SeamPath
-        _suite_root = _SeamPath(__file__).resolve().parents[3]
-        if str(_suite_root) not in sys.path:
-            sys.path.insert(0, str(_suite_root))
-        from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        # B1: Avoid importing ol_pool.router here — it transitively loads
-        # litellm → pydantic → importlib.metadata.entry_points() which blocks
-        # on filesystem I/O over slow mounts (e.g. WSL2 /mnt/ drives).
+        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+        # triggering litellm's heavy import chain.
+        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
         pool = cast(object, _FakeModelPool())
         _apply_fake_llm_seam()
     else:
@@ -720,6 +643,7 @@ async def _translate_md_by_paragraph(
     src: str,
     tgt: str,
     add_frontmatter: bool,
+    glossary: 'Glossary | None' = None,
 ) -> str:
     from ol_mcp.tools import translate_md_text, TranslateInput
 
@@ -875,8 +799,8 @@ def translate_md(
         if no_glossary:
             loaded_glossary = None
         _apply_glossary_max_terms(loaded_glossary, glossary_max_terms)
-        _set_glossary_for_next_translation(loaded_glossary)
-        _set_restoration_for_next_translation(enabled=not no_restoration)
+        # Wave 4 (L-C1): glossary and restoration_enabled are now passed
+        # directly as function arguments (not module-level globals).
 
         # A6: cache check before any expensive LLM work.
         if _check_cache(
@@ -903,12 +827,15 @@ def translate_md(
             output_file = asyncio.run(
                 _translate_md_by_paragraph(
                     input_path, output_path, config, src, tgt, add_frontmatter,
+                    glossary=loaded_glossary,
                 ),
             )
         else:
             output_file = asyncio.run(
                 _translate_md_async(
                     input_path, output_path, config, src, tgt, add_frontmatter,
+                    glossary=loaded_glossary,
+                    restoration_enabled=not no_restoration,
                 ),
             )
 

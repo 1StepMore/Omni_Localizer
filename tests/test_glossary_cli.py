@@ -80,13 +80,10 @@ class TestGlossaryCLIFlagLoadsFile:
 
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            add_frontmatter=True,
+            add_frontmatter=True, glossary=None, restoration_enabled=True,
         ):
-            # A12.3: glossary flows via module state (see _pending_glossary
-            # in ol_cli.py), not via a function parameter. This keeps the
-            # function's signature stable for pre-existing test fixtures.
-            from ol_cli import _consume_glossary_for_translation
-            captured["glossary"] = _consume_glossary_for_translation()
+            # Wave 4 (L-C1): glossary is now passed as a direct function argument.
+            captured["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
             output_file.write_text("translated", encoding="utf-8")
@@ -146,9 +143,10 @@ class TestGlossaryCLIFlagLoadsFile:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
+            glossary=None,
         ):
-            from ol_cli import _consume_glossary_for_translation
-            captured["glossary"] = _consume_glossary_for_translation()
+            # Wave 4 (L-C1): glossary is now passed as a direct function argument.
+            captured["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
             output_file.write_text("translated", encoding="utf-8")
@@ -193,11 +191,10 @@ class TestGlossaryCLIFlagLoadsFile:
 
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            add_frontmatter=True,
+            add_frontmatter=True, glossary=None, restoration_enabled=True,
         ):
             called["n"] += 1
-            from ol_cli import _consume_glossary_for_translation
-            called["glossary"] = _consume_glossary_for_translation()
+            called["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
             output_file.write_text("translated", encoding="utf-8")
@@ -233,10 +230,9 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            add_frontmatter=True,
+            add_frontmatter=True, glossary=None, restoration_enabled=True,
         ):
-            from ol_cli import _consume_glossary_for_translation
-            called["glossary"] = _consume_glossary_for_translation()
+            called["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
             output_file.write_text("translated", encoding="utf-8")
@@ -273,9 +269,9 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
+            glossary=None,
         ):
-            from ol_cli import _consume_glossary_for_translation
-            called["glossary"] = _consume_glossary_for_translation()
+            called["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
             output_file.write_text("translated", encoding="utf-8")
@@ -325,7 +321,7 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            add_frontmatter=True,
+            add_frontmatter=True, glossary=None, restoration_enabled=True,
         ):
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
@@ -377,6 +373,7 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
+            glossary=None,
         ):
             called["n"] = called.get("n", 0) + 1
             output_path.mkdir(parents=True, exist_ok=True)

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 import typer
 
 if TYPE_CHECKING:
+    from ol_core.dataclass import TranslationUnit
     from ol_lqa.judge import JudgeService
     from ol_pool.router import ModelPool
     from ol_retry.retry import RetryManager
@@ -36,14 +37,8 @@ from cli.translate_md import (
     _apply_glossary_max_terms,
     _apply_post_translate_restoration,
     _build_restoration_pool,
-    _consume_glossary_for_translation,
-    _consume_glossary_max_terms_for_translation,
-    _consume_restoration_for_translation,
     _load_env_for_cli,
     _load_glossary_or_none,
-    _set_glossary_for_next_translation,
-    _set_glossary_max_terms_for_next_translation,
-    _set_restoration_for_next_translation,
     _translate_one_unit,
     _translate_units_concurrent,
 )
@@ -293,22 +288,14 @@ async def _translate_xliff_async(
     config_path: str | None,
     src_lang: str,
     tgt_lang: str,
+    glossary: 'Glossary | None' = None,
 ) -> str:
-    # A12.3: read the glossary from module state (set by the typer command
-    # before asyncio.run). We intentionally keep this function's POSITIONAL
-    # signature unchanged so the pre-existing test_ol_cache.py fakes
-    # (which mock this function with a fixed 5-arg signature) still work.
-    glossary = _consume_glossary_for_translation()
+    # Wave 4 (L-C1): glossary is now passed as a direct function argument,
+    # not via concurrency-unsafe module-level globals.
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-        import sys
-        from pathlib import Path as _SeamPath
-        _suite_root = _SeamPath(__file__).resolve().parents[3]
-        if str(_suite_root) not in sys.path:
-            sys.path.insert(0, str(_suite_root))
-        from tests.test_e2e_pipeline_fixtures import _FakeModelPool
-        # B1: Avoid importing ol_pool.router here — it transitively loads
-        # litellm → pydantic → importlib.metadata.entry_points() which blocks
-        # on filesystem I/O over slow mounts (e.g. WSL2 /mnt/ drives).
+        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+        # triggering litellm's heavy import chain.
+        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
         pool = cast(object, _FakeModelPool())
     else:
         from ol_pool.router import ModelPool
@@ -540,14 +527,14 @@ def translate_xliff(
         if no_glossary:
             loaded_glossary = None
         _apply_glossary_max_terms(loaded_glossary, glossary_max_terms)
-        _set_glossary_for_next_translation(loaded_glossary)
-        _set_restoration_for_next_translation(enabled=not no_restoration)
+        # Wave 4 (L-C1): glossary passed directly as function argument.
 
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
 
         asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
+            glossary=loaded_glossary,
         ))
 
         # A12.4: post-translate restoration runs after asyncio.run so
