@@ -9,13 +9,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # Make the OL src/ importable
 _OL_SRC = Path(__file__).resolve().parents[1] / "Omni_Localizer" / "src"
 if str(_OL_SRC) not in sys.path:
     sys.path.insert(0, str(_OL_SRC))
 
 from ol_config.loader import load_config
-from ol_config.schema import LLMModelConfig, LLMModelRole
 from ol_pool.router import ModelPool
 
 
@@ -99,7 +100,7 @@ class TestMaxXliffConcurrentE2E:
         cfg, _ = load_config("Omni_Localizer/config/local.yaml")
         # Use the same path the ModelPool uses to build the list
         from ol_pool.router import ModelPool as MP
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         with patch("ol_pool.router.load_config", return_value=(cfg, None)):
             mp = MP()
             model_list = mp._build_model_list(cfg.llm_pool)

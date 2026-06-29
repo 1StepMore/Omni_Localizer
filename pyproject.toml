@@ -27,6 +27,7 @@ dependencies = [
     "span-aligner>=0.3.2",
     "hypomnema>=0.8",
     "python-json-logger>=2.0.0",
+    "structlog>=24.0.0",
     "pybreaker>=1.0.0",
     "prometheus_client>=0.20.0",
     "openevalkit>=0.1.7",
