@@ -53,8 +53,16 @@ from cli import *  # noqa: E402, F401, F403
 
 # Explicit private-name re-exports for backward compat
 # (cli.translate_md etc. already use cli._shared, so no circular import)
-from cli._shared import (  # noqa: E402
+from cli._shared import (  # noqa: E402,F401
     ExitCode,
+    _apply_fake_llm_seam,
+)
+from cli.frontmatter import (  # noqa: E402,F401
+    _build_xliff_header_note,
+    _generate_frontmatter,
+    _generate_skip_frontmatter,
+    _get_ol_version,
+    _validate_lang_code,
 )
 from cli.translate_md import (  # noqa: E402
     translate_md,
