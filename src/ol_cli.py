@@ -1,6 +1,7 @@
 """Omni-Localizer CLI - Typer-based command line interface."""
 from __future__ import annotations
 
+import re as _re
 import sys
 
 import typer
@@ -13,6 +14,17 @@ __version__ = _pkg_version("omni-localizer")
 # Initialize logging
 init_logger()
 logger = get_logger("cli")
+
+
+def _validate_lang_code(code: str) -> str:
+    if not _re.match(r"^[a-z]{2}(-[A-Z]{2})?$", code):
+        raise ValueError(f"Invalid language code: {code}")
+    return code
+
+
+def _get_ol_version() -> str:
+    return __version__
+
 
 # Global interrupt flag for graceful shutdown
 _interrupted = False
