@@ -59,6 +59,7 @@ from cli._shared import (  # noqa: E402,F401
 )
 from cli.frontmatter import (  # noqa: E402,F401
     _build_xliff_header_note,
+    _escape_xml,
     _generate_frontmatter,
     _generate_skip_frontmatter,
     _get_ol_version,
