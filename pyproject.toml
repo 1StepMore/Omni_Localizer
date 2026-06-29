@@ -39,7 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 ml = [
     "torch>=2.0.0",
-    "sentence-transformers>=3.0.0",
+    "sentence-transformers>=3.0.0,<4.0.0",
     "transformers>=4.41.0",
     "keybert>=0.9.0",
     "yake>=0.5.0",

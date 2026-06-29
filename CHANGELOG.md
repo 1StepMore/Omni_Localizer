@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`fix(pyproject.toml)`: pin `sentence-transformers` upper bound** — was `>=3.0.0`, now `>=3.0.0,<4.0.0`. Prevents accidental major-version breakage (sentence-transformers 4.x will likely have breaking API changes). The Python 3.13 `import transformers` hang documented earlier still applies; see `README.md` § "Python 3.13 note" for workarounds.
+
 ### Fixed
 
 - **Replace stale provider env vars** (`.env.example`, `AGENT_USAGE.md`, `real_llm_runbook.md`, `README.md`, `config/test_universal.yaml`): replaced 4 stale provider env vars (`MINIMAX`/`BAIDU`/`OPENAI`/`ANTHROPIC`) with current 5 (`ZHIPU`/`AGNES`/`NVIDIA_NIM`/`OPENCODE_GO`). All documentation and config references now reflect the active provider lineup.
@@ -29,6 +33,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **OL#10 — XLIFF target contains unescaped HTML from shield map** (`src/ol_buses/xliff_bus.py:write_target_back`). The function called `_escape_xml_entities()` BEFORE `restore_tags()`, so HTML content restored from the shield map (e.g. `<code>foo</code>`) was written into the `<target>` element as raw HTML — producing invalid XLIFF. Fixed by restoring first, then escaping with a new `_escape_xml_entities_preserving_xliff_tags()` helper that entity-escapes user-visible content while preserving XLIFF structural inline tags (`<x/>`, `<bx/>`, `<ex/>`) as valid XML.
+
+## [0.5.3] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.3` but release notes were not retroactively written.
+
+## [0.5.4] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.4` but release notes were not retroactively written.
+
+## [0.5.5] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.5` but release notes were not retroactively written.
+
+## [0.5.6] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.6` but release notes were not retroactively written.
+
+## [0.5.7] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.7` but release notes were not retroactively written.
+
+## [0.5.8] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.8` but release notes were not retroactively written.
+
+## [0.5.9] - 2026-06-XX
+
+### Unknown
+
+- Version bumped in `pyproject.toml` to `0.5.9` but release notes were not retroactively written.
 
 ## [0.5.2] - 2026-06-25
 

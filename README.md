@@ -376,6 +376,16 @@ pip install -e ".[ml]"  # sentence-transformers + torch
 pip install keybert>=0.9.0 yake>=0.5.0
 ```
 
+> **Python 3.13 note**: `sentence-transformers` (via its `transformers`
+> dependency) may hang on import in Python 3.13 due to a circular import
+> in `regex._regex`. If you hit this:
+> - Set `TRANSFORMERS_OFFLINE=1` and `HF_HUB_OFFLINE=1` as workarounds, OR
+> - Use Python 3.12 for ML features (the suite as a whole still requires 3.13+
+>   for OPP/ORF/CLI, but TM/terminology features can run on 3.12 in an isolated
+>   venv).
+>
+> See `CHANGELOG.md` (entry mentioning `import transformers` hang) for details.
+
 ## Pipeline — Omni Localization Suite
 
 OL is **Step 2** of the Omni Localization Suite pipeline:
