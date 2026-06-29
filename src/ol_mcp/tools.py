@@ -40,6 +40,7 @@ from ol_mcp.tracing import (
 )
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.task_tracker import InMemoryTaskTracker
+from ol_mcp._errors import mcp_error_boundary  # noqa: F401  (re-export for submodules)
 
 
 # ---------------------------------------------------------------------------
