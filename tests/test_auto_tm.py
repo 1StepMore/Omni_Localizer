@@ -1,6 +1,5 @@
 """Tests for Phase D4: auto-gen translation memory."""
 
-import pytest
 
 from ol_tm.auto_gen import (
     TMEntry,

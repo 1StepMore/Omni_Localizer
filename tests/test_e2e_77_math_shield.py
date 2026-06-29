@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 

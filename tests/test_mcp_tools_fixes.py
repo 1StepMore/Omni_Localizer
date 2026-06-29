@@ -3,10 +3,7 @@
 Covers:
 - 4.5: _resolve_async ThreadPoolExecutor deadlock fix (RED->GREEN)
 """
-import asyncio
-from unittest.mock import patch, MagicMock
 
-import pytest
 
 
 class TestResolveAsyncDeadlock:
@@ -19,7 +16,7 @@ class TestResolveAsyncDeadlock:
 
     def test_resolve_async_with_coroutine(self):
         """Coroutine is resolved correctly via the shared executor."""
-        from ol_mcp.tools import _resolve_async, _shared_executor
+        from ol_mcp.tools import _resolve_async
 
         async def sample_coro():
             return "resolved"
@@ -42,7 +39,7 @@ class TestResolveAsyncDeadlock:
 
     def test_shared_executor_is_reused(self):
         """Multiple calls reuse the same executor instead of creating new ones."""
-        from ol_mcp.tools import _resolve_async, _shared_executor
+        from ol_mcp.tools import _resolve_async
 
         async def sample_coro(v):
             return v

@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 if TYPE_CHECKING:
-    from ol_terminology import Glossary
+    pass
 
 from cli._shared import (
     ExitCode,

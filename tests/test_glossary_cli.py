@@ -23,7 +23,6 @@ if sys.platform == "win32":
     sys.modules.setdefault("fcntl", unittest.mock.MagicMock())
 
 
-import ol_cli
 from ol_cli import app
 
 runner = CliRunner()

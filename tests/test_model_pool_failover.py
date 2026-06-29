@@ -330,7 +330,7 @@ class TestModelPool:
             mp2 = ModelPool.get_instance(str(cfg_file))
             # Different instance after mtime change
             assert mp1 is not mp2, (
-                f"Expected new ModelPool after mtime change; got same instance"
+                "Expected new ModelPool after mtime change; got same instance"
             )
         # Clean up
         router_cache.clear()

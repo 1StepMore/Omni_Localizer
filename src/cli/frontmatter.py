@@ -4,7 +4,6 @@ from __future__ import annotations
 import re as _re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 
 def _escape_yaml_value(value: str) -> str:

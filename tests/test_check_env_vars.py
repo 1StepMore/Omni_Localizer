@@ -7,10 +7,7 @@ Before the fix, scenarios 2 and 4 would raise ValueError — the RED
 phase confirms that.  After the fix, all four should pass GREEN.
 """
 import logging
-import os
-from unittest.mock import patch
 
-import pytest
 
 
 def _make_config(api_key: str, base_url: str | None = None):

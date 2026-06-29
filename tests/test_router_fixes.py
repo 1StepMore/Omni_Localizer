@@ -7,7 +7,6 @@ Covers:
 """
 import os
 import time
-import logging
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -141,7 +140,6 @@ class TestModelPoolRateLimiting:
     async def test_rate_limit_hits_increments_on_rate_limit(self):
         """RateLimitError increments _rate_limit_hits counter."""
         from ol_pool.router import ModelPool
-        from unittest.mock import AsyncMock
 
         with patch("ol_pool.router.load_config") as mock_load_config:
             mock_load_config.return_value = (MagicMock(), None)

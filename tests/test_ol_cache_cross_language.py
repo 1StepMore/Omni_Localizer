@@ -7,9 +7,7 @@ all three caching layers:
   2. LLM prompt cache (_make_cache_key in ol_pool/router.py)
   3. TM search language filter (TMService.search in ol_tm/service.py)
 """
-from pathlib import Path
 
-import pytest
 
 from ol_tm.service import TMMatch, TMService
 

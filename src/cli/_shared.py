@@ -7,7 +7,6 @@ This module has zero dependencies on ol_cli or other cli submodules.
 from __future__ import annotations
 
 import json
-import os
 import signal
 import sys
 from pathlib import Path

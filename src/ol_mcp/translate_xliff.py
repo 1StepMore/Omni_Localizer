@@ -11,7 +11,6 @@ from typing import Any
 _logger = logging.getLogger(__name__)
 
 from ol_mcp.tools import (
-    TOOL_REGISTRY,
     _error_response,
     _get_config_path,
     _register_tool,

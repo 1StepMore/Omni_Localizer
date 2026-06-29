@@ -249,7 +249,6 @@ class TestLoadConfigSecurityIntegration:
         return bad
 
     def test_load_config_rejects_hardcoded_key(self, tmp_path, monkeypatch):
-        import os
         monkeypatch.delenv("OL_ALLOW_HARDCODED_KEYS", raising=False)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
         monkeypatch.setenv("OPENAI_API_KEY", "test-openai")

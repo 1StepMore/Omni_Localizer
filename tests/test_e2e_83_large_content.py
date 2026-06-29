@@ -21,13 +21,11 @@ litellm's in-process bucket.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 
-import pytest
 
 
 _CONFIG_PATH = str(

@@ -20,7 +20,6 @@ this — and they would have caught the original v0.4.6 bug.
 """
 from __future__ import annotations
 
-import pytest
 
 from ol_post.punctuation import (
     _FENCE_RE,

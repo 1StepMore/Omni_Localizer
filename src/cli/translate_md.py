@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import os
 import re
 import time
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
     from ol_terminology import Glossary
 
 from cli.cache import (
-    _cache_key,
     _cache_root,
     _check_cache,
     _clear_ol_cache,
@@ -32,7 +30,6 @@ from cli.cache import (
 from cli.frontmatter import (
     _extract_opp_metadata,
     _generate_frontmatter,
-    _generate_skip_frontmatter,
     _get_ol_version,
     _validate_lang_code,
 )
@@ -40,9 +37,7 @@ from cli._shared import (
     ExitCode,
     _apply_fake_llm_seam,
     _enforce_file_size,
-    _setup_signal_handler,
     ensure_output_dir,
-    is_interrupted,
     output_json,
     validate_input_file,
 )

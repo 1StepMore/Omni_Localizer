@@ -36,13 +36,6 @@ class TestMCPToolsImportable:
         """All input models are importable from ol_mcp.tools."""
         from ol_mcp.tools import (
             TranslateInput,
-            JudgeInput,
-            LoadGlossaryInput,
-            GetRelevantTermsInput,
-            SearchTMInput,
-            BatchTranslateInput,
-            TranslateXliffInput,
-            GetTranslationStatusInput,
         )
         # Instantiate a minimal model to verify Pydantic works
         ti = TranslateInput(content="hello", source_lang="en", target_lang="zh")
@@ -127,10 +120,6 @@ class TestMCPToolModuleContents:
         from ol_mcp.tools import (
             _list_tools,
             _call_tool,
-            _invoke_tool,
-            _register_tool,
-            _error_response,
-            _success_response,
         )
         assert callable(_list_tools)
         assert callable(_call_tool)

@@ -16,7 +16,6 @@ import inspect
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 _logger = logging.getLogger(__name__)
@@ -39,12 +38,8 @@ from ol_mcp.tracing import (
     start_call_tool_span as _ol_tracing_start_span,
     inject_traceparent as _ol_tracing_inject_traceparent,
 )
-from ol_mcp._errors import mcp_error_boundary
-from ol_mcp.security import get_default_validator
-from ol_mcp.auth import check_auth, auth_failure_response
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
-from ol_mcp.task_tracker import InMemoryTaskTracker, TaskStatus
-from ol_mcp.status import get_translation_status as _get_translation_status_impl
+from ol_mcp.task_tracker import InMemoryTaskTracker
 
 
 # ---------------------------------------------------------------------------

@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,7 +16,6 @@ if TYPE_CHECKING:
     from ol_terminology import Glossary
 
 from cli.cache import (
-    _cache_key,
     _cache_root,
     _check_cache,
     _clear_ol_cache,
@@ -26,11 +23,8 @@ from cli.cache import (
 )
 from cli.frontmatter import (
     _build_xliff_header_note,
-    _extract_opp_metadata,
     _extract_request_id,
-    _get_ol_version,
     _inject_xliff_header,
-    _validate_lang_code,
 )
 from cli.translate_md import (
     _UnitTranslationResult,
@@ -39,7 +33,6 @@ from cli.translate_md import (
     _build_restoration_pool,
     _load_env_for_cli,
     _load_glossary_or_none,
-    _translate_one_unit,
     _translate_units_concurrent,
 )
 from cli._shared import (

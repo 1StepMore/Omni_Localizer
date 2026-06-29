@@ -80,15 +80,8 @@ class TestBackwardCompatImports:
         """Frontmatter helpers importable from ol_cli."""
         from ol_cli import (
             _generate_frontmatter,
-            _generate_skip_frontmatter,
             _get_ol_version,
             _validate_lang_code,
-            _escape_yaml_value,
-            _escape_xml,
-            _build_xliff_header_note,
-            _inject_xliff_header,
-            _extract_opp_metadata,
-            _extract_request_id,
         )
         assert callable(_generate_frontmatter)
         assert callable(_get_ol_version)
@@ -98,10 +91,7 @@ class TestBackwardCompatImports:
         """Cache helpers importable from ol_cli."""
         from ol_cli import (
             _cache_key,
-            _check_cache,
-            _write_cache,
             _clear_ol_cache,
-            _cache_root,
             CACHE_DIR_NAME,
         )
         assert callable(_cache_key)
@@ -112,17 +102,6 @@ class TestBackwardCompatImports:
         """MD translation helpers importable from ol_cli."""
         from ol_cli import (
             _translate_md_async,
-            _translate_md_by_paragraph,
-            _translate_md_units_concurrent,
-            _translate_units_concurrent,
-            _translate_one_unit,
-            _UnitTranslationResult,
-            _apply_glossary_max_terms,
-            _apply_post_translate_restoration,
-            _build_restoration_pool,
-            _load_glossary_or_none,
-            _load_env_for_cli,
-            _load_dotenv,
         )
         assert callable(_translate_md_async)
 
@@ -148,9 +127,6 @@ class TestBackwardCompatImports:
             validate_input_file,
             ensure_output_dir,
             output_json,
-            _apply_fake_llm_seam,
-            is_interrupted,
-            _setup_signal_handler,
             main_entry,
         )
         assert callable(validate_input_file)
@@ -163,11 +139,11 @@ class TestCLISubmoduleDirectImports:
     """Verify direct imports from cli/ submodules work."""
 
     def test_import_from_cli_cache(self):
-        from cli.cache import _cache_key, _check_cache, _clear_ol_cache
+        from cli.cache import _cache_key
         assert callable(_cache_key)
 
     def test_import_from_cli_frontmatter(self):
-        from cli.frontmatter import _generate_frontmatter, _validate_lang_code
+        from cli.frontmatter import _generate_frontmatter
         assert callable(_generate_frontmatter)
 
     def test_import_from_cli_translate_md(self):

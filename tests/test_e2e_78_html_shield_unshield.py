@@ -20,11 +20,9 @@ The fix:
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 
-import pytest
 
 from ol_md.shield import (
     PLACEHOLDER_PATTERN,
@@ -46,7 +44,6 @@ class TestMarkerFormatIsLlmFriendly:
 
     def test_placeholder_pattern_matches_new_format(self):
         # Pattern should match the [OL:TYPE:NNNN] form.
-        import re
         text = "before [OL:HTML:0007] after"
         matches = PLACEHOLDER_PATTERN.findall(text)
         assert matches == [("HTML", "0007")], (
