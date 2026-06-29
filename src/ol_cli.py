@@ -56,6 +56,14 @@ from cli import *  # noqa: E402, F401, F403
 from cli._shared import (  # noqa: E402,F401
     ExitCode,
     _apply_fake_llm_seam,
+    ensure_output_dir,
+    output_json,
+    validate_input_file,
+)
+from cli.cache import (  # noqa: E402,F401
+    CACHE_DIR_NAME,
+    _cache_key,
+    _clear_ol_cache,
 )
 from cli.frontmatter import (  # noqa: E402,F401
     _build_xliff_header_note,
@@ -65,14 +73,20 @@ from cli.frontmatter import (  # noqa: E402,F401
     _get_ol_version,
     _validate_lang_code,
 )
-from cli.translate_md import (  # noqa: E402
+from cli.translate_md import (  # noqa: E402,F401
+    _translate_md_async,
+    _translate_units_concurrent,
     translate_md,
 )
-from cli.translate_xliff import (  # noqa: E402
+from cli.translate_xliff import (  # noqa: E402,F401
+    _translate_xliff_async,
+    _translate_xliff_pipelined,
     translate_xliff,
 )
-from cli.batch import (  # noqa: E402
-    translate_batch, extract_warnings,
+from cli.batch import (  # noqa: E402,F401
+    _translate_batch_async,
+    extract_warnings,
+    translate_batch,
 )
 
 # ---------------------------------------------------------------------------
