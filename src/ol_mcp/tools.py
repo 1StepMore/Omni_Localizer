@@ -267,6 +267,101 @@ class GetTranslationStatusInput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Inputs for new tools (Tier 1 + Tier 2 expose plan)
+# ---------------------------------------------------------------------------
+
+
+class ExtractTermsInput(BaseModel):
+    """Input for extract_terms."""
+
+    texts: list[str] = Field(description="Source texts to extract terms from")
+    top_n: int = Field(default=20, ge=1, le=100, description="Max terms to return")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class TMEntry(BaseModel):
+    """Single entry for add_tm_entries."""
+
+    source: str = Field(description="Source text")
+    target: str = Field(description="Target translation")
+    source_lang: str = Field(description="Source language code (e.g. 'en')")
+    target_lang: str = Field(description="Target language code (e.g. 'zh')")
+
+
+class TMAddInput(BaseModel):
+    """Input for add_tm_entries."""
+
+    tmx_path: str = Field(description="Path to .tmx file (created if missing)")
+    entries: list[TMEntry] = Field(description="List of translation entries to add")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class ShieldMdInput(BaseModel):
+    """Input for shield_md_text."""
+
+    content: str = Field(description="Markdown text to shield")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class UnshieldMdInput(BaseModel):
+    """Input for unshield_md_text."""
+
+    content: str = Field(description="Translated markdown containing [OL:...] markers")
+    shield_map: dict[str, str] = Field(description="shield_map from prior shield_md_text call")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class WarningEntryDict(BaseModel):
+    """Single warning entry for generate_report."""
+
+    file_path: str = ""
+    line_number: int = 0
+    warning_type: str = ""
+    severity: str = "medium"
+    model: str = ""
+    cost: float = 0.0
+    source_text: str = ""
+    target_text: str = ""
+    reference: str = ""
+
+
+class ModelCostEntryDict(BaseModel):
+    """Single model cost entry for generate_report."""
+
+    model_name: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_per_1k_tokens: float = 0.0
+
+
+class GenerateReportInput(BaseModel):
+    """Input for generate_report."""
+
+    output_dir: str = Field(description="Directory to write report.html and report.csv into")
+    job_id: str = Field(description="Job identifier (used in report filenames)")
+    force: bool = Field(default=False, description="Overwrite existing report files")
+    warnings: list[WarningEntryDict] = Field(default_factory=list, description="Warning entries")
+    model_costs: list[ModelCostEntryDict] = Field(default_factory=list, description="Model cost entries")
+    config_dir: str | None = Field(default=None, description="Base dir for relative paths")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class InspectConfigInput(BaseModel):
+    """Input for inspect_config."""
+
+    config_path: str | None = Field(default=None, description="Path to YAML config (defaults to OL_CONFIG_PATH or config/default.yaml)")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+class DisambiguateInput(BaseModel):
+    """Input for disambiguate."""
+
+    text: str = Field(description="Source text containing terms to disambiguate")
+    glossary: dict[str, dict[str, Any]] = Field(description="Glossary dict from load_glossary")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -452,6 +547,12 @@ from ol_mcp.translate_md import translate_md_text  # noqa: E402, F401
 from ol_mcp.judge import judge_text  # noqa: E402, F401
 from ol_mcp.glossary import load_glossary, get_relevant_terms  # noqa: E402, F401
 from ol_mcp.tm import search_tm  # noqa: E402, F401
+from ol_mcp.extract_terms import extract_terms  # noqa: E402, F401
+from ol_mcp.tm_add import add_tm_entries  # noqa: E402, F401
+from ol_mcp.shield_text import shield_md_text, unshield_md_text  # noqa: E402, F401
+from ol_mcp.generate_report import generate_report  # noqa: E402, F401
+from ol_mcp.inspect_config import inspect_config  # noqa: E402, F401
+from ol_mcp.disambiguate import disambiguate  # noqa: E402, F401
 from ol_mcp.batch_translate import batch_translate_texts  # noqa: E402, F401
 from ol_mcp.translate_xliff import translate_xliff, get_translation_status  # noqa: E402, F401
 
@@ -469,6 +570,14 @@ __all__ = [
     "BatchTranslateInput",
     "TranslateXliffInput",
     "GetTranslationStatusInput",
+    "ExtractTermsInput",
+    "TMAddInput",
+    "TMEntry",
+    "ShieldMdInput",
+    "UnshieldMdInput",
+    "GenerateReportInput",
+    "InspectConfigInput",
+    "DisambiguateInput",
     "translate_md_text",
     "judge_text",
     "load_glossary",
@@ -477,5 +586,12 @@ __all__ = [
     "batch_translate_texts",
     "translate_xliff",
     "get_translation_status",
+    "extract_terms",
+    "add_tm_entries",
+    "shield_md_text",
+    "unshield_md_text",
+    "generate_report",
+    "inspect_config",
+    "disambiguate",
     "ping",
 ]
