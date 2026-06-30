@@ -88,6 +88,14 @@ from cli.batch import (  # noqa: E402,F401
     extract_warnings,
     translate_batch,
 )
+from cli.capabilities import capabilities  # noqa: E402,F401
+from cli.shield_md import shield_md  # noqa: E402,F401
+from cli.unshield_md import unshield_md  # noqa: E402,F401
+from cli.extract_terms import extract_terms  # noqa: E402,F401
+from cli.add_tm_entries import add_tm_entries  # noqa: E402,F401
+from cli.disambiguate import disambiguate  # noqa: E402,F401
+from cli.generate_report import generate_report  # noqa: E402,F401
+from cli.inspect_config import inspect_config  # noqa: E402,F401
 
 # ---------------------------------------------------------------------------
 # Register CLI commands with typer app
@@ -96,6 +104,14 @@ app.command()(translate_md)
 app.command()(translate_xliff)
 app.command()(translate_batch)
 app.command()(extract_warnings)
+app.command()(capabilities)
+app.command()(shield_md)
+app.command()(unshield_md)
+app.command()(extract_terms)
+app.command()(add_tm_entries)
+app.command()(disambiguate)
+app.command()(generate_report)
+app.command()(inspect_config)
 
 
 # ---------------------------------------------------------------------------
