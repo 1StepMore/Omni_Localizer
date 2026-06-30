@@ -21,11 +21,46 @@ def load_glossary(
         None, "--config-dir",
         help="Base dir for relative paths (matches the MCP tool's config_dir)"
     ),
+    allow_dir: Optional[list[str]] = typer.Option(
+        None, "--allow-dir", "-a",
+        help=(
+            "Additional directory to allow for path validation. "
+            "Can be passed multiple times. "
+            "These are merged with OL_MCP_ALLOWED_DIRS env var and the default."
+        )
+    ),
 ) -> None:
     """Load a JSON glossary file and print as JSON."""
-    vresult = get_default_validator().validate_path(path)
+    from pathlib import Path as _P
+    from ol_mcp.security import PathValidator as _PV
+
+    # Build a custom validator that extends the default allowlist with
+    # any directories provided via --allow-dir. This is needed because
+    # the default validator only allows project root + /tmp + env-configured
+    # dirs, which is too restrictive when loading glossaries from other
+    # paths (e.g. a shared corpus directory).
+    base_dirs: list = []
+    env_dirs = __import__('os').environ.get(
+        "OL_MCP_ALLOWED_DIRS",
+        __import__('os').environ.get("OL_ALLOWED_DIRECTORIES", ""),
+    )
+    if env_dirs.strip():
+        base_dirs.extend(_P(d).resolve() for d in env_dirs.split(",") if d.strip())
+    if allow_dir:
+        base_dirs.extend(_P(d).resolve() for d in allow_dir if d.strip())
+    if not base_dirs:
+        # Fallback: default allowlist (project root + /tmp)
+        base_dirs = [_P.cwd().resolve(), _P("/tmp").resolve()]
+    validator = _PV(allowed_directories=base_dirs)
+
+    vresult = validator.validate_path(path)
     if not vresult.success:
-        typer.echo(f"Error: {vresult.error}", err=True)
+        typer.echo(
+            f"Error: {vresult.error}\n"
+            f"  Use --allow-dir <path> (can be repeated) to add a path to the allowlist,\n"
+            f"  or set OL_MCP_ALLOWED_DIRS env var (comma-separated).",
+            err=True,
+        )
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     try:

@@ -39,6 +39,23 @@ def search_tm(
         typer.echo(f"Error: TM search failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
+    if not matches:
+        # Better error message: help the user debug. The most common
+        # cause of 0 matches is a language-pair mismatch (TMX stores
+        # exact codes like "EN-US" while the CLI passes "en").
+        typer.echo(
+            f"No matches found for source_lang={source_lang!r} "
+            f"target_lang={target_lang!r} (threshold={threshold}).\n"
+            f"  Common causes:\n"
+            f"    1. TMX file uses different language codes "
+            f"(e.g. 'EN-US' vs 'en') — language match is exact\n"
+            f"    2. Threshold is too high — try --threshold 0.5 to see\n"
+            f"       lower-similarity matches\n"
+            f"    3. TMX file is empty or has wrong language pairs",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
     content = {
         "matches": [
             {
