@@ -7,6 +7,8 @@ This module has zero dependencies on ol_cli or other cli submodules.
 from __future__ import annotations
 
 import json
+import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -120,3 +122,69 @@ def _apply_fake_llm_seam() -> None:
     _span_mod.align_spans = lambda *a, **k: []
     _span_mod._omni_fake_seam = True
     sys.modules["span_aligner"] = _span_mod
+
+
+_ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
+
+
+def precheck_api_keys(config_path: str | None) -> None:
+    """Fail fast if a required API key env var is missing.
+
+    Scans the config YAML for ``${VAR}`` placeholders. If any are
+    referenced but not present in the current process environment
+    AND the FAKE_LLM seam is not enabled, this function prints a
+    clear, actionable error to stderr and raises ``typer.Exit``.
+
+    The pre-check is intentionally a lightweight regex scan on the
+    raw YAML text — it must NOT import ``ol_pool.router`` (which
+    takes ~30s on cold start via ``import litellm``) and must not
+    import ``ol_config.schema`` (which would load pydantic). The
+    whole point is to give the user a fast, clear error instead
+    of a multi-minute hang followed by silent garbage output.
+
+    Skipped when:
+      - ``OMNI_TEST_FAKE_LLM=1`` (test seam — no real keys needed)
+      - ``OMNI_RUN_REAL_LLM=1`` (explicit opt-in to network calls)
+      - The config file cannot be located or read (in that case we
+        let the existing code path emit a clearer error later)
+    """
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        return
+    if os.environ.get("OMNI_RUN_REAL_LLM") == "1":
+        return
+
+    resolved = config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
+    cfg_file = Path(resolved)
+    if not cfg_file.is_file():
+        return
+
+    try:
+        text = cfg_file.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    required: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        required.update(_ENV_VAR_RE.findall(line))
+    if not required:
+        return
+
+    missing = sorted(v for v in required if v not in os.environ)
+    if not missing:
+        return
+
+    typer.echo(
+        "Error: required API key(s) not set in environment: "
+        + ", ".join(missing)
+        + f"  (referenced as ${{...}} in {cfg_file})",
+        err=True,
+    )
+    typer.echo(
+        "Hint: set OMNI_TEST_FAKE_LLM=1 to skip real LLM calls, "
+        "or export the missing variables (e.g. `export ZHIPU_API_KEY=...`).",
+        err=True,
+    )
+    raise typer.Exit(code=ExitCode.PIPELINE_ERROR)

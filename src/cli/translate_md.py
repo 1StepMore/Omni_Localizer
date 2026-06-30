@@ -39,6 +39,7 @@ from cli._shared import (
     _enforce_file_size,
     ensure_output_dir,
     output_json,
+    precheck_api_keys,
     validate_input_file,
 )
 from ol_logging.core import get_logger
@@ -762,6 +763,8 @@ def translate_md(
     except Exception as e:  # expected — CLI error, echoes then exits
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    precheck_api_keys(config)
 
     logger.info(f"Command: translate_md {input}")
     try:
