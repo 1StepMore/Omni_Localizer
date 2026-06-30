@@ -96,6 +96,11 @@ from cli.add_tm_entries import add_tm_entries  # noqa: E402,F401
 from cli.disambiguate import disambiguate  # noqa: E402,F401
 from cli.generate_report import generate_report  # noqa: E402,F401
 from cli.inspect_config import inspect_config  # noqa: E402,F401
+from cli.judge_text import judge_text  # noqa: E402,F401
+from cli.load_glossary import load_glossary  # noqa: E402,F401
+from cli.search_tm import search_tm  # noqa: E402,F401
+from cli.translation_status import translation_status  # noqa: E402,F401
+from cli.ping import ping  # noqa: E402,F401
 
 # ---------------------------------------------------------------------------
 # Register CLI commands with typer app
@@ -112,6 +117,11 @@ app.command()(add_tm_entries)
 app.command()(disambiguate)
 app.command()(generate_report)
 app.command()(inspect_config)
+app.command()(judge_text)
+app.command()(load_glossary)
+app.command()(search_tm)
+app.command()(translation_status)
+app.command()(ping)
 
 
 # ---------------------------------------------------------------------------

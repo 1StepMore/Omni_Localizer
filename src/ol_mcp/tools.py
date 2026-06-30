@@ -279,6 +279,13 @@ class ExtractTermsInput(BaseModel):
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
+class ExtractWarningsInput(BaseModel):
+    """Input for extract_warnings."""
+
+    file_path: str = Field(description="Path to file to scan for warning markers (MD or XLIFF)")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
+
+
 class TMEntry(BaseModel):
     """Single entry for add_tm_entries."""
 
@@ -554,6 +561,7 @@ from ol_mcp.generate_report import generate_report  # noqa: E402, F401
 from ol_mcp.inspect_config import inspect_config  # noqa: E402, F401
 from ol_mcp.disambiguate import disambiguate  # noqa: E402, F401
 from ol_mcp.get_capabilities import get_capabilities  # noqa: E402, F401
+from ol_mcp.extract_warnings import extract_warnings  # noqa: E402, F401
 from ol_mcp.batch_translate import batch_translate_texts  # noqa: E402, F401
 from ol_mcp.translate_xliff import translate_xliff, get_translation_status  # noqa: E402, F401
 
@@ -605,4 +613,5 @@ __all__ = [
     "disambiguate",
     "ping",
     "get_capabilities",
+    "extract_warnings",
 ]
