@@ -553,8 +553,18 @@ from ol_mcp.shield_text import shield_md_text, unshield_md_text  # noqa: E402, F
 from ol_mcp.generate_report import generate_report  # noqa: E402, F401
 from ol_mcp.inspect_config import inspect_config  # noqa: E402, F401
 from ol_mcp.disambiguate import disambiguate  # noqa: E402, F401
+from ol_mcp.get_capabilities import get_capabilities  # noqa: E402, F401
 from ol_mcp.batch_translate import batch_translate_texts  # noqa: E402, F401
 from ol_mcp.translate_xliff import translate_xliff, get_translation_status  # noqa: E402, F401
+
+# Register get_capabilities (no Pydantic model — static info tool).
+# Done after the import above so the symbol is bound.
+TOOL_REGISTRY["get_capabilities"] = (
+    get_capabilities,
+    None,
+    "Return OL module capabilities: roles, language pairs, available tools. "
+    "Use this to discover what the server can do at runtime.",
+)
 
 # The TOOL_REGISTRY is now populated with all tools.
 
@@ -594,4 +604,5 @@ __all__ = [
     "inspect_config",
     "disambiguate",
     "ping",
+    "get_capabilities",
 ]
