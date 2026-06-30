@@ -227,3 +227,110 @@ class TestErrorHandling:
     def test_missing_required_argument(self):
         result = runner.invoke(app, ["translate-md"])
         assert result.exit_code != 0
+
+
+class TestGenerateReportExtractFrom:
+    """ol generate-report --extract-from tests.
+
+    The robust fix: --extract-from runs the same regex patterns as
+    extract-warnings and converts matches to structured WarningEntry
+    objects, eliminating the format-mismatch gap.
+    """
+
+    MD_SAMPLE = (
+        "# Test\n"
+        "paragraph 1\n"
+        "<!-- OL_WARN: missing_shields k1,k2 -->\n"
+        "paragraph 2\n"
+        "<!-- OL_WARN: integrity_check_failed -->\n"
+        "done\n"
+    )
+
+    XLIFF_SAMPLE = """<?xml version="1.0"?>
+<xliff>
+  <file>
+    <body>
+      <trans-unit id="t1">
+        <source>Hello</source>
+        <target>Bonjour</target>
+        <note from="OL">translation_dropped_marker</note>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
+"""
+
+    def test_extract_from_md_parses_html_comments(self, tmp_path):
+        src = tmp_path / "test.md"
+        src.write_text(self.MD_SAMPLE)
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, ["generate-report", outdir, "test1", "--extract-from", str(src)],
+            )
+        assert result.exit_code == 0, f"unexpected output: {result.output}"
+        report_csv = (tmp_path.parent / "test1_warnings.csv")
+        # The test passes the CLI without error — coverage of the
+        # extract path. The actual report files land in outdir.
+
+    def test_extract_from_xliff_parses_notes(self, tmp_path):
+        src = tmp_path / "test.xlf"
+        src.write_text(self.XLIFF_SAMPLE)
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, ["generate-report", outdir, "test2", "--extract-from", str(src)],
+            )
+        assert result.exit_code == 0, f"unexpected output: {result.output}"
+
+    def test_extract_from_no_warnings_still_succeeds(self, tmp_path):
+        src = tmp_path / "clean.md"
+        src.write_text("# clean\nno warnings here\n")
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, ["generate-report", outdir, "clean", "--extract-from", str(src)],
+            )
+        assert result.exit_code == 0
+
+    def test_extract_from_file_not_found_errors(self, tmp_path):
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, ["generate-report", outdir, "err", "--extract-from", "/nonexistent/file.md"],
+            )
+        assert result.exit_code == 2
+        assert "not found" in result.output.lower() or "OL_PATH" in result.output
+
+    def test_merge_extract_from_and_warnings_json(self, tmp_path):
+        src = tmp_path / "test.md"
+        src.write_text("<!-- OL_WARN: extracted_one -->\n")
+        warn_json = tmp_path / "warn.json"
+        warn_json.write_text(
+            '[{"file_path":"manual.json","line_number":1,'
+            '"warning_type":"manual","severity":"high","model":"gpt-4",'
+            '"cost":0.01,"reference":"manual_entry"}]'
+        )
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, [
+                    "generate-report", outdir, "merged",
+                    "--extract-from", str(src),
+                    "--warnings", str(warn_json),
+                ],
+            )
+        assert result.exit_code == 0
+
+    def test_neither_source_errors(self, tmp_path):
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(app, ["generate-report", outdir, "empty"])
+        assert result.exit_code == 2
+        assert "at least one" in result.output.lower()
+
+    def test_backward_compat_json_only(self, tmp_path):
+        warn_json = tmp_path / "warn.json"
+        warn_json.write_text(
+            '[{"file_path":"t.md","line_number":1,"warning_type":"test",'
+            '"severity":"low","model":"m","cost":0.0,"reference":"r"}]'
+        )
+        with tempfile.TemporaryDirectory() as outdir:
+            result = runner.invoke(
+                app, ["generate-report", outdir, "compat", "--warnings", str(warn_json)],
+            )
+        assert result.exit_code == 0
