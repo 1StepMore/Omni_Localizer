@@ -32,7 +32,7 @@ os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 
 
 # Several test files transitively import litellm, torch, transformers,
-# sentence_transformers, keybert, yake, and typer via:
+# sentence_transformers, and typer via:
 #   ol_batch/__init__.py -> ol_batch.processor
 #   -> ol_cli / ol_md / ol_terminology / ol_pool
 # These take 30-90s+ to import and aren't needed for the unit/integration
@@ -193,14 +193,11 @@ torch_stub.cuda = torch_cuda_stub
 
 sys.modules.setdefault("transformers", _make_stub("transformers", _TRANSFORMERS_ATTRS))
 sys.modules.setdefault("span_aligner", _make_stub("span_aligner", _SPAN_ALIGNER_ATTRS))
-for _heavy in ("keybert", "yake"):
-    sys.modules.setdefault(_heavy, _make_stub(_heavy))
 
 
 _BLOCKED_TOPS = frozenset({
     "litellm", "torch", "transformers",
-    "sentence_transformers", "keybert", "yake",
-    "span_aligner",
+    "sentence_transformers", "span_aligner",
 })
 
 _SPAN_ALIGNER_ATTRS = {

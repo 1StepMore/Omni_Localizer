@@ -1,7 +1,7 @@
 """Tests for ML dep optionality (OL Issue #6).
 
 Verify that:
-1. `import ol` does NOT eagerly import keybert/transformers/yake/sentence_transformers
+1. `import ol` does NOT eagerly import yake/sentence_transformers
 2. ML features raise clean ImportError when deps are not installed
 """
 import os
@@ -10,7 +10,7 @@ import sys
 
 
 def test_import_ol_without_ml_deps():
-    """import ol must not trigger keybert/transformers/yake/sentence_transformers import.
+    """import ol must not trigger yake/sentence_transformers import.
 
     Uses a subprocess to avoid conftest.py pre-stubs that already populate
     sys.modules with stubs for all ML packages (done to speed up test collection).
@@ -29,7 +29,7 @@ import ol
 import sys
 
 failed = []
-for mod in ('keybert', 'transformers', 'yake', 'sentence_transformers'):
+for mod in ('yake', 'sentence_transformers'):
     if mod in sys.modules:
         failed.append(mod)
 
@@ -52,7 +52,7 @@ def test_ml_extract_terms_raises_clean_error():
     """extract_terms raises ImportError with pip install hint when ML deps are missing.
 
     Uses a subprocess with PYTHONPATH to load ol sources but without ML packages.
-    The key is to ensure keybert/yake/sentence_transformers/transformers are NOT
+    The key is to ensure yake/sentence_transformers are NOT
     in sys.modules before the import.
     """
     env = os.environ.copy()
@@ -64,11 +64,21 @@ def test_ml_extract_terms_raises_clean_error():
             "-c",
             """
 import sys
+
+# Block yake from being (re-)importable to simulate "not installed"
+class _BlockYake:
+    def find_spec(self, name, path, target=None):
+        if name == 'yake' or name.startswith('yake.'):
+            raise ImportError(f"blocked: {name}")
+        return None
+
+sys.meta_path.insert(0, _BlockYake())
+
 # Sanity: unimport any pre-stubbed ML packages that may have leaked in
 for _mod in list(sys.modules.keys()):
-    if _mod in ('keybert', 'yake', 'sentence_transformers', 'transformers') or \
-       _mod.startswith('keybert.') or _mod.startswith('yake.') or \
-       _mod.startswith('sentence_transformers.') or _mod.startswith('transformers.'):
+    if _mod in ('yake', 'sentence_transformers') or \
+       _mod.startswith('yake.') or \
+       _mod.startswith('sentence_transformers.'):
         del sys.modules[_mod]
 
 from ol_terminology.extractor import extract_terms

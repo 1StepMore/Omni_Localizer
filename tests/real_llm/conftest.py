@@ -3,7 +3,7 @@
 This conftest is scoped to ``tests/real_llm/``. The root
 ``tests/conftest.py`` inserts a ``_HeavyImportBlocker`` at
 ``sys.meta_path[0]`` so the unit tests run fast (litellm/torch/
-transformers/keybert/yake are stubbed). The ``real_model_pool`` fixture
+transformers are stubbed). The ``real_model_pool`` fixture
 below removes that blocker, re-imports the real ``litellm``, and
 re-binds it in ``ol_pool.router``'s namespace before instantiating
 ``ModelPool`` from ``config/local.yaml`` — so real LLM calls work when

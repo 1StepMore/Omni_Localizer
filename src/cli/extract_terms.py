@@ -1,10 +1,10 @@
-"""ol extract-terms — Auto-extract key terms from source text (KeyBERT+YAKE).
+"""ol extract-terms — Extract key terms from source text (YAKE).
 
 Companion CLI to the OL MCP extract_terms tool. Reads a markdown
 file, splits into paragraphs (by blank line), and extracts top-N
 terms. Outputs JSON (term -> score) to file or stdout.
 
-If KeyBERT and YAKE are not installed, prints a clear actionable error
+If YAKE is not installed, prints a clear actionable error
 and exits non-zero (matches the MCP tool's behavior).
 """
 from __future__ import annotations
@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -50,8 +49,9 @@ def extract_terms(
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
     all_terms = _extract_terms(texts)
+    # YAKE scores: lower = more relevant. Sort ascending to get top terms first.
     sorted_terms = sorted(
-        all_terms.items(), key=lambda kv: kv[1], reverse=True
+        all_terms.items(), key=lambda kv: kv[1], reverse=False
     )[:top_n]
     result = {"terms": dict(sorted_terms), "term_count": len(sorted_terms)}
 

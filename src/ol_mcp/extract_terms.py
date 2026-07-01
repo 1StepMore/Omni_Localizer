@@ -1,7 +1,7 @@
 """extract_terms MCP tool for Omni-Localizer.
 
-Auto-build glossary from source texts using KeyBERT (sentence-transformers)
-with YAKE fallback. Returns top-N terms by importance score.
+Auto-build glossary from source texts using YAKE. Returns top-N terms
+by importance score (lower YAKE score = more relevant).
 """
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import json
 
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
-from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
     _error_response,
     _register_tool,
@@ -22,8 +21,7 @@ from ol_mcp.tools import (
 @_register_tool(
     "extract_terms",
     ExtractTermsInput,
-    "Auto-extract key terms from source texts using KeyBERT with YAKE fallback. "
-    "Returns top-N terms by importance score. ML deps required: pip install omni-localizer[ml].",
+    "Extract key terms from source texts using YAKE. ML deps required: pip install omni-localizer[ml].",
 )
 @mcp_error_boundary
 async def extract_terms(params: ExtractTermsInput) -> str:
@@ -46,15 +44,16 @@ async def extract_terms(params: ExtractTermsInput) -> str:
         return json.dumps(
             _error_response(
                 "OL_ML_DEPS_MISSING",
-                f"KeyBERT/YAKE not installed. Run: pip install omni-localizer[ml] ({e})",
+                f"YAKE not installed. Run: pip install omni-localizer[ml] ({e})",
             ),
             ensure_ascii=False,
         )
 
     try:
         all_terms = _extract_terms(params.texts)
+        # YAKE scores: lower = more relevant. Sort ascending to get top terms first.
         sorted_terms = sorted(
-            all_terms.items(), key=lambda kv: kv[1], reverse=True
+            all_terms.items(), key=lambda kv: kv[1], reverse=False
         )[: params.top_n]
         content = {
             "terms": dict(sorted_terms),
