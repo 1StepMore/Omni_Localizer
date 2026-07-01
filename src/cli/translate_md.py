@@ -656,6 +656,7 @@ async def _translate_md_by_paragraph(
     for i, p in enumerate(paragraphs):
         result_json = await translate_md_text(TranslateInput(
             content=p, source_lang=src, target_lang=tgt, add_frontmatter=False,
+            config_path=config,
         ))
         result = json.loads(result_json)
         if result.get("success"):
