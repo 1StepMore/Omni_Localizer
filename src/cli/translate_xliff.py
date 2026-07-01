@@ -42,6 +42,7 @@ from cli._shared import (
     output_json,
     precheck_api_keys,
     validate_input_file,
+    warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
 from ol_xliff.pipeline import XLIFFRepairPipeline
@@ -286,6 +287,8 @@ async def _translate_xliff_async(
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
+    warn_fake_llm_mode()
+
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
         # triggering litellm's heavy import chain.

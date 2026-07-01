@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from cli._shared import ExitCode, validate_input_file
+from cli._shared import ExitCode, validate_input_file, warn_fake_llm_mode
 from ol_style.cache import ProfileCache
 from ol_style.doc_profiler import profile_document
 
@@ -44,6 +44,8 @@ def profile_doc(
     except typer.BadParameter as e:
         typer.echo(f"Error: {e.message}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    warn_fake_llm_mode()
 
     try:
         content = path.read_text(encoding="utf-8")

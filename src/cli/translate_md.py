@@ -41,6 +41,7 @@ from cli._shared import (
     output_json,
     precheck_api_keys,
     validate_input_file,
+    warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
@@ -455,6 +456,8 @@ async def _translate_md_async(
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
     # The glossary param may be None (no glossary configured).
+    warn_fake_llm_mode()
+
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
         # triggering litellm's heavy import chain.

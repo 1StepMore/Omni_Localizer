@@ -188,3 +188,31 @@ def precheck_api_keys(config_path: str | None) -> None:
         err=True,
     )
     raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
+
+# Module-level guard to prevent duplicate warnings within a process
+_fake_llm_warned = False
+
+
+def warn_fake_llm_mode() -> None:
+    """Print a one-time stderr warning when FAKE_LLM mode is active.
+
+    Fired by CLI commands that use ModelPool or _FakeModelPool when
+    OMNI_TEST_FAKE_LLM=1. The warning is written to stderr (not stdout)
+    so it does not pollute JSON output, and fires only once per process
+    to avoid duplication in batch sessions.
+
+    To suppress: unset OMNI_TEST_FAKE_LLM. There is intentionally no
+    other override — users running with FAKE_LLM should see this
+    confirmation that output is not real.
+    """
+    global _fake_llm_warned
+    if _fake_llm_warned:
+        return
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        typer.echo(
+            "WARNING: OMNI_TEST_FAKE_LLM=1 is set — using fake LLM responses. "
+            "Output is NOT a real translation. Unset the env var for real translations.",
+            err=True,
+        )
+        _fake_llm_warned = True

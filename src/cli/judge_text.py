@@ -10,7 +10,7 @@ from typing import Optional
 
 import typer
 
-from cli._shared import ExitCode
+from cli._shared import ExitCode, warn_fake_llm_mode
 
 
 def judge_text(
@@ -49,6 +49,7 @@ def judge_text(
         import asyncio
         from ol_pool.router import ModelPool
         from ol_mcp.tools import _get_config_path
+        warn_fake_llm_mode()
         pool = ModelPool.get_instance(_get_config_path(config))
         result = asyncio.run(pool.judge(
             source, target, source_lang, target_lang, glossary_dict,

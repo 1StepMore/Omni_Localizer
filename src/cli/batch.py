@@ -16,6 +16,7 @@ from cli._shared import (
     ensure_output_dir,
     output_json,
     validate_input_file,
+    warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
 
@@ -54,6 +55,7 @@ async def _translate_batch_async(
     typer.echo(f"Found {len(files)} files to process")
 
     batch_config = BatchConfig(max_concurrent=max_concurrent)
+    warn_fake_llm_mode()
     pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     # POST_MORTEM OL-1: surface LQA knobs to the batch path.
