@@ -644,7 +644,14 @@ async def _translate_md_by_paragraph(
     add_frontmatter: bool,
     glossary: 'Glossary | None' = None,
 ) -> str:
-    from ol_mcp.tools import translate_md_text, TranslateInput
+    # Issue #35: Bypass the MCP tool (translate_md_text) to avoid
+    # import-lock deadlock when concurrent=5 — the MCP handler imports
+    # `from ol_cli import ...` on every call, which deadlocks with the
+    # already-importing `cli.translate_md`. Directly use the low-level
+    # shield → pool.translate → unshield → repair pipeline instead.
+    from ol_md.shield import shield_markdown, unshield_markdown
+    from ol_md.pipeline import MDRepairPipeline
+    from ol_pool.router import ModelPool
 
     raw = input_path.read_text(encoding="utf-8")
     parts = raw.split("---", 2)
@@ -652,23 +659,24 @@ async def _translate_md_by_paragraph(
     body = re.sub(r"^#+\s.*$", "", body, flags=re.MULTILINE)
     paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
 
-    # Issue #35: --chunk-by-paragraph was sequential; for full documents
-    # with many paragraphs this appeared to deadlock (no progress). Now
-    # bounded-concurrent via a Semaphore; gather preserves input order.
     _CHUNK_CONCURRENCY = 5
     sem = asyncio.Semaphore(_CHUNK_CONCURRENCY)
+    pool = ModelPool.get_instance(config) if config else ModelPool.get_instance()
 
     async def _translate_one_para(idx: int, p: str) -> tuple[int, str]:
         async with sem:
-            result_json = await translate_md_text(TranslateInput(
-                content=p, source_lang=src, target_lang=tgt,
-                add_frontmatter=False, config_path=config,
-            ))
-        result = json.loads(result_json)
-        if result.get("success"):
-            return idx, result.get("translated", p)
-        logger.warning(f"Para {idx} translation failed: {result.get('error', '?')[:80]}")
-        return idx, p
+            try:
+                shielded, shield_map = shield_markdown(p)
+                translated = await pool.translate(shielded, src, tgt)
+                if shield_map:
+                    unshielded = unshield_markdown(translated, shield_map)
+                    repaired = MDRepairPipeline().repair(unshielded, p, shield_map)
+                else:
+                    repaired = translated
+                return idx, repaired
+            except Exception as e:
+                logger.warning(f"Para {idx} translation failed: {str(e)[:80]}")
+                return idx, p
 
     tasks = [_translate_one_para(i, p) for i, p in enumerate(paragraphs)]
     results = await asyncio.gather(*tasks)
