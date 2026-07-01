@@ -5,7 +5,6 @@ section into the prompt without breaking backward compatibility.
 """
 from __future__ import annotations
 
-import pytest
 
 
 class TestBuildTranslatePromptBackwardCompat:

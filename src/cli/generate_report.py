@@ -7,7 +7,6 @@ report in the specified output directory, and prints the report paths.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Optional
 

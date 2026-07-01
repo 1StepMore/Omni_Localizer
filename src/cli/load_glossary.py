@@ -12,7 +12,6 @@ from typing import Optional
 import typer
 
 from cli._shared import ExitCode
-from ol_mcp.security import get_default_validator
 
 
 def load_glossary(

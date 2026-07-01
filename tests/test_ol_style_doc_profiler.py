@@ -6,8 +6,6 @@ that profile_document() should parse into a StyleGuide.
 """
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 
 import pytest
 
@@ -134,7 +132,7 @@ class TestProfileDocumentEdgeCases:
     @pytest.mark.asyncio
     async def test_profile_handles_malformed_llm_response(self):
         """If LLM returns malformed JSON, should fall back to a default StyleGuide."""
-        from ol_style.doc_profiler import profile_document, _parse_profile_response
+        from ol_style.doc_profiler import _parse_profile_response
         # Direct test of the parser
         bad = _parse_profile_response("not json at all")
         assert isinstance(bad, StyleGuide)

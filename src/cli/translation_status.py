@@ -6,7 +6,6 @@ task status (pending, running, completed, failed) and result info.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import typer
 

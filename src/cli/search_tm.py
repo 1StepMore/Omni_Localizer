@@ -5,7 +5,6 @@ Companion CLI to the OL MCP search_tm tool. Prints matches as JSON.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import typer
 

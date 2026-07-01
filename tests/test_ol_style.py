@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -128,7 +127,6 @@ class TestProfileCache:
 
     def test_cache_miss_returns_none(self):
         from ol_style.cache import ProfileCache
-        from ol_style.schema import StyleGuide
         cache = ProfileCache()
         result = cache.get("some content never seen before")
         assert result is None
