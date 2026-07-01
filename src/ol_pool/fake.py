@@ -57,5 +57,37 @@ class _FakeModelPool:
             "score": 9.0,
         }
 
+    async def profile(
+        self,
+        content: str,
+        source_lang: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Return a deterministic placeholder StyleGuide dict.
+
+        Mirrors the shape of :class:`ol_style.schema.StyleGuide.to_dict()`.
+        Used by ``ol_style.doc_profiler`` tests in FAKE_LLM mode.
+
+        Real ``ModelPool`` will route this through a "profiling" role
+        group in the litellm Router. The fake seam just returns a
+        predictable dict so the call chain can be exercised without
+        network access.
+        """
+        self._call_count += 1
+        return {
+            "tone": "neutral",
+            "register": "general",
+            "target_audience": "general readers",
+            "key_conventions": [
+                "Use clear, concise language",
+                "Preserve technical terms verbatim when first introduced",
+            ],
+            "vocabulary": [],
+            "avoid": ["obscure jargon", "ambiguous pronouns"],
+            "summary": "Auto-generated profile (FAKE_LLM seam).",
+            "_source_lang": source_lang,
+            "_content_length": len(content),
+        }
+
     def reset(self) -> None:
         self._call_count = 0
