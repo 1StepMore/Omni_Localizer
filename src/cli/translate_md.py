@@ -652,18 +652,27 @@ async def _translate_md_by_paragraph(
     body = re.sub(r"^#+\s.*$", "", body, flags=re.MULTILINE)
     paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
 
-    translated: list[str] = []
-    for i, p in enumerate(paragraphs):
-        result_json = await translate_md_text(TranslateInput(
-            content=p, source_lang=src, target_lang=tgt, add_frontmatter=False,
-            config_path=config,
-        ))
+    # Issue #35: --chunk-by-paragraph was sequential; for full documents
+    # with many paragraphs this appeared to deadlock (no progress). Now
+    # bounded-concurrent via a Semaphore; gather preserves input order.
+    _CHUNK_CONCURRENCY = 5
+    sem = asyncio.Semaphore(_CHUNK_CONCURRENCY)
+
+    async def _translate_one_para(idx: int, p: str) -> tuple[int, str]:
+        async with sem:
+            result_json = await translate_md_text(TranslateInput(
+                content=p, source_lang=src, target_lang=tgt,
+                add_frontmatter=False, config_path=config,
+            ))
         result = json.loads(result_json)
         if result.get("success"):
-            translated.append(result.get("translated", p))
-        else:
-            translated.append(p)
-            logger.warning(f"Para {i} translation failed: {result.get('error', '?')[:80]}")
+            return idx, result.get("translated", p)
+        logger.warning(f"Para {idx} translation failed: {result.get('error', '?')[:80]}")
+        return idx, p
+
+    tasks = [_translate_one_para(i, p) for i, p in enumerate(paragraphs)]
+    results = await asyncio.gather(*tasks)
+    translated = [t for _, t in sorted(results, key=lambda x: x[0])]
 
     full = "\n\n".join(translated)
 
