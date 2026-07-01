@@ -6,7 +6,6 @@ the MCP tool layer and call the underlying pipeline (shield → pool.translate
 flag is propagated to ModelPool.get_instance so the right config is
 loaded for the LLM pool.
 """
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
