@@ -31,7 +31,7 @@ class TestProfileDocCLI:
             str(sample_md),
         ])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert "tone" in output
         assert "register" in output
         assert "summary" in output
@@ -55,7 +55,7 @@ class TestProfileDocCLI:
             "--source-lang", "zh",
         ])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         # Standard fields are present in FAKE_LLM mode
         assert "tone" in output
         assert "register" in output

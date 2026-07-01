@@ -47,7 +47,7 @@ class TestVerifyTermsCLI:
         # Should exit 0 even without glossary (consistency check only)
         assert result.exit_code == 0
         # Should print a JSON report to stdout
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert "verified" in output
         assert "mismatches" in output
         assert "inconsistencies" in output
@@ -61,7 +61,7 @@ class TestVerifyTermsCLI:
             "--glossary", str(glossary),
         ])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert output["total_terms_checked"] == 1
         assert len(output["verified"]) == 1
 
@@ -91,7 +91,7 @@ class TestVerifyTermsCLI:
             "--confidence-threshold", "0.5",
         ])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         # Lower threshold should still verify the term (confidence is 0.95 > 0.5)
         assert len(output["verified"]) == 1
 
@@ -135,6 +135,6 @@ class TestVerifyTermsCLIMismatch:
             "--glossary", str(glossary),
         ])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert len(output["mismatches"]) == 1
         assert output["mismatches"][0]["term"] == "API"
