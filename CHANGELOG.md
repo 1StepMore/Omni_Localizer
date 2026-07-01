@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Terminology Verifier** (`src/ol_terminology/verifier.py`): pure-logic post-translation terminology checker. Compares source/target text against a verified glossary and reports `verified` / `mismatches` / `absent` / `inconsistencies` / `low_confidence`. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. No LLM, no network — designed for Agent-layer upstream web search + downstream lightweight check. Exposed via `ol verify-terms` CLI and `verify_terms` MCP tool.
+
+- **Document Profiler** (`src/ol_style/`): new `ol_style/` module providing `StyleGuide` dataclass, `ProfileCache` (file-hash based), and `profile_document()` async function. Analyzes a document's writing style via the new `profiling` LLM role and emits a structured `StyleGuide` (tone, register, target_audience, key_conventions, vocabulary, avoid, summary). Exposed via `ol profile-doc` CLI and `profile_doc` MCP tool. Profile results are cached by content hash for reuse across runs.
+
+- **`profiling` LLM role** (`src/ol_config/schema.py`, `src/ol_pool/router.py`, `config/default.yaml`): added a new optional 4th LLM role. `LLMModelRole.PROFILING` is an enum value; `LLMPoolConfig.profiling` is a `list[LLMModelConfig] = []` field; `ModelPool._breakers` / `_build_model_list` / `_build_fallbacks` all include the new role. The `>= 2` models-per-role validator still applies to `translation`/`judging`/`restoration` only; `profiling` is optional and may have 0 or N models. Default config gets a `profiling:` section with one `glm-4-flash` entry.
+
+- **`style_guide` parameter in `build_translate_prompt()`** (`src/ol_terminology/rag_injector.py`): optional `style_guide: str | None = None` parameter. When provided and non-empty, injects a `[Style Guide]` section between the glossary terms and the source text. Backward-compatible — existing callers without `style_guide` produce identical output.
+
+- **`_FakeModelPool.profile()` test seam** (`src/ol_pool/fake.py`): added `async def profile(content, source_lang, **kwargs) -> dict` returning a deterministic StyleGuide-shaped dict. Enables hermetic tests via `OMNI_TEST_FAKE_LLM=1`.
+
+- **New CLI subcommands** (`src/cli/verify_terms.py`, `src/cli/profile_doc.py`): `ol verify-terms --source S --target T [--glossary G] [--output O] [--confidence-threshold 0.7]` and `ol profile-doc INPUT [-o O] [--source-lang en] [--config C] [--cache-dir DIR]`.
+
+- **New MCP tools** (`src/ol_mcp/verify_terms.py`, `src/ol_mcp/profile_doc.py`): `verify_terms` and `profile_doc` registered in `TOOL_REGISTRY` with `VerifyTermsInput` and `ProfileDocInput` Pydantic models. MCP tool count increased from 18 to 20.
+
 ### Changed
 
 - **`fix(pyproject.toml)`: pin `sentence-transformers` upper bound** — was `>=3.0.0`, now `>=3.0.0,<4.0.0`. Prevents accidental major-version breakage (sentence-transformers 4.x will likely have breaking API changes). The Python 3.13 `import transformers` hang documented earlier still applies; see `README.md` § "Python 3.13 note" for workarounds.
