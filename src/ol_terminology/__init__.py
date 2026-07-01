@@ -21,6 +21,12 @@ from ol_terminology.glossary_class import Glossary
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_terminology.extractor import extract_terms
 from ol_terminology.disambiguator import disambiguate
+from ol_terminology.verifier import (
+    TermVerificationEntry,
+    InconsistencyEntry,
+    TermVerificationReport,
+    verify_translation,
+)
 
 __all__ = [
     "Glossary",          # NEW v1 dataclass-based API (PR12)
@@ -29,4 +35,8 @@ __all__ = [
     "build_translate_prompt",
     "extract_terms",
     "disambiguate",
+    "TermVerificationEntry",
+    "InconsistencyEntry",
+    "TermVerificationReport",
+    "verify_translation",
 ]
