@@ -1,13 +1,15 @@
-"""Test for Issue #35 fix: --chunk-by-paragraph should translate paragraphs concurrently.
+"""Test for Issue #35: --chunk-by-paragraph translates paragraphs concurrently.
 
-Before the fix, paragraphs were translated sequentially. For 20 paragraphs
-at 0.5s each, sequential takes 10s. With concurrency=5, should take ~2s.
+The fix in commit 95b893a bypasses the MCP tool layer and uses the
+underlying pipeline (shield → pool.translate → unshield → repair) directly.
+This test verifies:
+1. Concurrency: 20 paragraphs complete in <6s with 0.5s/call (vs 10s sequential)
+2. Order preservation: output order matches input order
 """
 import asyncio
-import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -43,7 +45,7 @@ def _write_config(path: Path) -> None:
 
 class TestChunkByParagraphConcurrency:
     def test_20_paragraphs_translate_concurrently(self):
-        """20 paragraphs × 0.5s LLM each: concurrent should finish in <5s, sequential would take 10s."""
+        """20 paragraphs at 0.5s each: concurrent <6s vs sequential ~10s."""
         md = Path("/tmp/ulw_test_concurrency.md")
         md.write_text("\n\n".join([f"Paragraph {i}." for i in range(20)]), encoding="utf-8")
         config = Path("/tmp/ulw_test_concurrency_config.yaml")
@@ -51,19 +53,15 @@ class TestChunkByParagraphConcurrency:
         out = Path("/tmp/ulw_test_concurrency_out")
         out.mkdir(exist_ok=True)
 
-        async def slow_translate(params):
+        async def slow_translate(text, src, tgt, context=None):
             await asyncio.sleep(0.5)
-            return json.dumps({
-                "success": True,
-                "translated": f"TRANSLATED_P{hash(params.content) % 1000}",
-                "warnings": [],
-                "source_lang": params.source_lang,
-                "target_lang": params.target_lang,
-            })
+            return f"TRANSLATED_{text[:20]}"
 
-        start = time.monotonic()
-        with patch("ol_mcp.tools.translate_md_text", new_callable=AsyncMock) as mock:
-            mock.side_effect = slow_translate
+        with patch("ol_pool.router.ModelPool.get_instance") as mock_get:
+            mock_pool = MagicMock()
+            mock_pool.translate = AsyncMock(side_effect=slow_translate)
+            mock_get.return_value = mock_pool
+            start = time.monotonic()
             result = runner.invoke(app, [
                 "translate-md",
                 str(md),
@@ -72,19 +70,17 @@ class TestChunkByParagraphConcurrency:
                 "--chunk-by-paragraph",
                 "--no-cache",
             ])
-        elapsed = time.monotonic() - start
+            elapsed = time.monotonic() - start
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         # With concurrency=5, 20 paras / 5 = 4 batches * 0.5s = 2s + overhead
-        # With sequential, 20 * 0.5s = 10s.
-        # Threshold: 6s (allows 3x overhead margin for sequential-equivalent)
         assert elapsed < 6.0, (
             f"20 paragraphs at 0.5s each took {elapsed:.2f}s — "
             f"concurrent translation not working (sequential would be ~10s)"
         )
 
     def test_paragraphs_preserve_input_order(self):
-        """Even with concurrent translation, the output order must match input order."""
+        """Even with concurrent translation, output order matches input order."""
         md = Path("/tmp/ulw_test_concurrency_order.md")
         paragraphs = [f"Unique_paragraph_{i:03d}_content." for i in range(10)]
         md.write_text("\n\n".join(paragraphs), encoding="utf-8")
@@ -93,19 +89,15 @@ class TestChunkByParagraphConcurrency:
         out = Path("/tmp/ulw_test_concurrency_order_out")
         out.mkdir(exist_ok=True)
 
-        # Mock that returns the same text it received (to verify ordering)
-        async def echo_translate(params):
+        # Echo the input so we can verify ordering
+        async def echo_translate(text, src, tgt, context=None):
             await asyncio.sleep(0.1)
-            return json.dumps({
-                "success": True,
-                "translated": params.content,
-                "warnings": [],
-                "source_lang": params.source_lang,
-                "target_lang": params.target_lang,
-            })
+            return text
 
-        with patch("ol_mcp.tools.translate_md_text", new_callable=AsyncMock) as mock:
-            mock.side_effect = echo_translate
+        with patch("ol_pool.router.ModelPool.get_instance") as mock_get:
+            mock_pool = MagicMock()
+            mock_pool.translate = AsyncMock(side_effect=echo_translate)
+            mock_get.return_value = mock_pool
             result = runner.invoke(app, [
                 "translate-md",
                 str(md),
@@ -116,13 +108,8 @@ class TestChunkByParagraphConcurrency:
             ])
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
-        # Read the output file and verify order
         out_file = out / md.name
         output = out_file.read_text(encoding="utf-8")
-        for i, p in enumerate(paragraphs):
-            assert p in output, f"Paragraph {i} missing from output"
-        # Verify order: each paragraph should appear in the output in the
-        # same order as the input.
         positions = [output.index(p) for p in paragraphs]
         assert positions == sorted(positions), (
             f"Output order not preserved: positions={positions}"
