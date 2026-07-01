@@ -242,6 +242,16 @@ class ModelPool:
         # MagicMock (by @patch in tests), short-circuit translate/judge to
         # return placeholder values instead of attempting real LLM calls.
         self._test_mode = isinstance(Router, MagicMock)
+        # Issue #30: short-circuit to _FakeModelPool when OMNI_TEST_FAKE_LLM=1
+        if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+            from ol_pool.fake import _FakeModelPool  # local import to avoid circular
+            self._test_mode = True
+            self._router = None
+            self._fake_pool = _FakeModelPool()
+            self._cache_enabled = False
+            self._cache = _PromptCache(max_size=0, ttl_seconds=0.0)
+            self._rate_limit_hits = {}
+            return
         result = load_config(config_path)
         try:
             config = result[0]
@@ -611,6 +621,13 @@ class ModelPool:
         temperature: float = 0.0,
     ) -> dict:
         if self._test_mode:
+            if hasattr(self, "_fake_pool"):
+                return await self._fake_pool.judge(
+                    source, target,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    **({"glossary": glossary} if glossary else {}),
+                )
             return {"score": 0, "reason": "placeholder"}
         terminology_section = ""
         if glossary:

@@ -172,6 +172,8 @@ class TestJudgeService:
             "fluency": 75,
             "adequacy": 85,
             "score": 80,
+            "terminology_consistency": 80,
+            "format_preservation": 80,
         })
         service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
 
@@ -202,6 +204,8 @@ class TestJudgeService:
             "fluency": 70,
             "adequacy": 70,
             "score": 70,
+            "terminology_consistency": 70,
+            "format_preservation": 70,
         })
         service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
 

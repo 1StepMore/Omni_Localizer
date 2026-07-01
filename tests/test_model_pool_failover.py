@@ -58,14 +58,20 @@ class TestModelPool:
     @patch("src.ol_pool.router.load_config")
     @patch("src.ol_pool.router.Router")
     def test_model_pool_initializes_router(self, mock_router_class, mock_load_config, mock_config):
-        mock_load_config.return_value = mock_config
-        pool = ModelPool()
-        mock_router_class.assert_called_once()
-        call_kwargs = mock_router_class.call_args.kwargs
-        assert call_kwargs["routing_strategy"] == "simple-shuffle"
-        assert call_kwargs["num_retries"] == 2
-        assert call_kwargs["timeout"] == 120.0
-        assert "fallbacks" in call_kwargs
+        import os
+        original = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
+        try:
+            mock_load_config.return_value = mock_config
+            pool = ModelPool()
+            mock_router_class.assert_called_once()
+            call_kwargs = mock_router_class.call_args.kwargs
+            assert call_kwargs["routing_strategy"] == "simple-shuffle"
+            assert call_kwargs["num_retries"] == 2
+            assert call_kwargs["timeout"] == 120.0
+            assert "fallbacks" in call_kwargs
+        finally:
+            if original is not None:
+                os.environ["OMNI_TEST_FAKE_LLM"] = original
 
     @patch("src.ol_pool.router.load_config")
     def test_build_model_list_creates_correct_structure(self, mock_load_config, mock_config):
@@ -175,32 +181,38 @@ class TestModelPool:
         self, mock_router_class, mock_load_config,
     ):
         """OPT-13: Router init must pass enforce_model_rate_limits so per-model rpm is hard-enforced."""
-        pool = LLMPoolConfig(
-            translation=[
-                LLMModelConfig(provider="openai", model="a", priority=1,
-                               role=LLMModelRole.TRANSLATION),
-                LLMModelConfig(provider="openai", model="b", priority=2,
-                               role=LLMModelRole.TRANSLATION),
-            ],
-            judging=[
-                LLMModelConfig(provider="openai", model="a", priority=1,
-                               role=LLMModelRole.JUDGING),
-                LLMModelConfig(provider="openai", model="b", priority=2,
-                               role=LLMModelRole.JUDGING),
-            ],
-            restoration=[
-                LLMModelConfig(provider="openai", model="a", priority=1,
-                               role=LLMModelRole.RESTORATION),
-                LLMModelConfig(provider="openai", model="b", priority=2,
-                               role=LLMModelRole.RESTORATION),
-            ],
-        )
-        cfg = MagicMock(llm_pool=pool)
-        mock_load_config.return_value = cfg
-        ModelPool()
-        call_kwargs = mock_router_class.call_args.kwargs
-        assert "optional_pre_call_checks" in call_kwargs
-        assert "enforce_model_rate_limits" in call_kwargs["optional_pre_call_checks"]
+        import os
+        original = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
+        try:
+            pool = LLMPoolConfig(
+                translation=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.TRANSLATION),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.TRANSLATION),
+                ],
+                judging=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.JUDGING),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.JUDGING),
+                ],
+                restoration=[
+                    LLMModelConfig(provider="openai", model="a", priority=1,
+                                   role=LLMModelRole.RESTORATION),
+                    LLMModelConfig(provider="openai", model="b", priority=2,
+                                   role=LLMModelRole.RESTORATION),
+                ],
+            )
+            cfg = MagicMock(llm_pool=pool)
+            mock_load_config.return_value = cfg
+            ModelPool()
+            call_kwargs = mock_router_class.call_args.kwargs
+            assert "optional_pre_call_checks" in call_kwargs
+            assert "enforce_model_rate_limits" in call_kwargs["optional_pre_call_checks"]
+        finally:
+            if original is not None:
+                os.environ["OMNI_TEST_FAKE_LLM"] = original
 
     @patch("src.ol_pool.router.load_config")
     def test_metrics_returns_rate_limit_counter_copy(self, mock_load_config):
@@ -349,5 +361,8 @@ class TestModelPool:
         mock_load_config.return_value = mock_config
         pool = ModelPool()
         result = await pool.judge("hello", "你好", "en", "zh")
-        assert result["score"] == 0
-        assert result["reason"] == "placeholder"
+        if hasattr(pool, "_fake_pool"):
+            assert result["score"] > 0
+        else:
+            assert result["score"] == 0
+            assert result["reason"] == "placeholder"

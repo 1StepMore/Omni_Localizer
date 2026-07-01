@@ -53,8 +53,9 @@ class _FakeModelPool:
             "fluency": 9.0,
             "adequacy": 9.0,
             "terminology_consistency": 9.0,
-            "format_preserved": True,
+            "format_preservation": 9.0,
             "score": 9.0,
+            "format_errors": [],
         }
 
     async def profile(

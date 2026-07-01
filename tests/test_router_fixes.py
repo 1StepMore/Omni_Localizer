@@ -110,22 +110,26 @@ class TestModelPoolSilentFailure:
     def test_router_init_failure_logs_error(self):
         """When Router() init fails, the exception must be logged at ERROR level
         with full traceback, not silently caught and hidden."""
+        import os
         from ol_pool.router import ModelPool
 
-        with patch("ol_pool.router.load_config") as mock_load_config:
-            mock_load_config.return_value = (MagicMock(), None)
-            with patch("ol_pool.router.Router") as mock_router_cls:
-                mock_router_cls.side_effect = RuntimeError("Router init failed: test")
+        original = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
+        try:
+            with patch("ol_pool.router.load_config") as mock_load_config:
+                mock_load_config.return_value = (MagicMock(), None)
+                with patch("ol_pool.router.Router") as mock_router_cls:
+                    mock_router_cls.side_effect = RuntimeError("Router init failed: test")
 
-                with patch("ol_pool.router._logger") as mock_logger:
-                    pool = ModelPool(config_path="/nonexistent/config.yaml")
+                    with patch("ol_pool.router._logger") as mock_logger:
+                        pool = ModelPool(config_path="/nonexistent/config.yaml")
 
-                    # The exception must be logged at ERROR level
-                    assert mock_logger.error.called or mock_logger.exception.called, (
-                        "No ERROR-level log was emitted for Router init failure"
-                    )
-                    # _test_mode should be True as fallback
-                    assert pool._test_mode is True
+                        assert mock_logger.error.called or mock_logger.exception.called, (
+                            "No ERROR-level log was emitted for Router init failure"
+                        )
+                        assert pool._test_mode is True
+        finally:
+            if original is not None:
+                os.environ["OMNI_TEST_FAKE_LLM"] = original
 
 
 # ============================================================================
@@ -139,46 +143,50 @@ class TestModelPoolRateLimiting:
     @pytest.mark.asyncio
     async def test_rate_limit_hits_increments_on_rate_limit(self):
         """RateLimitError increments _rate_limit_hits counter."""
+        import os
         from ol_pool.router import ModelPool
 
-        with patch("ol_pool.router.load_config") as mock_load_config:
-            mock_load_config.return_value = (MagicMock(), None)
-            with patch("ol_pool.router.Router") as mock_router_cls:
-                async def _mock_acompletion(*args, **kwargs):
-                    # First call raises RateLimitError, second succeeds
-                    if not hasattr(_mock_acompletion, "_call_count"):
-                        _mock_acompletion._call_count = 0
-                    _mock_acompletion._call_count += 1
-                    if _mock_acompletion._call_count == 1:
-                        raise _RateLimitError(
-                            "rate limited", "test", "test",
-                        )
-                    mock_resp = MagicMock()
-                    mock_resp.choices = [
-                        MagicMock(
-                            message=MagicMock(content="translated text")
-                        )
-                    ]
-                    return mock_resp
+        original = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
+        try:
+            with patch("ol_pool.router.load_config") as mock_load_config:
+                mock_load_config.return_value = (MagicMock(), None)
+                with patch("ol_pool.router.Router") as mock_router_cls:
+                    async def _mock_acompletion(*args, **kwargs):
+                        if not hasattr(_mock_acompletion, "_call_count"):
+                            _mock_acompletion._call_count = 0
+                        _mock_acompletion._call_count += 1
+                        if _mock_acompletion._call_count == 1:
+                            raise _RateLimitError(
+                                "rate limited", "test", "test",
+                            )
+                        mock_resp = MagicMock()
+                        mock_resp.choices = [
+                            MagicMock(
+                                message=MagicMock(content="translated text")
+                            )
+                        ]
+                        return mock_resp
 
-                mock_router = MagicMock()
-                mock_router.acompletion = _mock_acompletion
-                mock_router_cls.return_value = mock_router
+                    mock_router = MagicMock()
+                    mock_router.acompletion = _mock_acompletion
+                    mock_router_cls.return_value = mock_router
 
-                pool = ModelPool(config_path="/nonexistent/config.yaml")
-                pool._test_mode = False
+                    pool = ModelPool(config_path="/nonexistent/config.yaml")
+                    pool._test_mode = False
 
-                # Store original _rate_limit_hits
-                hits_before = pool._rate_limit_hits.get("translation", 0)
+                    hits_before = pool._rate_limit_hits.get("translation", 0)
 
-                result = await pool.translate(
-                    "hello", "en", "zh",
-                )
+                    result = await pool.translate(
+                        "hello", "en", "zh",
+                    )
 
-                assert pool._rate_limit_hits.get("translation", 0) > hits_before, (
-                    f"Expected rate_limit_hits to increment, got "
-                    f"before={hits_before}, after={pool._rate_limit_hits}"
-                )
-                assert result == "translated text", (
-                    f"Expected 'translated text' after retry, got {result!r}"
-                )
+                    assert pool._rate_limit_hits.get("translation", 0) > hits_before, (
+                        f"Expected rate_limit_hits to increment, got "
+                        f"before={hits_before}, after={pool._rate_limit_hits}"
+                    )
+                    assert result == "translated text", (
+                        f"Expected 'translated text' after retry, got {result!r}"
+                    )
+        finally:
+            if original is not None:
+                os.environ["OMNI_TEST_FAKE_LLM"] = original
