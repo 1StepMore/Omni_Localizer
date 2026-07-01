@@ -368,6 +368,45 @@ class DisambiguateInput(BaseModel):
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
+class VerifyTermsInput(BaseModel):
+    """Input for verify_terms."""
+
+    source: str = Field(description="Original source text")
+    target: str = Field(description="Translated target text to verify")
+    glossary: dict[str, dict[str, Any]] | None = Field(
+        default=None,
+        description="Inline glossary dict (e.g. from load_glossary). Mutually exclusive with glossary_path.",
+    )
+    glossary_path: str | None = Field(
+        default=None,
+        description="Path to JSON glossary file. If both glossary and glossary_path are given, glossary takes precedence.",
+    )
+    confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0, le=1.0,
+        description="Minimum glossary term confidence to include in main checks (0-1)",
+    )
+    source_lang: str = Field(default="en", description="Source language code")
+    target_lang: str = Field(default="zh", description="Target language code")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth")
+
+
+class ProfileDocInput(BaseModel):
+    """Input for profile_doc."""
+
+    content: str = Field(description="Document content to profile")
+    source_lang: str = Field(default="en", description="Source language code (e.g. 'en', 'zh', 'ja')")
+    config_path: str | None = Field(
+        default=None,
+        description="Path to OL YAML config (default: OL_CONFIG_PATH or config/default.yaml)",
+    )
+    use_cache: bool = Field(
+        default=True,
+        description="Use the in-process profile cache (default: True)",
+    )
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth")
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -564,6 +603,8 @@ from ol_mcp.get_capabilities import get_capabilities  # noqa: E402, F401
 from ol_mcp.extract_warnings import extract_warnings  # noqa: E402, F401
 from ol_mcp.batch_translate import batch_translate_texts  # noqa: E402, F401
 from ol_mcp.translate_xliff import translate_xliff, get_translation_status  # noqa: E402, F401
+from ol_mcp.verify_terms import verify_terms  # noqa: E402, F401
+from ol_mcp.profile_doc import profile_doc  # noqa: E402, F401
 
 # Register get_capabilities (no Pydantic model — static info tool).
 # Done after the import above so the symbol is bound.
@@ -596,6 +637,8 @@ __all__ = [
     "GenerateReportInput",
     "InspectConfigInput",
     "DisambiguateInput",
+    "VerifyTermsInput",
+    "ProfileDocInput",
     "translate_md_text",
     "judge_text",
     "load_glossary",
@@ -611,6 +654,8 @@ __all__ = [
     "generate_report",
     "inspect_config",
     "disambiguate",
+    "verify_terms",
+    "profile_doc",
     "ping",
     "get_capabilities",
     "extract_warnings",

@@ -101,6 +101,8 @@ from cli.load_glossary import load_glossary  # noqa: E402,F401
 from cli.search_tm import search_tm  # noqa: E402,F401
 from cli.translation_status import translation_status  # noqa: E402,F401
 from cli.ping import ping  # noqa: E402,F401
+from cli.verify_terms import verify_terms  # noqa: E402,F401
+from cli.profile_doc import profile_doc  # noqa: E402,F401
 
 # ---------------------------------------------------------------------------
 # Register CLI commands with typer app
@@ -122,6 +124,8 @@ app.command()(load_glossary)
 app.command()(search_tm)
 app.command()(translation_status)
 app.command()(ping)
+app.command()(verify_terms)
+app.command()(profile_doc)
 
 
 # ---------------------------------------------------------------------------
