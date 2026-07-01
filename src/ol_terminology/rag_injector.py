@@ -15,8 +15,9 @@ def build_translate_prompt(
     tgt_lang: str,
     tm_matches: list[dict[str, Any]] | None = None,
     glossary_terms: list[dict[str, Any]] | None = None,
+    style_guide: str | None = None,
 ) -> str:
-    """Build a translation prompt with injected TM matches and glossary terms.
+    """Build a translation prompt with injected TM matches, glossary terms, and style guide.
 
     Args:
         text: The source text to translate.
@@ -24,6 +25,10 @@ def build_translate_prompt(
         tgt_lang: Target language code (e.g., "zh").
         tm_matches: List of TM matches (dicts with source, target, score).
         glossary_terms: List of glossary term dicts (term, translation, confidence).
+        style_guide: Optional StyleGuide-formatted string. When provided
+            and non-empty, a [Style Guide] section is injected between
+            the glossary terms and the source text. Typically produced
+            by ``StyleGuide.to_prompt_section()``.
 
     Returns:
         Formatted translation prompt string with injected context.
@@ -43,7 +48,7 @@ def build_translate_prompt(
             src = m.get("source", m.get("src", ""))
             tgt = m.get("target", m.get("tgt", ""))
             score = m.get("score", m.get("imilarity", 0.0))
-            tm_lines.append(f"  - \"{src}\" -> \"{tgt}\" (score: {score:.2f})")
+            tm_lines.append(f'  - "{src}" -> "{tgt}" (score: {score:.2f})')
         context_parts.append(f"[Translation Memory (top {len(limited_tm)} matches)]\n" + "\n".join(tm_lines))
 
     if limited_glossary:
@@ -51,6 +56,9 @@ def build_translate_prompt(
         for t in limited_glossary:
             glossary_lines.append(f"  - {t['term']} -> {t['translation']}")
         context_parts.append(f"[Glossary Terms (top {len(limited_glossary)} terms)]\n" + "\n".join(glossary_lines))
+
+    if style_guide and style_guide.strip():
+        context_parts.append(style_guide.strip())
 
     if context_parts:
         parts.append("\n\n".join(context_parts))
