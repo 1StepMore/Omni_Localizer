@@ -5,8 +5,14 @@ this module (e.g. via `ol_terminology.__init__` which eagerly pulls in
 this module) does not trigger heavy ML imports.
 """
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+# CJK regex covers Chinese (CJK Unified Ideographs \u4e00-\u9fff) and
+# Japanese (Hiragana \u3040-\u309f + Katakana \u30a0-\u30ff).
+# Does NOT cover CJK Extension A/B (rare in modern text) or Korean Hangul.
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]")
 
 _yake = None
 _YAKE_AVAILABLE = False
@@ -63,10 +69,21 @@ def extract_terms(texts: list[str]) -> dict[str, float]:
             features=None,
         )
         results = yake_model.extract_keywords(combined_text)
-        if results:
-            logger.debug(f"YAKE extracted {len(results)} terms")
-            return {term: float(score) for term, score in results}
-        return {}
+        if not results:
+            return {}
+        raw = {term: float(score) for term, score in results}
+        # CJK post-processing: when input has CJK (Chinese/Japanese kana),
+        # drop terms without CJK characters. Pure-English input unaffected.
+        # Also drops single-char noise regardless of CJK content.
+        if _CJK_RE.search(combined_text):
+            raw = {
+                term: score
+                for term, score in raw.items()
+                if len(term) >= 2 and _CJK_RE.search(term)
+            }
+        if raw:
+            logger.debug(f"YAKE extracted {len(raw)} terms (post-filter)")
+        return raw
     except Exception as e:
         logger.warning(f"YAKE extraction failed: {e}")
         raise ImportError(
