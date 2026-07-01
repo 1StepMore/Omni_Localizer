@@ -234,6 +234,18 @@ class _LogBreakerListener(pybreaker.CircuitBreakerListener):
         )
 
 
+class ModelPoolInitError(RuntimeError):
+    """Raised when ModelPool fails to initialize the LLM Router.
+
+    Common causes: missing API key env vars, invalid config, network issues
+    preventing Router from reaching its endpoint. The original exception
+    is preserved via __cause__ for debugging.
+
+    Recovery: either set the missing env vars, set OMNI_TEST_FAKE_LLM=1
+    for fake mode, or fix the config file.
+    """
+
+
 class ModelPool:
     _instance: "ModelPool | None" = None
 
@@ -304,17 +316,14 @@ class ModelPool:
                 # directly to the Router here.
             )
         except Exception as _router_init_exc:
-            # Real Router init can fail in test envs (no API keys, version
-            # mismatch, or @patch not applied). Fall back to placeholder
-            # mode so translate/judge still return predictable values.
-            # Wave 4 (L-C3): log the full traceback at ERROR level instead
-            # of silently swallowing. The exception is NOT re-raised so the
-            # pool can still serve placeholder responses in test envs.
             _logger.exception(
                 "ModelPool Router init failed: %s", _router_init_exc,
             )
-            self._router = None
-            self._test_mode = True
+            raise ModelPoolInitError(
+                f"ModelPool initialization failed: {_router_init_exc}. "
+                f"Set OMNI_TEST_FAKE_LLM=1 for fake mode, "
+                f"or configure the required API keys."
+            ) from _router_init_exc
 
     @classmethod
     def get_instance(cls, config_path: str = "config/default.yaml") -> "ModelPool":
