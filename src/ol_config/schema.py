@@ -13,6 +13,7 @@ class LLMModelRole(str, Enum):
     TRANSLATION = "translation"
     JUDGING = "judging"
     RESTORATION = "restoration"
+    PROFILING = "profiling"
 
 
 def _check_env_vars(value: str | None, field_name: str = "api_key") -> None:
@@ -72,6 +73,7 @@ class LLMPoolConfig(BaseModel):
     translation: list[LLMModelConfig] = Field(default_factory=list, description="Translation models")
     judging: list[LLMModelConfig] = Field(default_factory=list, description="Judging models")
     restoration: list[LLMModelConfig] = Field(default_factory=list, description="Restoration models")
+    profiling: list[LLMModelConfig] = Field(default_factory=list, description="Profiling models")
 
     @model_validator(mode='after')
     def check_min_models_per_role(self) -> 'LLMPoolConfig':

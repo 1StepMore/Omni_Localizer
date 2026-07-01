@@ -106,3 +106,13 @@ llm_pool:
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
+
+  profiling:
+    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
+    - provider: "openai"
+      model: "glm-4-flash"
+      priority: 1
+      role: "profiling"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0

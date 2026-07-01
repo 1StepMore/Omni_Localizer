@@ -262,7 +262,7 @@ class ModelPool:
                 name=role,
                 listeners=[_LogBreakerListener()],
             )
-            for role in ("translation", "judging", "restoration")
+            for role in ("translation", "judging", "restoration", "profiling")
         }
         try:
             self._router = Router(
@@ -348,7 +348,7 @@ class ModelPool:
 
     def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
         model_list = []
-        for role in ("translation", "judging", "restoration"):
+        for role in ("translation", "judging", "restoration", "profiling"):
             for model in getattr(pool, role, []):
                 litellm_params = {
                     "model": f"{model.provider}/{model.model}",
@@ -404,7 +404,7 @@ class ModelPool:
         for manually-constructed configs that bypass validation.
         """
         fallbacks = []
-        for role in ("translation", "judging", "restoration"):
+        for role in ("translation", "judging", "restoration", "profiling"):
             models = [m for m in getattr(pool, role, []) if m.requests_per_minute > 0]
             sorted_models = sorted(models, key=lambda m: m.priority)
             if len(sorted_models) > 1:
