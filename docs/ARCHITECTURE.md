@@ -50,7 +50,7 @@ src/
 │   ├── glossary_class.py      # Glossary v1 dataclass + Glossary.load
 │   ├── schema.py              # Pydantic v1 schema
 │   ├── rag_injector.py        # build_translate_prompt — pre-injects TM + glossary
-│   ├── extractor.py           # KeyBERT / YAKE term extraction
+│   ├── extractor.py           # YAKE term extraction
 │   └── disambiguator.py       # LLM-based polyseme resolution
 │
 ├── ol_batch/                  # Batch translate-md processor

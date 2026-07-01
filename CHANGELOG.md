@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Document Profiler** (`src/ol_style/`): new `ol_style/` module providing `StyleGuide` dataclass, `ProfileCache` (file-hash based), and `profile_document()` async function. Analyzes a document's writing style via the new `profiling` LLM role and emits a structured `StyleGuide` (tone, register, target_audience, key_conventions, vocabulary, avoid, summary). Exposed via `ol profile-doc` CLI and `profile_doc` MCP tool. Profile results are cached by content hash for reuse across runs.
 
+### Changed
+
+- **Issue #29 — YAKE is the primary term extractor**: KeyBERT removed entirely from `ol_terminology.extractor`. YAKE is now the sole extractor (was the fallback). Removes `keybert` and `transformers` from `[ml]` optional dependencies. The `sentence-transformers` dep stays (used by `ol_tm/service.py` for TM semantic search). Also fixes a previously-undetected bug: CLI/MCP `extract-terms` were sorting with `reverse=True`, which selected LEAST relevant terms under YAKE (lower = more relevant). Now sorts with `reverse=False`.
+
+### Fixed
+
+- **Issue #30 — `ol judge-text` returned score=0 for all evaluations**: `ModelPool.__init__` now detects `OMNI_TEST_FAKE_LLM=1` and short-circuits to using `_FakeModelPool`, so `judge()` returns realistic 9.0 scores instead of the `{"score": 0, "reason": "placeholder"}` placeholder. `_FakeModelPool.judge()` output shape aligned with the LLM response contract (0-10 scale, includes `format_errors` and `format_preservation`). `JudgeService._remap_llm_fields()` now passes through `terminology_consistency` and `format_preservation` (previously dropped), which also fixes the pre-existing `test_judge_without_glossary_still_works` failure.
+
 - **`profiling` LLM role** (`src/ol_config/schema.py`, `src/ol_pool/router.py`, `config/default.yaml`): added a new optional 4th LLM role. `LLMModelRole.PROFILING` is an enum value; `LLMPoolConfig.profiling` is a `list[LLMModelConfig] = []` field; `ModelPool._breakers` / `_build_model_list` / `_build_fallbacks` all include the new role. The `>= 2` models-per-role validator still applies to `translation`/`judging`/`restoration` only; `profiling` is optional and may have 0 or N models. Default config gets a `profiling:` section with one `glm-4-flash` entry.
 
 - **`style_guide` parameter in `build_translate_prompt()`** (`src/ol_terminology/rag_injector.py`): optional `style_guide: str | None = None` parameter. When provided and non-empty, injects a `[Style Guide]` section between the glossary terms and the source text. Backward-compatible — existing callers without `style_guide` produce identical output.

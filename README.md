@@ -335,7 +335,7 @@ When `BatchProcessor` is initialized with a `tm_service` and `glossary`:
 
 ### Terminology Extraction
 
-Auto-build glossary from source texts using KeyBERT (with sentence-transformers) or YAKE fallback:
+Auto-build glossary from source texts using YAKE:
 
 ```python
 from ol_terminology.extractor import extract_terms
@@ -372,8 +372,7 @@ If TM service or glossary is unavailable, translation proceeds without context i
 TM/TB/SG features require additional packages:
 
 ```bash
-pip install -e ".[ml]"  # sentence-transformers + torch
-pip install keybert>=0.9.0 yake>=0.5.0
+pip install -e ".[ml]"  # sentence-transformers + torch + yake
 ```
 
 > **Python 3.13 note**: `sentence-transformers` (via its `transformers`

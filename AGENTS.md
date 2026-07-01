@@ -57,7 +57,7 @@ src/ol/
 ├── batch/                   # BatchProcessor
 ├── terminology/             # RAG-based prompt injection
 │   ├── rag_injector.py      # build_translate_prompt with TM/glossary
-│   ├── extractor.py         # KeyBERT/YAKE term extraction
+│   ├── extractor.py         # YAKE term extraction
 │   └── disambiguator.py     # LLM-based polysemy resolution
 ├── lqa/                     # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
