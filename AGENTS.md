@@ -271,6 +271,31 @@ Key test files:
   model per role.
 - **Circuit breaker**: 5 consecutive failures → open for 60s.
 
+### FAKE_LLM decision matrix
+
+`OMNI_TEST_FAKE_LLM=1` enables mock translation (no API calls).
+Use this table to decide when to set it:
+
+| Scenario | Set `OMNI_TEST_FAKE_LLM=1`? | Why |
+|----------|---------------------------|-----|
+| Running unit tests | **YES** | Required. All pipeline tests use `_FakeModelPool`. |
+| Running E2E tests with FAKE_LLM | **YES** | Validates pipeline orchestration without API cost. |
+| Running E2E tests with real LLM | NO | Set real API keys, ensure `OMNI_TEST_FAKE_LLM` is UNSET. |
+| Debugging translation quality | NO | Need real LLM responses to evaluate output. |
+| Config validation / env var check | **YES** | Bypasses `${VAR}` resolution errors during `_check_env_vars()`. |
+| MCP server testing | **YES** | Zero-cost smoke testing of MCP tools. |
+| CI (pull request) | **YES** | Required. Prevents API key leakage in CI logs. |
+| CI (nightly regression) | NO | Nightly runs test against real LLMs. |
+| Production deployment | NO | Real translation requires real LLM calls. |
+| Development / iteration | **YES** | Avoid burning through API quota during active development. |
+
+**Decision flow:**
+
+1. Are you running in CI on a PR? → **YES** (no API keys in CI)
+2. Are you just testing the pipeline orchestration? → **YES** (no need to call real LLMs)
+3. Are you validating translation quality or running nightly tests? → **NO** (need real LLM output)
+4. Unsure? → **YES** (safe default — set it unless you specifically need real translations)
+
 ### translate-md vs translate-xliff
 
 OL offers two translation channels for different pipeline paths:
