@@ -832,3 +832,115 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
         if self._cache_enabled and temperature == 0.0:
             self._cache.put(cache_key, result)
         return result
+
+    async def profile(
+        self, content: str, source_lang: str = "", **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Profile a document's writing style by calling the LLM via the
+        'profiling' role group. Issue #36 — was previously missing, causing
+        ``ol profile-doc`` and the profile_doc MCP tool to crash with
+        ``AttributeError: 'ModelPool' object has no attribute 'profile'``
+        whenever OMNI_TEST_FAKE_LLM was unset.
+
+        Mirrors the contract of :meth:`ol_pool.fake._FakeModelPool.profile`
+        so :func:`ol_style.doc_profiler.profile_document` can use either
+        pool transparently. In test_mode the call is delegated to
+        _FakeModelPool.profile() to keep the test seam stable; in real
+        LLM mode the request is routed through the 'profiling' role group
+        in the litellm Router and the JSON response is parsed into a dict
+        for the caller.
+
+        Args:
+            content: The pre-built profiling prompt (typically the output
+                of :func:`ol_style.doc_profiler._build_profiling_prompt`).
+                The parameter is named ``content`` to match the call site
+                in :func:`ol_style.doc_profiler.profile_document`.
+            source_lang: Source language code (e.g. ``"en"``) used for
+                cache keying and routing context.
+            **kwargs: Reserved for future use (e.g. custom temperature).
+
+        Returns:
+            Parsed JSON dict on success, or a dict containing
+            ``raw_response`` if the model returned non-JSON output.
+            On transport errors, returns a dict with ``error`` and
+            ``transport_error`` keys describing the failure (so the
+            caller can surface a StyleGuide with a fallback summary).
+        """
+        if self._test_mode:
+            if hasattr(self, "_fake_pool"):
+                return await self._fake_pool.profile(
+                    content, source_lang=source_lang, **kwargs,
+                )
+            return {}
+
+        _logger.debug(f"Profile request: {len(content)} chars, lang={source_lang}")
+        _logger.debug("Model selected: profiling")
+
+        # The caller (profile_document) builds the full user prompt; we
+        # just pass it through. No system message needed — the prompt
+        # already contains the [USER_TEXT_START] delimited content and
+        # the JSON output instructions.
+        messages = [
+            {"role": "user", "content": content},
+        ]
+
+        cache_key = self._make_cache_key(
+            "profiling", messages, 0.0,
+            source_lang=source_lang, target_lang="",
+        )
+        if self._cache_enabled:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                _logger.debug("Profile cache hit")
+                return cached
+
+        try:
+            response = await self._call_with_breaker(
+                "profiling",
+                self._router.acompletion,
+                model="profiling",
+                messages=messages,
+                temperature=0.0,
+            )
+        except Timeout as e:
+            _logger.warning(f"Profile timeout: {e}")
+            return {"error": f"profile_timeout: {e}", "transport_error": True}
+        except RateLimitError as e:
+            _logger.warning(f"Profile rate limit: {e}")
+            return {"error": f"profile_rate_limit: {e}", "transport_error": True}
+        except AuthenticationError as e:
+            _logger.error(f"Profile auth error: {e}")
+            return {"error": f"profile_auth: {e}", "transport_error": True}
+        except Exception as e:  # expected — return error response for any transport failure
+            _logger.error(f"Profile transport failed: {type(e).__name__}: {e}")
+            return {
+                "error": f"profile_unknown: {type(e).__name__}: {e}",
+                "transport_error": True,
+            }
+
+        try:
+            raw_text = response.choices[0].message.content or ""
+        except (AttributeError, IndexError) as resp_err:
+            _logger.error(
+                f"Profile response shape invalid: {resp_err}; returning empty dict"
+            )
+            return {"error": f"profile_response_invalid: {resp_err}", "transport_error": True}
+
+        # Parse the LLM JSON response into a dict. _parse_profile_response
+        # in ol_style.doc_profiler accepts both str and dict; returning a
+        # parsed dict hits the fast path and gives callers a structured
+        # result they can inspect. On JSON failure, wrap the raw text
+        # under "raw_response" so downstream parsing still has a chance.
+        try:
+            parsed = json.loads(raw_text)
+            if isinstance(parsed, dict):
+                if self._cache_enabled:
+                    self._cache.put(cache_key, parsed)
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        _logger.warning(
+            f"Profile response not valid JSON, returning raw text. Head: {raw_text[:120]!r}"
+        )
+        return {"raw_response": raw_text}
