@@ -364,3 +364,33 @@ class TestGlossaryTargetLang:
         g = Glossary(terms={"API": ["接口"]}, target_lang=None)
         result = g.for_target("fr")
         assert result is g
+
+
+class TestAiShangHaierGlossaryFixture:
+    """T4.0: tests for the new tests/fixtures/glossary_爱上海尔.json fixture."""
+
+    FIXTURE = FIXTURES_DIR / "glossary_爱上海尔.json"
+
+    def test_fixture_loads_with_six_terms(self):
+        from ol_terminology import Glossary
+        g = Glossary.load(self.FIXTURE)
+        assert g.target_lang == "en"
+        assert len(g.terms) == 6
+        for source in ("开利", "三翼鸟", "滚筒洗衣机", "波轮洗衣机", "朗境", "海尔朗境 X11"):
+            assert source in g.terms, f"missing term {source!r} in fixture"
+
+    def test_fixture_find_relevant_carrie(self):
+        """开利 in source text should match the 开利 → Carrier entry."""
+        from ol_terminology import Glossary
+        g = Glossary.load(self.FIXTURE)
+        matches = g.find_relevant("开利是全球领先的空调制造商")
+        ids = [src for src, _ in matches]
+        assert "开利" in ids
+
+    def test_fixture_find_relevant_sanyiniao(self):
+        """三翼鸟 in source text should match the 三翼鸟 entry."""
+        from ol_terminology import Glossary
+        g = Glossary.load(self.FIXTURE)
+        matches = g.find_relevant("三翼鸟平台是海尔的高端品牌")
+        ids = [src for src, _ in matches]
+        assert "三翼鸟" in ids

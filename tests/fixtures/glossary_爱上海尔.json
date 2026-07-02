@@ -1,0 +1,11 @@
+{
+  "target_lang": "en",
+  "terms": [
+    {"source": "开利", "targets": ["Carrier"]},
+    {"source": "三翼鸟", "targets": ["Sanyiniao", "Three-Winged Bird"]},
+    {"source": "滚筒洗衣机", "targets": ["drum washing machine"]},
+    {"source": "波轮洗衣机", "targets": ["pulsator washing machine"]},
+    {"source": "朗境", "targets": ["Lanjing"]},
+    {"source": "海尔朗境 X11", "targets": ["Haier Lanjing X11"]}
+  ]
+}
