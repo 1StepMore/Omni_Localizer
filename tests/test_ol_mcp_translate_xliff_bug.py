@@ -101,3 +101,89 @@ class TestTranslateXliffEndToEnd:
             f"BUG: target text is empty despite success=True. "
             f"Full result: {result!r}, targets: {targets!r}"
         )
+
+
+class TestTranslateXliffMcpStyleGuide:
+    """T2.4 tests: styleguide_path flows through to build_translate_prompt."""
+
+    def _make_minimal_xliff(self, tmp_path) -> str:
+        xlf = tmp_path / "in.xlf"
+        xlf.write_text(_make_minimal_xliff("Hello"), encoding="utf-8")
+        return str(xlf)
+
+    def _make_styleguide(self, tmp_path) -> str:
+        sg = tmp_path / "sg.json"
+        sg.write_text(
+            '{"tone":"formal","register":"technical","target_audience":"devs",'
+            '"key_conventions":["Use clear prose"],"vocabulary":[],'
+            '"avoid":["jargon"],"summary":"test"}'
+        )
+        return str(sg)
+
+    def test_mcp_styleguide_load_emits_warning_on_missing_file(self, tmp_path, monkeypatch):
+        from pathlib import Path
+        env_file = Path(__file__).resolve().parents[2] / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    monkeypatch.setenv(k.strip(), v.strip())
+
+        input_path = tmp_path / "in.xlf"
+        input_path.write_text(_make_minimal_xliff("Hello"), encoding="utf-8")
+
+        result_str = asyncio.run(translate_xliff(
+            TranslateXliffInput(
+                input_path=str(input_path),
+                source_lang="en",
+                target_lang="zh",
+                config_path=str(Path(__file__).resolve().parent.parent / "config" / "default.yaml"),
+                styleguide_path="/nonexistent/sg.json",
+            )
+        ))
+        result = json.loads(result_str)
+        assert result.get("success") is True
+        warnings = result.get("content", {}).get("warnings", []) or result.get("warnings", [])
+        assert any("StyleGuide" in w or "PATH_NOT_ALLOWED" in w for w in warnings), (
+            f"expected StyleGuide/path warning, got: {warnings!r}"
+        )
+
+    def test_mcp_styleguide_loaded_into_prompt(self, tmp_path, monkeypatch):
+        """When styleguide_path is valid, the LLM prompt receives the styleguide section."""
+        from pathlib import Path
+        from unittest.mock import patch, AsyncMock
+        from ol_mcp.translate_xliff import translate_xliff as mcp_translate_xliff
+
+        env_file = Path(__file__).resolve().parents[2] / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    monkeypatch.setenv(k.strip(), v.strip())
+
+        input_path = tmp_path / "in.xlf"
+        input_path.write_text(_make_minimal_xliff("Hello"), encoding="utf-8")
+        sg_path = self._make_styleguide(tmp_path)
+
+        captured_contexts: list[str | None] = []
+
+        async def fake_translate(self, text, src, tgt, context=None, **kwargs):
+            captured_contexts.append(context)
+            return f"[{tgt}] {text}"
+
+        with patch("ol_pool.router.ModelPool.translate", new=fake_translate):
+            result_str = asyncio.run(mcp_translate_xliff(
+                TranslateXliffInput(
+                    input_path=str(input_path),
+                    source_lang="en",
+                    target_lang="zh",
+                    config_path=str(Path(__file__).resolve().parent.parent / "config" / "default.yaml"),
+                    styleguide_path=sg_path,
+                )
+            ))
+        result = json.loads(result_str)
+        assert result.get("success") is True, f"call failed: {result!r}"
+        assert len(captured_contexts) >= 1, f"expected pool.translate to be called, got {captured_contexts!r}"
+        ctx = captured_contexts[0]
+        assert ctx is not None
+        assert "[Style Guide]" in ctx, f"StyleGuide section missing from context: {ctx[:300]}"

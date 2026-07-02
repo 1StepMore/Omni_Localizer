@@ -192,3 +192,20 @@ class TestMcpServerModule:
         """Verify package __init__ exports mcp."""
         from ol_mcp import mcp as pkg_mcp
         assert pkg_mcp is not None
+
+
+class TestTranslateXliffInputStyleGuide:
+    """T2.3 tests for styleguide_path field on TranslateXliffInput."""
+
+    def test_styleguide_path_default_none(self):
+        from ol_mcp.tools import TranslateXliffInput
+        params = TranslateXliffInput(input_path="/tmp/in.xlf")
+        assert params.styleguide_path is None
+
+    def test_styleguide_path_accepts_path(self):
+        from ol_mcp.tools import TranslateXliffInput
+        params = TranslateXliffInput(
+            input_path="/tmp/in.xlf",
+            styleguide_path="/tmp/styleguide.json",
+        )
+        assert params.styleguide_path == "/tmp/styleguide.json"

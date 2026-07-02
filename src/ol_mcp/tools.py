@@ -247,6 +247,16 @@ class TranslateXliffInput(BaseModel):
     source_lang: str = Field(default="zh", description="Source language code")
     target_lang: str = Field(default="en", description="Target language code")
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary file")
+    styleguide_path: str | None = Field(
+        default=None,
+        description="Path to a StyleGuide JSON file (output of ol profile-doc). "
+                    "Style rules are injected into the translation prompt.",
+    )
+    polish: bool = Field(
+        default=False,
+        description="After translation, run a lightweight consistency pass "
+                    "to fix cross-unit inconsistencies.",
+    )
     config_path: str | None = Field(default=None, description="Path to LLM config")
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
     traceparent: str | None = Field(

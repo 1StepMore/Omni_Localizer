@@ -41,6 +41,8 @@ async def _run_translate_xliff_async(
     target_lang: str,
     glossary_path: str | None,
     config_path: str | None,
+    styleguide_path: str | None = None,
+    polish: bool = False,
 ) -> None:
     """Background coroutine for async translate_xliff. Updates task tracker."""
     try:
@@ -85,6 +87,21 @@ async def _run_translate_xliff_async(
                 warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
                 glossary = None
 
+        styleguide_section: str | None = None
+        if styleguide_path:
+            from ol_style.schema import StyleGuide
+            _sg_v = _validator.validate_path(styleguide_path)
+            if _sg_v.success:
+                try:
+                    sg = StyleGuide.from_json_file(styleguide_path)
+                    styleguide_section = sg.to_prompt_section()
+                except Exception as e:
+                    warnings.append(f"StyleGuide load failed: {e}")
+                    styleguide_section = None
+            else:
+                warnings.append(f"OL_PATH_NOT_ALLOWED: {_sg_v.error}")
+                styleguide_section = None
+
         parser = XliffParser()
         units = parser.parse(input_path)
         units_processed = len(units)
@@ -110,7 +127,14 @@ async def _run_translate_xliff_async(
                         text=unit.source_text,
                         src_lang=source_lang, tgt_lang=target_lang,
                         tm_matches=None, glossary_terms=terms,
+                        style_guide=styleguide_section,
                     )
+            elif styleguide_section:
+                context = build_translate_prompt(
+                    text=unit.source_text,
+                    src_lang=source_lang, tgt_lang=target_lang,
+                    style_guide=styleguide_section,
+                )
             translated = await pool.translate(unit.source_text, source_lang, target_lang, context)
 
             if unit_shield_map:
@@ -121,6 +145,14 @@ async def _run_translate_xliff_async(
             else:
                 repaired = translated
             unit.target_text = repaired
+
+        if polish:
+            from ol_xliff.polish import polish_translated_units
+            polish_warnings = await polish_translated_units(
+                units, source_lang, target_lang, pool,
+            )
+            for uid, pw in polish_warnings.items():
+                warnings_per_unit.setdefault(uid, []).extend(pw)
 
         from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
         from ol_core.dataclass import TranslationContext, ChannelType
@@ -175,6 +207,8 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             target_lang=params.target_lang,
             glossary_path=params.glossary_path,
             config_path=params.config_path,
+            styleguide_path=params.styleguide_path,
+            polish=params.polish,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -224,6 +258,21 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
                 glossary = None
 
+        styleguide_section: str | None = None
+        if params.styleguide_path:
+            from ol_style.schema import StyleGuide
+            _sg_v = _validator.validate_path(params.styleguide_path)
+            if _sg_v.success:
+                try:
+                    sg = StyleGuide.from_json_file(params.styleguide_path)
+                    styleguide_section = sg.to_prompt_section()
+                except Exception as e:
+                    warnings.append(f"StyleGuide load failed: {e}")
+                    styleguide_section = None
+            else:
+                warnings.append(f"OL_PATH_NOT_ALLOWED: {_sg_v.error}")
+                styleguide_section = None
+
         parser = XliffParser()
         units = parser.parse(params.input_path)
         units_processed = len(units)
@@ -252,7 +301,15 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                         tgt_lang=params.target_lang,
                         tm_matches=None,
                         glossary_terms=terms,
+                        style_guide=styleguide_section,
                     )
+            elif styleguide_section:
+                context = build_translate_prompt(
+                    text=unit.source_text,
+                    src_lang=params.source_lang,
+                    tgt_lang=params.target_lang,
+                    style_guide=styleguide_section,
+                )
 
             translated = await pool.translate(
                 unit.source_text, params.source_lang, params.target_lang, context,
@@ -269,6 +326,14 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 repaired = translated
 
             unit.target_text = repaired
+
+        if params.polish:
+            from ol_xliff.polish import polish_translated_units
+            polish_warnings = await polish_translated_units(
+                units, params.source_lang, params.target_lang, pool,
+            )
+            for uid, pw in polish_warnings.items():
+                warnings_per_unit.setdefault(uid, []).extend(pw)
 
         from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
         from ol_core.dataclass import TranslationContext, ChannelType

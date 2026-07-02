@@ -344,3 +344,82 @@ class TestPerUnitExceptionHandling:
             "gather returned non-UnitTranslationResult objects — "
             "exception leaked out of the per-unit try/except"
         )
+
+
+# ---------------------------------------------------------------------------
+# T2.1c — StyleGuide threading
+# ---------------------------------------------------------------------------
+
+class TestStyleGuideThreading:
+    """T2.1c: when styleguide is passed, the LLM call's context contains
+    the StyleGuide section (build_translate_prompt(..., style_guide=...))."""
+
+    @pytest.mark.asyncio
+    async def test_styleguide_passed_to_pool_translate_context(self):
+        """When styleguide is set, pool.translate receives context with [Style Guide]."""
+        from cli.translate_md import _translate_one_unit
+
+        styleguide_text = "[Style Guide]\nTone: formal\nRegister: technical"
+
+        captured_contexts: list[str | None] = []
+
+        def translator(text, src, tgt):
+            return f"TRANSLATED:{text}"
+
+        pool = MagicMock()
+
+        async def _translate(text, src, tgt, context=None, glossary=None, **kwargs):
+            await asyncio.sleep(0)
+            captured_contexts.append(context)
+            return translator(text, src, tgt)
+
+        pool.translate = AsyncMock(side_effect=_translate)
+
+        unit = _make_unit("u1", "Hello world")
+
+        await _translate_one_unit(
+            unit, pool, None, None, "en", "zh",
+            sem=asyncio.Semaphore(1),
+            repair_pipeline=MagicMock(),
+            styleguide=styleguide_text,
+        )
+
+        assert len(captured_contexts) == 1
+        ctx = captured_contexts[0]
+        assert ctx is not None, "context should not be None when styleguide is set"
+        assert "[Style Guide]" in ctx, f"StyleGuide section missing from context: {ctx[:200]}"
+        assert "Tone: formal" in ctx
+        assert "Register: technical" in ctx
+
+    @pytest.mark.asyncio
+    async def test_no_styleguide_context_is_none(self):
+        """When styleguide is None, context is not built (preserves existing behavior)."""
+        from cli.translate_md import _translate_one_unit
+
+        captured_contexts: list[str | None] = []
+
+        def translator(text, src, tgt):
+            return f"TRANSLATED:{text}"
+
+        pool = MagicMock()
+
+        async def _translate(text, src, tgt, context=None, glossary=None, **kwargs):
+            await asyncio.sleep(0)
+            captured_contexts.append(context)
+            return translator(text, src, tgt)
+
+        pool.translate = AsyncMock(side_effect=_translate)
+
+        unit = _make_unit("u1", "Hello world")
+
+        await _translate_one_unit(
+            unit, pool, None, None, "en", "zh",
+            sem=asyncio.Semaphore(1),
+            repair_pipeline=MagicMock(),
+            styleguide=None,
+        )
+
+        assert len(captured_contexts) == 1
+        assert captured_contexts[0] is None, (
+            f"context should be None when styleguide is None, got {captured_contexts[0]!r}"
+        )

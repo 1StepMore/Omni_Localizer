@@ -46,13 +46,17 @@ def _cache_key(
     glossary_max_terms: int = 5,
     src_lang: str = "",
     tgt_lang: str = "",
+    styleguide: str | None = None,
+    no_styleguide: bool = False,
+    polish: bool = False,
 ) -> str:
     """Return sha256(input_bytes + config_bytes_if_any + behavioral_flags).
 
     Behavioral CLI flags that affect the produced output bytes (frontmatter
     on/off, concurrency for batch, language-detection, LQA, restoration,
-    glossary, glossary-max-terms, src_lang, tgt_lang) are mixed into the
-    digest so a flag change invalidates the cached output. See T24a.
+    glossary, glossary-max-terms, src_lang, tgt_lang, styleguide,
+    no_styleguide) are mixed into the digest so a flag change invalidates
+    the cached output. See T24a.
 
     ``src_lang`` and ``tgt_lang`` are included so that translating the same
     input to two different target languages does not produce a cache
@@ -74,6 +78,9 @@ def _cache_key(
     h.update(f"|gmt={int(glossary_max_terms)}".encode())
     h.update(f"|src={src_lang}".encode())
     h.update(f"|tgt={tgt_lang}".encode())
+    h.update(f"|sty={styleguide or ''}".encode())
+    h.update(f"|nosty={int(no_styleguide)}".encode())
+    h.update(f"|pol={int(polish)}".encode())
     return h.hexdigest()
 
 
@@ -93,6 +100,9 @@ def _check_cache(
     glossary_max_terms: int = 5,
     src_lang: str = "",
     tgt_lang: str = "",
+    styleguide: str | None = None,
+    no_styleguide: bool = False,
+    polish: bool = False,
 ) -> bool:
     """If cached, copy ``<input_stem><ext>`` to ``output_path`` and return True.
 
@@ -114,6 +124,9 @@ def _check_cache(
         glossary_max_terms=glossary_max_terms,
         src_lang=src_lang,
         tgt_lang=tgt_lang,
+        styleguide=styleguide,
+        no_styleguide=no_styleguide,
+        polish=polish,
     )
     cache_file = _cache_root() / f"{key}{ext}"
     if cache_file.exists():
@@ -141,6 +154,9 @@ def _write_cache(
     glossary_max_terms: int = 5,
     src_lang: str = "",
     tgt_lang: str = "",
+    styleguide: str | None = None,
+    no_styleguide: bool = False,
+    polish: bool = False,
 ) -> None:
     """Copy the produced output into the cache for next run.
 
@@ -165,6 +181,9 @@ def _write_cache(
         glossary_max_terms=glossary_max_terms,
         src_lang=src_lang,
         tgt_lang=tgt_lang,
+        styleguide=styleguide,
+        no_styleguide=no_styleguide,
+        polish=polish,
     )
     cache_file = _cache_root() / f"{key}{ext}"
     cache_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

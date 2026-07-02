@@ -248,6 +248,7 @@ async def _translate_one_unit(
     sem: asyncio.Semaphore,
     repair_pipeline: 'MDRepairPipeline | XLIFFRepairPipeline',
     glossary: 'Glossary | None' = None,
+    styleguide: str | None = None,
 ) -> _UnitTranslationResult:
     """Translate one trans-unit, gated by ``sem``.
 
@@ -268,11 +269,19 @@ async def _translate_one_unit(
 
     try:
         async with sem:
+            styleguide_context: str | None = None
+            if styleguide:
+                from ol_terminology.rag_injector import build_translate_prompt
+                styleguide_context = build_translate_prompt(
+                    text=unit.source_text,
+                    src_lang=src_lang, tgt_lang=tgt_lang,
+                    style_guide=styleguide,
+                )
             if judge is not None and retry_mgr is not None:
                 async def translate_fn():
                     return await pool.translate(
                         unit.source_text, src_lang, tgt_lang,
-                        context=None, glossary=glossary,
+                        context=styleguide_context, glossary=glossary,
                     )
 
                 async def judge_fn(source, translation, unit_id):
@@ -299,7 +308,7 @@ async def _translate_one_unit(
             else:
                 translated = await pool.translate(
                     unit.source_text, src_lang, tgt_lang,
-                    context=None, glossary=glossary,
+                    context=styleguide_context, glossary=glossary,
                 )
                 attempts = 1
     except Exception as translate_err:
@@ -367,6 +376,7 @@ async def _translate_units_concurrent(
     sem: asyncio.Semaphore,
     repair_pipeline: 'MDRepairPipeline | XLIFFRepairPipeline | None' = None,
     glossary: 'Glossary | None' = None,
+    styleguide: str | None = None,
 ) -> list[_UnitTranslationResult]:
     """Translate all trans-units concurrently, capped by ``sem``.
 
@@ -397,6 +407,7 @@ async def _translate_units_concurrent(
         result = await _translate_one_unit(
             u, pool, judge, retry_mgr,
             src_lang, tgt_lang, sem, repair_pipeline, glossary,
+            styleguide=styleguide,
         )
         async with _cu_lock:
             _cu_count[0] += 1

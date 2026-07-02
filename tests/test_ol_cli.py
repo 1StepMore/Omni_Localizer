@@ -334,3 +334,65 @@ class TestGenerateReportExtractFrom:
                 app, ["generate-report", outdir, "compat", "--warnings", str(warn_json)],
             )
         assert result.exit_code == 0
+
+
+class TestTranslateXliffStyleGuide:
+    """T2.1a tests for --styleguide and --no-styleguide CLI flags."""
+
+    def test_styleguide_flag_shown_in_help(self):
+        result = runner.invoke(app, ["translate-xliff", "--help"])
+        assert result.exit_code == 0
+        assert "--styleguide" in result.output
+
+    def test_no_styleguide_flag_shown_in_help(self):
+        result = runner.invoke(app, ["translate-xliff", "--help"])
+        assert result.exit_code == 0
+        assert "--no-styleguide" in result.output
+
+    def test_styleguide_file_not_found(self, tmp_path, monkeypatch):
+        nonexistent = str(tmp_path / "no-such-styleguide.json")
+        xlf = tmp_path / "in.xlf"
+        xlf.write_text(
+            '<?xml version="1.0"?>\n'
+            '<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">\n'
+            '  <file source-language="en" target-language="zh" original="t" datatype="plaintext">\n'
+            '    <body><trans-unit id="t1"><source>hi</source><target></target></trans-unit></body>\n'
+            '  </file>\n</xliff>\n'
+        )
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                ["translate-xliff", str(xlf), "--styleguide", nonexistent, "-o", str(tmp_path / "out")],
+            )
+        assert result.exit_code != 0
+        combined = (result.output + (str(result.exception) if result.exception else "")).lower()
+        assert "styleguide" in combined or "not found" in combined
+
+    def test_no_styleguide_overrides_styleguide(self, tmp_path, monkeypatch):
+        """When --no-styleguide is set, the styleguide (even if valid) is ignored."""
+        sg_path = tmp_path / "sg.json"
+        sg_path.write_text(
+            '{"tone":"formal","register":"technical","target_audience":"devs",'
+            '"key_conventions":[],"vocabulary":[],"avoid":[],"summary":"test"}'
+        )
+        xlf = tmp_path / "in.xlf"
+        xlf.write_text(
+            '<?xml version="1.0"?>\n'
+            '<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">\n'
+            '  <file source-language="en" target-language="zh" original="t" datatype="plaintext">\n'
+            '    <body><trans-unit id="t1"><source>hi</source><target></target></trans-unit></body>\n'
+            '  </file>\n</xliff>\n'
+        )
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                [
+                    "translate-xliff", str(xlf),
+                    "--styleguide", str(sg_path),
+                    "--no-styleguide",
+                    "-o", str(tmp_path / "out"),
+                ],
+            )
+        assert result.exit_code == 0, (
+            f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
+        )

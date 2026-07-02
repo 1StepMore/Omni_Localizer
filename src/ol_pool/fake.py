@@ -34,6 +34,10 @@ class _FakeModelPool:
         source: str,
         source_lang: str = "",
         target_lang: str = "",
+        context: dict | str | None = None,
+        temperature: float = 0.0,
+        glossary: Any = None,
+        system_message_override: str | None = None,
         **kwargs: Any,
     ) -> str:
         self._call_count += 1

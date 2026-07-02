@@ -60,6 +60,7 @@ async def _translate_xliff_pipelined(
     sem: asyncio.Semaphore,
     repair_pipeline: 'XLIFFRepairPipeline | None' = None,
     glossary: 'Glossary | None' = None,
+    styleguide: str | None = None,
 ) -> list[_UnitTranslationResult]:
     """A4: pipelined translate + LQA judge.
 
@@ -104,6 +105,7 @@ async def _translate_xliff_pipelined(
             units, pool, judge, retry_mgr,
             src_lang, tgt_lang,
             sem=sem, repair_pipeline=repair_pipeline, glossary=glossary,
+            styleguide=styleguide,
         )
 
     threshold = retry_mgr._pass_threshold
@@ -133,11 +135,19 @@ async def _translate_xliff_pipelined(
         """Translate then judge, both for one unit. Translate holds ``sem``;
         judge runs WITHOUT the sem so it can overlap with the next unit's
         translate (this is the A4 pipelining speedup)."""
+        styleguide_context: str | None = None
+        if styleguide:
+            from ol_terminology.rag_injector import build_translate_prompt
+            styleguide_context = build_translate_prompt(
+                text=unit.source_text,
+                src_lang=src_lang, tgt_lang=tgt_lang,
+                style_guide=styleguide,
+            )
         try:
             async with sem:
                 first_pass_translations[idx] = await pool.translate(
                     unit.source_text, src_lang, tgt_lang,
-                    context=None, glossary=glossary,
+                    context=styleguide_context, glossary=glossary,
                 )
         except Exception as exc:  # expected — store exception, continue pipeline
             first_pass_translate_excs[idx] = exc
@@ -188,11 +198,19 @@ async def _translate_xliff_pipelined(
         logger.info(f"Retry phase: re-translating {retry_n} low-scoring units")
 
         async def _retry_unit_pipeline(idx: int) -> None:
+            retry_styleguide_ctx: str | None = None
+            if styleguide:
+                from ol_terminology.rag_injector import build_translate_prompt
+                retry_styleguide_ctx = build_translate_prompt(
+                    text=units[idx].source_text,
+                    src_lang=src_lang, tgt_lang=tgt_lang,
+                    style_guide=styleguide,
+                )
             try:
                 async with sem:
                     retry_translations[idx] = await pool.translate(
                         units[idx].source_text, src_lang, tgt_lang,
-                        context=None, glossary=glossary,
+                        context=retry_styleguide_ctx, glossary=glossary,
                     )
             except Exception as exc:  # expected — retry translate failed, skip
                 return
@@ -284,6 +302,8 @@ async def _translate_xliff_async(
     src_lang: str,
     tgt_lang: str,
     glossary: 'Glossary | None' = None,
+    styleguide: str | None = None,
+    polish: bool = False,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
@@ -356,6 +376,7 @@ async def _translate_xliff_async(
             sem=limiter.xliff_semaphore,
             repair_pipeline=repair_pipeline,
             glossary=glossary,
+            styleguide=styleguide,
         )
     else:
         results = await _translate_units_concurrent(
@@ -364,6 +385,7 @@ async def _translate_xliff_async(
             sem=limiter.xliff_semaphore,
             repair_pipeline=repair_pipeline,
             glossary=glossary,
+            styleguide=styleguide,
         )
 
     for unit, r in zip(units, results):
@@ -376,6 +398,14 @@ async def _translate_xliff_async(
             warnings_per_unit[unit.unit_id] = r.repair_warnings
 
     logger.info(f"Translation complete: {len(units)} units")
+
+    if polish:
+        from ol_xliff.polish import polish_translated_units
+        polish_warnings = await polish_translated_units(
+            units, src_lang, tgt_lang, pool,
+        )
+        for uid, pw in polish_warnings.items():
+            warnings_per_unit.setdefault(uid, []).extend(pw)
 
     original_text = input_path.read_text(encoding="utf-8")
     original_text = _ensure_target_tags(original_text)
@@ -455,6 +485,22 @@ def translate_xliff(
              "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
              "timestamp, level, module fields.",
     ),
+    styleguide: str | None = typer.Option(
+        None, "--styleguide",
+        help="Path to a StyleGuide JSON file (output of ol profile-doc). "
+             "Style rules are injected into each trans-unit's system prompt.",
+    ),
+    no_styleguide: bool = typer.Option(
+        False, "--no-styleguide",
+        help="Skip StyleGuide injection even if --styleguide is set. "
+             "Provides symmetry with --no-glossary.",
+    ),
+    polish: bool = typer.Option(
+        False, "--polish",
+        help="After translation, run a lightweight consistency pass: "
+             "unify terminology, fix missing conjunctions, normalize formats. "
+             "Uses the cheapest available model.",
+    ),
 ) -> int:
     try:
         if log_format:
@@ -510,6 +556,9 @@ def translate_xliff(
             glossary_max_terms=glossary_max_terms,
             src_lang=src_lang,
             tgt_lang=tgt_lang,
+            styleguide=styleguide,
+            no_styleguide=no_styleguide,
+            polish=polish,
         ):
             cached_output = output_path / input_path.name
             if json_output:
@@ -531,9 +580,33 @@ def translate_xliff(
         # Load .env to get MINIMAX_API_KEY etc. before calling LLM
         _load_env_for_cli()
 
+        styleguide_content: str | None = None
+        if styleguide:
+            from ol_style.schema import StyleGuide
+            try:
+                sg = StyleGuide.from_json_file(styleguide)
+                styleguide_content = sg.to_prompt_section()
+                if styleguide_content:
+                    logger.info(
+                        f"StyleGuide loaded: tone={sg.tone!r} register={sg.register!r}"
+                    )
+                else:
+                    logger.info(
+                        f"StyleGuide loaded but all fields empty: {styleguide}"
+                    )
+            except FileNotFoundError as e:
+                typer.echo(f"Error: StyleGuide file not found: {e}", err=True)
+                raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+        if no_styleguide:
+            styleguide_content = None
+            logger.info("StyleGuide disabled via --no-styleguide")
+
         asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
             glossary=loaded_glossary,
+            styleguide=styleguide_content,
+            polish=polish,
         ))
 
         # A12.4: post-translate restoration runs after asyncio.run so
@@ -557,6 +630,9 @@ def translate_xliff(
             glossary_max_terms=glossary_max_terms,
             src_lang=src_lang,
             tgt_lang=tgt_lang,
+            styleguide=styleguide,
+            no_styleguide=no_styleguide,
+            polish=polish,
         )
 
         output_file = output_path / Path(input).name
