@@ -824,8 +824,12 @@ def translate_md(
             typer.echo(f"Cleared {n} cached file(s) from {_cache_root()}")
             raise typer.Exit(code=ExitCode.SUCCESS)
 
-        src = source_lang or "en"
-        tgt = target_lang or "zh"
+        # Issue #38: don't hardcode the fallback BEFORE loading config.
+        # Mirror translate_xliff.py:488-502 (the correct pattern).
+        # Otherwise, the `or "en"` short-circuits and the config's
+        # source_lang/target_lang are dead code.
+        src = source_lang
+        tgt = target_lang
         cfg_glossary: dict[str, Any] | None = None
 
         if config:
@@ -837,6 +841,8 @@ def translate_md(
             _enforce_file_size(input_path, cfg.max_input_size_mb)
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
         else:
+            # No config — fall back to historical hardcoded defaults
+            # so existing CLI users without --config see no behavior change.
             src = src or "en"
             tgt = tgt or "zh"
 

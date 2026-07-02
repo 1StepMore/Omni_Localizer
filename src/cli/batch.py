@@ -141,8 +141,12 @@ def translate_batch(
 
     logger.info(f"Command: translate_batch {directory}")
     try:
-        src = source_lang or "en"
-        tgt = target_lang or "zh"
+        # Issue #38: don't hardcode the fallback BEFORE loading config.
+        # Mirror translate_xliff.py:488-502 (the correct pattern).
+        # Otherwise, the `or "en"` short-circuits and the config's
+        # source_lang/target_lang are dead code.
+        src = source_lang
+        tgt = target_lang
 
         if config:
             from ol_config.loader import load_config
@@ -152,6 +156,8 @@ def translate_batch(
             tgt = tgt or cfg.target_lang
             typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
         else:
+            # No config — fall back to historical hardcoded defaults
+            # so existing CLI users without --config see no behavior change.
             src = src or "en"
             tgt = tgt or "zh"
 
