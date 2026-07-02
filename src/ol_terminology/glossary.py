@@ -1,10 +1,81 @@
-"""Glossary loading and relevance-based term retrieval."""
+"""Glossary loading and relevance-based term retrieval.
+
+Supports two JSON glossary shapes (Issue #7 — auto-conversion):
+
+* **Legacy** (the original OL format)::
+      {"term": {"translation": "...", "variants": {...}, "confidence": 0.9}}
+
+* **v1** (the newer PR12 ``Glossary`` dataclass format — also produced by the
+  ``Glossary.load()`` writer and the ``ol_terminology`` Pydantic schema)::
+
+      {"terms": [{"source": "API", "targets": ["应用程序接口", "API"]}]}
+
+Before the fix, passing a v1 file to the legacy loaders produced a single
+garbage entry ``{"terms": {"translation": "[{'source': 'API', ...}]"}}`` —
+the whole list was stringified. The user's terms were silently dropped.
+
+The fix detects v1 shape (``isinstance(raw.get("terms"), list)``) and
+auto-converts to the legacy dict form, emitting a deprecation warning so
+users can migrate.
+"""
 from pathlib import Path
 from typing import Any
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_glossary_dict(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Normalize a glossary dict (legacy or v1) into the legacy shape.
+
+    Args:
+        raw: Parsed JSON dict. Either legacy ``{term: {translation, ...}}``
+            or v1 ``{"terms": [{source, targets}]}``.
+
+    Returns:
+        Legacy-shaped dict ``{term: {translation, variants, confidence}}``.
+    """
+    if isinstance(raw.get("terms"), list):
+        logger.warning(
+            "Glossary v1 format (with 'terms' list) is auto-converted to legacy. "
+            "Migrate to legacy format: {\"term\": {\"translation\": \"...\"}}."
+        )
+        glossary: dict[str, dict[str, Any]] = {}
+        for entry in raw["terms"]:
+            if not isinstance(entry, dict) or "source" not in entry:
+                # Silently skip malformed entries (consistent with old behavior).
+                continue
+            source = entry["source"]
+            targets = entry.get("targets") or []
+            if not targets:
+                continue
+            # First target is the primary translation; the rest are variants.
+            primary = targets[0]
+            variants = {t: t for t in targets[1:]} if len(targets) > 1 else {}
+            glossary[source] = {
+                "translation": primary,
+                "variants": variants,
+                "confidence": 1.0,
+            }
+        return glossary
+
+    glossary = {}
+    for term, data in raw.items():
+        if isinstance(data, dict):
+            glossary[term] = {
+                "translation": data.get("translation", ""),
+                "variants": data.get("variants", {}),
+                "confidence": data.get("confidence", 1.0),
+            }
+        else:
+            # Defensive: handle non-dict values (e.g. flat string entries).
+            glossary[term] = {
+                "translation": str(data),
+                "variants": {},
+                "confidence": 1.0,
+            }
+    return glossary
 
 
 def load_glossary(path: Path) -> dict[str, dict[str, Any]]:
@@ -40,21 +111,7 @@ def load_glossary(path: Path) -> dict[str, dict[str, Any]]:
         logger.error(f"Failed to parse glossary JSON at {path}: {e}")
         raise ValueError(f"Malformed glossary JSON: {e}") from e
 
-    glossary: dict[str, dict[str, Any]] = {}
-
-    for term, data in raw.items():
-        if isinstance(data, dict):
-            glossary[term] = {
-                "translation": data.get("translation", ""),
-                "variants": data.get("variants", {}),
-                "confidence": data.get("confidence", 1.0),
-            }
-        else:
-            glossary[term] = {
-                "translation": str(data),
-                "variants": {},
-                "confidence": 1.0,
-            }
+    glossary = _parse_glossary_dict(raw)
 
     logger.info(f"Loaded {len(glossary)} terms from glossary: {path}")
     return glossary
@@ -92,21 +149,7 @@ def load_glossary_from_path(path: str | Path, config_dir: Path | None = None) ->
     except json.JSONDecodeError as e:
         raise ValueError(f"Malformed glossary JSON: {e}") from e
 
-    glossary: dict[str, dict[str, Any]] = {}
-
-    for term, data in raw.items():
-        if isinstance(data, dict):
-            glossary[term] = {
-                "translation": data.get("translation", ""),
-                "variants": data.get("variants", {}),
-                "confidence": data.get("confidence", 1.0),
-            }
-        else:
-            glossary[term] = {
-                "translation": str(data),
-                "variants": {},
-                "confidence": 1.0,
-            }
+    glossary = _parse_glossary_dict(raw)
 
     logger.info(f"Loaded {len(glossary)} terms from glossary: {path}")
     return glossary

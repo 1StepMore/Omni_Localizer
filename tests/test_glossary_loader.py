@@ -132,3 +132,134 @@ class TestGetRelevantTerms:
 
         results = get_relevant_terms("unrelated text without matches", glossary, top_k=5)
         assert results == []
+
+class TestLoadGlossaryV1Format:
+    """Issue #7: v1 format {"terms": [{"source": "API", "targets": [...]}]} must
+    be auto-converted to the legacy dict form instead of being silently corrupted.
+    
+    Reproduces the bug: previously v1 files produced 1 garbage entry with
+    key='terms' and the entire list stored as a string in 'translation'.
+    """
+
+    def test_v1_format_loads_all_terms(self, tmp_path):
+        """v1 format with N terms in 'terms' list must load all N terms."""
+        import json
+        from ol_terminology.glossary import load_glossary
+
+        v1_data = {
+            "terms": [
+                {"source": "API", "targets": ["应用程序接口", "API"]},
+                {"source": "rendering", "targets": ["渲染"]},
+                {"source": "pipeline", "targets": ["管线", "流水线"]},
+            ]
+        }
+        p = tmp_path / "v1_glossary.json"
+        p.write_text(json.dumps(v1_data, ensure_ascii=False), encoding="utf-8")
+
+        result = load_glossary(p)
+
+        # Must have 3 terms, not 1 garbage entry
+        assert len(result) == 3, f"Expected 3 terms, got {len(result)}: {list(result)}"
+        assert "API" in result
+        assert "rendering" in result
+        assert "pipeline" in result
+        # First target becomes translation
+        assert result["API"]["translation"] == "应用程序接口"
+        assert result["rendering"]["translation"] == "渲染"
+        assert result["pipeline"]["translation"] == "管线"
+
+    def test_v1_format_default_confidence(self, tmp_path):
+        """v1 format terms get confidence=1.0 since v1 has no confidence field."""
+        import json
+        from ol_terminology.glossary import load_glossary
+
+        p = tmp_path / "v1_glossary.json"
+        p.write_text(json.dumps({"terms": [{"source": "API", "targets": ["API"]}]}), encoding="utf-8")
+
+        result = load_glossary(p)
+
+        assert result["API"]["confidence"] == 1.0
+
+    def test_v1_format_multiple_targets_become_variants(self, tmp_path):
+        """v1 format with N>1 targets: first is translation, rest are variants."""
+        import json
+        from ol_terminology.glossary import load_glossary
+
+        p = tmp_path / "v1_glossary.json"
+        p.write_text(
+            json.dumps({"terms": [{"source": "API", "targets": ["应用程序接口", "API"]}]}),
+            encoding="utf-8",
+        )
+
+        result = load_glossary(p)
+
+        assert result["API"]["translation"] == "应用程序接口"
+        # Second target should be a variant
+        assert "API" in result["API"]["variants"].values()
+
+    def test_v1_format_from_load_glossary_from_path(self, tmp_path):
+        """load_glossary_from_path also handles v1 format."""
+        import json
+        from ol_terminology.glossary import load_glossary_from_path
+
+        v1_data = {
+            "terms": [
+                {"source": "API", "targets": ["API 端点"]},
+                {"source": "endpoint", "targets": ["端点"]},
+            ]
+        }
+        p = tmp_path / "v1_glossary.json"
+        p.write_text(json.dumps(v1_data, ensure_ascii=False), encoding="utf-8")
+
+        result = load_glossary_from_path(p)
+
+        assert len(result) == 2
+        assert "API" in result
+        assert "endpoint" in result
+
+    def test_legacy_format_still_works(self, tmp_path):
+        """Legacy format {"API": {"translation": "..."}} must still work after fix."""
+        import json
+        from ol_terminology.glossary import load_glossary
+
+        legacy_data = {
+            "API endpoint": {
+                "translation": "API 端点",
+                "variants": {"API endpoint": "API 端点"},
+                "confidence": 0.9,
+            }
+        }
+        p = tmp_path / "legacy_glossary.json"
+        p.write_text(json.dumps(legacy_data, ensure_ascii=False), encoding="utf-8")
+
+        result = load_glossary(p)
+
+        assert len(result) == 1
+        assert result["API endpoint"]["translation"] == "API 端点"
+        assert result["API endpoint"]["confidence"] == 0.9
+
+    def test_v1_format_does_not_produce_garbage_entry(self, tmp_path):
+        """Regression test: the v1 bug produced a single 'terms' key with a
+        stringified list. After fix, the result should have no garbage entry
+        named 'terms' and the translation field should never be a stringified list."""
+        import json
+        from ol_terminology.glossary import load_glossary
+
+        p = tmp_path / "v1_glossary.json"
+        p.write_text(
+            json.dumps({"terms": [{"source": "API", "targets": ["API"]}]}),
+            encoding="utf-8",
+        )
+
+        result = load_glossary(p)
+
+        # No key should be "terms" (the old bug)
+        assert "terms" not in result
+        # No translation should look like a stringified list
+        for term, meta in result.items():
+            assert not meta["translation"].startswith("["), (
+                f"Translation for {term!r} looks like a stringified list: {meta['translation']!r}"
+            )
+            assert not meta["translation"].startswith("{"), (
+                f"Translation for {term!r} looks like a stringified dict: {meta['translation']!r}"
+            )
