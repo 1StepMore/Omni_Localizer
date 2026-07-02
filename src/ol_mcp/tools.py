@@ -286,6 +286,28 @@ class ExtractWarningsInput(BaseModel):
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
+class TranslateFileInput(BaseModel):
+    """Input for translate_file (Issue #37: file-based OPP→OL→ORF end-to-end)."""
+
+    file_path: str = Field(description="Path to source document file (DOCX, PPTX, etc.)")
+    source_lang: str = Field(description="Source language code (e.g. en, zh, ja)")
+    target_lang: str = Field(description="Target language code")
+    output_format: str = Field(
+        default="docx", description="Target output format for ORF backfill (e.g. docx, pptx, html)"
+    )
+    output_dir: str | None = Field(
+        default=None, description="Output directory (default: input file parent)"
+    )
+    pipeline: str | None = Field(
+        default=None, description="Force pipeline: 'md' or 'xliff' (default: auto-detect)"
+    )
+    glossary_path: str | None = Field(default=None, description="Path to glossary JSON file")
+    config_path: str | None = Field(default=None, description="Path to OL config YAML file")
+    keep_temp: bool = Field(default=False, description="Keep temp files on success for debugging")
+    shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth")
+    traceparent: str | None = Field(default=None, description="W3C Trace Context traceparent")
+
+
 class TMEntry(BaseModel):
     """Single entry for add_tm_entries."""
 
@@ -593,6 +615,7 @@ from ol_mcp.translate_md import translate_md_text  # noqa: E402, F401
 from ol_mcp.judge import judge_text  # noqa: E402, F401
 from ol_mcp.glossary import load_glossary, get_relevant_terms  # noqa: E402, F401
 from ol_mcp.tm import search_tm  # noqa: E402, F401
+from ol_mcp.translate_file import translate_file  # noqa: E402, F401  (Issue #37)
 from ol_mcp.extract_terms import extract_terms  # noqa: E402, F401
 from ol_mcp.tm_add import add_tm_entries  # noqa: E402, F401
 from ol_mcp.shield_text import shield_md_text, unshield_md_text  # noqa: E402, F401
@@ -639,6 +662,7 @@ __all__ = [
     "DisambiguateInput",
     "VerifyTermsInput",
     "ProfileDocInput",
+    "TranslateFileInput",  # Issue #37
     "translate_md_text",
     "judge_text",
     "load_glossary",
@@ -656,6 +680,7 @@ __all__ = [
     "disambiguate",
     "verify_terms",
     "profile_doc",
+    "translate_file",  # Issue #37
     "ping",
     "get_capabilities",
     "extract_warnings",
