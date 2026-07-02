@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Terminology Verifier** (`src/ol_terminology/verifier.py`): pure-logic post-translation terminology checker. Compares source/target text against a verified glossary and reports `verified` / `mismatches` / `absent` / `inconsistencies` / `low_confidence`. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. No LLM, no network — designed for Agent-layer upstream web search + downstream lightweight check. Exposed via `ol verify-terms` CLI and `verify_terms` MCP tool.
 
+- **T1.0 §2 Proper-noun preservation rule** in `build_translate_prompt()`: the LLM is now instructed to keep unknown proper nouns (company, product, brand, person names) in their original pinyin/Chinese characters rather than guessing an English translation.
+
+- **T2.x §1 StyleGuide injection into translation pipeline**: `--styleguide`/`--no-styleguide` CLI flags on `ol translate-xliff`; `styleguide_path` field on MCP `TranslateXliffInput`. Loads StyleGuide JSON (output of `ol profile-doc`) and threads it through the XLIFF translation pipeline (CLI + MCP, both pipelined and concurrent paths). Cache key now includes `styleguide` and `no_styleguide` to prevent stale outputs.
+
+- **T2.2 `ModelPool.translate(..., system_message_override=None)`** new optional parameter: replaces the default translator system message with a custom one. Used by the Polish pass to avoid role conflict with the "consistency checker" prompt.
+
+- **T3.0 §3 `--polish` post-translation consistency pass**: new `ol_xliff/polish.py` module with `_build_polish_prompt`, `_parse_polish_response` (2-pass regex + fallback heuristic), and `polish_translated_units`. Runs a single LLM call across all translated units to fix cross-unit inconsistencies (terminology, missing conjunctions, format, quote style). CLI flag `--polish` on `ol translate-xliff`; `polish` field on MCP `TranslateXliffInput`. Budget guard at 50K chars; pool's `system_message_override` is used to switch LLM role.
+
+- **T4.0 §4 爱上海尔 glossary fixture** at `tests/fixtures/glossary_爱上海尔.json`: 6 terms (开利→Carrier, 三翼鸟→Sanyiniao, 滚筒洗衣机→drum washing machine, 波轮洗衣机→pulsator washing machine, 朗境→Lanjing, 海尔朗境 X11→Haier Lanjing X11).
+
+### Changed
+
+- **T5.0 Version bumped to 0.6.0** (was 0.5.9). All changes backward compatible.
+- **T2.5 Cache key derivation** now includes `styleguide`, `no_styleguide`, and `polish` for accurate cache invalidation.
+- **T1.0 `rag_injector.py:72`** instruction text now includes the proper-noun preservation rule.
+
 - **Document Profiler** (`src/ol_style/`): new `ol_style/` module providing `StyleGuide` dataclass, `ProfileCache` (file-hash based), and `profile_document()` async function. Analyzes a document's writing style via the new `profiling` LLM role and emits a structured `StyleGuide` (tone, register, target_audience, key_conventions, vocabulary, avoid, summary). Exposed via `ol profile-doc` CLI and `profile_doc` MCP tool. Profile results are cached by content hash for reuse across runs.
 
 ### Changed
