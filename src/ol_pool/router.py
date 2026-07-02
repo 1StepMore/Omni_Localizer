@@ -123,19 +123,55 @@ sys.modules.setdefault('src.ol_pool.router', sys.modules[__name__])
 # WARNING on timeout). MUST be set before `import litellm` below.
 # Round 12: LITELLM_LOCAL_MODEL_COST_MAP alone isn't enough — also
 # set DISABLE_LITELLM_TELEMETRY=True to skip the import-time fetch.
+# Issue #4: gate ALL litellm imports (including the exception classes —
+# they pull in the full package) on non-FAKE_LLM mode. In FAKE_LLM mode
+# we provide local stub exception subclasses so the `except Timeout as e:`
+# clauses in translate()/judge() remain syntactically valid even though
+# they will never actually fire (FAKE mode returns early).
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 os.environ.setdefault("DISABLE_LITELLM_TELEMETRY", "True")
 os.environ.setdefault("LITELLM_TELEMETRY", "False")
 
-import litellm
-from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
-from litellm.types.router import RouterRateLimitError
 
-# Must be set before Router init — prevents litellm from lowercasing model names
-# (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
-litellm.disable_model_name_normalization = True
+class _StubLitellmError(Exception):
+    """Base stub for litellm exception classes when OMNI_TEST_FAKE_LLM=1."""
 
-from litellm import Router
+
+class _StubTimeout(_StubLitellmError):
+    pass
+
+
+class _StubAuthenticationError(_StubLitellmError):
+    pass
+
+
+class _StubRateLimitError(_StubLitellmError):
+    pass
+
+
+class _StubRouterRateLimitError(_StubLitellmError):
+    pass
+
+
+if os.environ.get("OMNI_TEST_FAKE_LLM") != "1":
+    import litellm  # noqa: E402
+    from litellm.exceptions import AuthenticationError, RateLimitError, Timeout  # noqa: E402
+    from litellm.types.router import RouterRateLimitError  # noqa: E402
+    # Must be set before Router init — prevents litellm from lowercasing model names
+    # (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
+    litellm.disable_model_name_normalization = True
+    from litellm import Router  # noqa: E402
+else:
+    # FAKE_LLM mode: skip the 26s `import litellm` and use stub classes.
+    # `except Timeout as e:` etc. remain valid; the stubs are never actually
+    # raised because __init__ returns early with _FakeModelPool.
+    # Tests using `with patch("ol_pool.router.Router")` to set _test_mode
+    # still work because @patch sets the module-level attribute at test time.
+    AuthenticationError = _StubAuthenticationError
+    RateLimitError = _StubRateLimitError
+    Timeout = _StubTimeout
+    RouterRateLimitError = _StubRouterRateLimitError
+    Router = None  # type: ignore[assignment,misc]
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMPoolConfig
