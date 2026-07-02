@@ -114,3 +114,110 @@ class TestChunkByParagraphConcurrency:
         assert positions == sorted(positions), (
             f"Output order not preserved: positions={positions}"
         )
+
+
+class TestChunkByParagraphProgress:
+    """Issue #6: chunk-by-paragraph should emit progress output during translation.
+
+    Without progress, users running 100+ paragraph translations have NO
+    indication of whether the process is stuck or working.
+    """
+
+    def test_chunk_by_paragraph_emits_progress_to_stderr(self, tmp_path, monkeypatch, capsys):
+        """Progress messages should appear on stderr during translation."""
+        from cli.translate_md import _translate_md_by_paragraph
+
+        monkeypatch.setenv("OMNI_TEST_FAKE_LLM", "1")
+
+        # 12 paragraphs (>5 to trigger first progress milestone at 5)
+        paragraphs = [
+            f"Paragraph number {i}. This is test content for translation progress check."
+            for i in range(12)
+        ]
+        md = tmp_path / "test.md"
+        md.write_text("\n\n".join(paragraphs), encoding="utf-8")
+        out = tmp_path / "out"
+        out.mkdir()
+
+        # Force isatty() to return True (since test env has no real tty)
+        import sys
+        monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+
+        asyncio.run(_translate_md_by_paragraph(
+            input_path=md,
+            output_path=out,
+            config=None,
+            src="en",
+            tgt="zh",
+            add_frontmatter=False,
+        ))
+
+        captured = capsys.readouterr()
+        # Progress should appear on stderr
+        err = captured.err
+        assert "12/" in err or "paragraphs" in err.lower(), (
+            f"Expected progress output on stderr; got: {err!r}"
+        )
+
+    def test_chunk_by_paragraph_silent_when_not_tty(self, tmp_path, monkeypatch, capsys):
+        """Progress should NOT appear when stderr is not a tty (piped output)."""
+        from cli.translate_md import _translate_md_by_paragraph
+
+        monkeypatch.setenv("OMNI_TEST_FAKE_LLM", "1")
+
+        paragraphs = [f"Para {i} of test content for silent mode." for i in range(8)]
+        md = tmp_path / "test.md"
+        md.write_text("\n\n".join(paragraphs), encoding="utf-8")
+        out = tmp_path / "out"
+        out.mkdir()
+
+        import sys
+        monkeypatch.setattr(sys.stderr, "isatty", lambda: False)
+
+        asyncio.run(_translate_md_by_paragraph(
+            input_path=md,
+            output_path=out,
+            config=None,
+            src="en",
+            tgt="zh",
+            add_frontmatter=False,
+        ))
+
+        captured = capsys.readouterr()
+        err = captured.err
+        # No progress should appear when not a tty
+        assert "paragraphs" not in err.lower() or "8/" not in err, (
+            f"Expected NO progress on stderr in non-tty mode; got: {err!r}"
+        )
+
+    def test_chunk_by_paragraph_quiet_flag_suppresses_progress(self, tmp_path, monkeypatch, capsys):
+        """The quiet=True parameter must suppress progress output even on a tty."""
+        from cli.translate_md import _translate_md_by_paragraph
+
+        monkeypatch.setenv("OMNI_TEST_FAKE_LLM", "1")
+
+        paragraphs = [f"Para {i} of test content for quiet mode." for i in range(8)]
+        md = tmp_path / "test.md"
+        md.write_text("\n\n".join(paragraphs), encoding="utf-8")
+        out = tmp_path / "out"
+        out.mkdir()
+
+        import sys
+        monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+
+        asyncio.run(_translate_md_by_paragraph(
+            input_path=md,
+            output_path=out,
+            config=None,
+            src="en",
+            tgt="zh",
+            add_frontmatter=False,
+            quiet=True,
+        ))
+
+        captured = capsys.readouterr()
+        err = captured.err
+        # quiet=True must suppress progress
+        assert "paragraphs" not in err.lower() or "8/" not in err, (
+            f"quiet=True should suppress progress; got: {err!r}"
+        )

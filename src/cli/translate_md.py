@@ -642,6 +642,7 @@ async def _translate_md_by_paragraph(
     tgt: str,
     add_frontmatter: bool,
     glossary: 'Glossary | None' = None,
+    quiet: bool = False,
 ) -> str:
     # Issue #35: Bypass the MCP tool (translate_md_text) to avoid
     # import-lock deadlock when concurrent=5 — the MCP handler imports
@@ -652,6 +653,8 @@ async def _translate_md_by_paragraph(
     from ol_md.pipeline import MDRepairPipeline
     from ol_pool.router import ModelPool
 
+    import sys
+
     raw = input_path.read_text(encoding="utf-8")
     parts = raw.split("---", 2)
     body = parts[2].strip() if len(parts) >= 3 and parts[0].strip() == "" else raw
@@ -661,6 +664,18 @@ async def _translate_md_by_paragraph(
     _CHUNK_CONCURRENCY = 5
     sem = asyncio.Semaphore(_CHUNK_CONCURRENCY)
     pool = ModelPool.get_instance(config) if config else ModelPool.get_instance()
+    total = len(paragraphs)
+
+    _para_count = [0]
+    _para_lock = asyncio.Lock()
+    _show_progress = not quiet and sys.stderr.isatty()
+    PROGRESS_INTERVAL = 5
+
+    if _show_progress and total > 0:
+        typer.echo(
+            f"Translating {total} paragraphs (concurrency={_CHUNK_CONCURRENCY})...",
+            err=True,
+        )
 
     async def _translate_one_para(idx: int, p: str) -> tuple[int, str]:
         async with sem:
@@ -672,9 +687,24 @@ async def _translate_md_by_paragraph(
                     repaired = MDRepairPipeline().repair(unshielded, p, shield_map)
                 else:
                     repaired = translated
+
+                if _show_progress:
+                    async with _para_lock:
+                        _para_count[0] += 1
+                        done = _para_count[0]
+                        if done % PROGRESS_INTERVAL == 0 or done == total:
+                            pct = done / total * 100
+                            typer.echo(
+                                f"  paragraphs: {done}/{total} ({pct:.0f}%)",
+                                err=True,
+                            )
+
                 return idx, repaired
             except Exception as e:
                 logger.warning(f"Para {idx} translation failed: {str(e)[:80]}")
+                if _show_progress:
+                    async with _para_lock:
+                        _para_count[0] += 1
                 return idx, p
 
     tasks = [_translate_one_para(i, p) for i, p in enumerate(paragraphs)]
@@ -846,6 +876,7 @@ def translate_md(
                 _translate_md_by_paragraph(
                     input_path, output_path, config, src, tgt, add_frontmatter,
                     glossary=loaded_glossary,
+                    quiet=json_output,
                 ),
             )
         else:
