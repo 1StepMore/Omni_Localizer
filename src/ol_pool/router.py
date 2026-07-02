@@ -926,13 +926,22 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
             )
             return {"error": f"profile_response_invalid: {resp_err}", "transport_error": True}
 
+        # Issue #36: strip markdown code fences before JSON parsing.
+        # LLMs commonly wrap JSON output in ```json ... ``` fences.
+        _stripped = raw_text.strip()
+        if _stripped.startswith("```"):
+            # Remove opening fence (```json, ```, etc.) and closing fence
+            _stripped = re.sub(r"^```\w*\s*", "", _stripped)
+            _stripped = re.sub(r"\s*```$", "", _stripped)
+            _stripped = _stripped.strip()
+
         # Parse the LLM JSON response into a dict. _parse_profile_response
         # in ol_style.doc_profiler accepts both str and dict; returning a
         # parsed dict hits the fast path and gives callers a structured
         # result they can inspect. On JSON failure, wrap the raw text
         # under "raw_response" so downstream parsing still has a chance.
         try:
-            parsed = json.loads(raw_text)
+            parsed = json.loads(_stripped)
             if isinstance(parsed, dict):
                 if self._cache_enabled:
                     self._cache.put(cache_key, parsed)
