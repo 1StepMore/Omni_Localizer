@@ -69,7 +69,14 @@ def build_translate_prompt(
         f"[USER_TEXT_START]\n{text}\n[USER_TEXT_END]"
     )
 
-    instruction = f"Translate the following {src_lang} text to {tgt_lang}, using the above translation memory and glossary terms when applicable."
+    instruction = (
+        f"Translate the following {src_lang} text to {tgt_lang}, using the "
+        f"above translation memory and glossary terms when applicable.\n\n"
+        f"RULE: If you encounter an unknown proper noun (company name, product "
+        f"name, brand name, person name), ALWAYS keep the original pinyin or "
+        f"Chinese characters rather than guessing an English translation. "
+        f"When in doubt, preserve the original."
+    )
     parts.insert(0, instruction)
 
     return "\n\n".join(parts)

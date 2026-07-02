@@ -99,3 +99,50 @@ class TestBuildTranslatePrompt:
         assert text in result
         assert "[Translation Memory" not in result
         assert "[Glossary Terms" not in result
+
+
+class TestProperNounRule:
+    """Tests for §2 Proper noun preservation rule (v0.6.0).
+
+    The rule instructs the LLM to keep unknown proper nouns (company,
+    product, brand, person names) in their original pinyin/Chinese
+    characters rather than guessing an English translation.
+    """
+
+    def test_proper_noun_rule_present(self):
+        """The proper-noun RULE: marker must appear in the basic prompt."""
+        result = build_translate_prompt("Hello", "en", "zh")
+        assert "RULE:" in result, "RULE: marker missing — proper noun rule not injected"
+
+    def test_proper_noun_rule_instructions(self):
+        """The rule must instruct the LLM to preserve the original."""
+        result = build_translate_prompt("Hello", "en", "zh")
+        assert "preserve the original" in result
+        assert "proper noun" in result
+
+    def test_proper_noun_rule_with_glossary(self):
+        """Rule AND glossary section both present when glossary is injected."""
+        glossary_terms = [{"term": "Carrier", "translation": "开利"}]
+        result = build_translate_prompt(
+            "开利 is global", "en", "zh", glossary_terms=glossary_terms,
+        )
+        assert "RULE:" in result
+        assert "preserve the original" in result
+        assert "[Glossary Terms" in result
+
+    def test_proper_noun_rule_with_style_guide(self):
+        """Rule AND style guide both present when style_guide is injected."""
+        style_guide = "[Style Guide]\nTone: formal"
+        result = build_translate_prompt(
+            "开利 is global", "en", "zh", style_guide=style_guide,
+        )
+        assert "RULE:" in result
+        assert "[Style Guide]" in result
+        assert "formal" in result
+
+    def test_proper_noun_rule_with_chinese_source(self):
+        """Rule applies when source is Chinese (the primary use case)."""
+        result = build_translate_prompt("开利是全球领先的空调制造商", "zh", "en")
+        assert "RULE:" in result
+        assert "preserve the original" in result
+        assert "pinyin" in result.lower() or "chinese characters" in result.lower()
