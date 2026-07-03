@@ -23,6 +23,7 @@ from ol_mcp.tools import (
 )
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_mcp.task_tracker import TaskStatus
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
@@ -256,6 +257,22 @@ async def translate_md_text(params: TranslateInput) -> str:
 
     warnings: list[str] = []
     config_path = _get_config_path(params.config_path)
+
+    _validator = get_default_validator()
+    if params.glossary_path and not params.no_glossary:
+        _gv = _validator.validate_path(params.glossary_path)
+        if not _gv.success:
+            return json.dumps(
+                _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_gv.error}"),
+                ensure_ascii=False,
+            )
+    if params.styleguide_path and not params.no_styleguide:
+        _sv = _validator.validate_path(params.styleguide_path)
+        if not _sv.success:
+            return json.dumps(
+                _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_sv.error}"),
+                ensure_ascii=False,
+            )
 
     try:
         glossary: dict[str, dict[str, Any]] | None = None

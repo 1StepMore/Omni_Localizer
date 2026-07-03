@@ -75,6 +75,19 @@ class PathValidator:
 
     ALLOWED_EXTENSIONS = {".json", ".tmx", ".xlf", ".xliff", ".md"}
 
+    @classmethod
+    def get_allowed_extensions(cls) -> set[str]:
+        """Return the effective allowed-extensions set.
+
+        If the ``MCP_ALLOWED_EXTENSIONS`` env var is set (comma-separated,
+        e.g. ``.txt,.csv,.yaml``), it overrides the class default.
+        An empty or whitespace-only value falls back to ``ALLOWED_EXTENSIONS``.
+        """
+        raw = os.environ.get("MCP_ALLOWED_EXTENSIONS", "").strip()
+        if raw:
+            return {ext.strip() for ext in raw.split(",") if ext.strip()}
+        return cls.ALLOWED_EXTENSIONS
+
     def __init__(
         self,
         allowed_directories: List[Path],
@@ -83,13 +96,16 @@ class PathValidator:
         self.allowed_directories = [Path(d).resolve() for d in allowed_directories]
         self.max_file_size_bytes = max_file_size_bytes
 
-    def validate_path(self, path: str, allow_missing: bool = False) -> ValidationResult:
+    def validate_path(self, path: str, allow_missing: bool = False, skip_extension_check: bool = False) -> ValidationResult:
         """Validate a file path against security rules.
 
         Args:
             path: The path string to validate.
             allow_missing: If True, skip the existence check (for output paths).
                           If False (default), file must exist and be readable.
+            skip_extension_check: If True, skip the allowed-extension check.
+                                 Useful for pipeline tools (e.g. translate_file)
+                                 that delegate format handling to downstream tools.
 
         Returns:
             ValidationResult with success=True if valid, or success=False
@@ -186,7 +202,7 @@ class PathValidator:
             )
 
         # Allowed extension check (document whitelist)
-        if input_path.suffix.lower() not in self.ALLOWED_EXTENSIONS:
+        if not skip_extension_check and input_path.suffix.lower() not in self.get_allowed_extensions():
             return ValidationResult(
                 success=False,
                 error=f"Extension '{input_path.suffix}' not in allowed set",
@@ -232,23 +248,30 @@ class PathValidator:
 
 
 def get_default_validator() -> PathValidator:
-    """Build PathValidator from OL_MCP_ALLOWED_DIRS env var.
+    """Build PathValidator from env var allowlist.
+
+    Env var precedence (highest to lowest):
+    1. ``MCP_ALLOWED_DIRECTORIES`` — unified cross-module name (Phase 2)
+    2. ``OL_MCP_ALLOWED_DIRS`` — OL-specific name (kept for backward compat)
+    3. ``OL_ALLOWED_DIRECTORIES`` — legacy name (deprecated)
 
     Comma-separated list of allowed directories (e.g.,
-    ``OL_MCP_ALLOWED_DIRS=/tmp/ol-work,/data/corpus``). If
+    ``MCP_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``). If
     empty or unset, defaults to the current working directory.
-
-    The old name ``OL_ALLOWED_DIRECTORIES`` is still accepted as
-    a backward-compat fallback.
 
     The validator is created fresh on each call so that env-var
     changes (e.g., between tests) are picked up. For long-running
     servers that need a stable validator, instantiate directly.
     """
-    allowed = os.environ.get("OL_MCP_ALLOWED_DIRS",
-                 os.environ.get("OL_ALLOWED_DIRECTORIES", ""))
-    if os.environ.get("OL_ALLOWED_DIRECTORIES") and not os.environ.get("OL_MCP_ALLOWED_DIRS"):
-        _logger.warning("OL_ALLOWED_DIRECTORIES is deprecated, use OL_MCP_ALLOWED_DIRS")
+    allowed = (
+        os.environ.get("MCP_ALLOWED_DIRECTORIES", "")
+        or os.environ.get("OL_MCP_ALLOWED_DIRS", "")
+        or os.environ.get("OL_ALLOWED_DIRECTORIES", "")
+    )
+    if os.environ.get("OL_ALLOWED_DIRECTORIES") and not (
+        os.environ.get("MCP_ALLOWED_DIRECTORIES") or os.environ.get("OL_MCP_ALLOWED_DIRS")
+    ):
+        _logger.warning("OL_ALLOWED_DIRECTORIES is deprecated, use MCP_ALLOWED_DIRECTORIES")
     if allowed.strip():
         dirs = [Path(d).resolve() for d in allowed.split(",") if d.strip()]
     else:

@@ -14,6 +14,7 @@ import json
 
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
     _error_response,
     _register_tool,
@@ -48,6 +49,16 @@ async def extract_warnings(params: ExtractWarningsInput) -> str:
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
         return json.dumps(auth_failure_response(), ensure_ascii=False)
+
+    vresult = get_default_validator().validate_path(params.file_path)
+    if not vresult.success:
+        return json.dumps(
+            _error_response(
+                "OL_INVALID_INPUT",
+                f"OL_PATH_NOT_ALLOWED: {vresult.error}",
+            ),
+            ensure_ascii=False,
+        )
 
     from cli._warning_extractor import extract_warnings_from_file
     try:

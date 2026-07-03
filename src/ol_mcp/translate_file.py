@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
     TranslateFileInput,
     _error_response,
@@ -95,6 +96,13 @@ async def translate_file(params: TranslateFileInput) -> str:
         return json.dumps(_error_response(
             "FILE_NOT_FOUND",
             f"Input file does not exist: {params.file_path}",
+        ), ensure_ascii=False)
+
+    vresult = get_default_validator().validate_path(params.file_path, allow_missing=False, skip_extension_check=True)
+    if not vresult.success:
+        return json.dumps(_error_response(
+            "INVALID_PATH",
+            f"OL_PATH_NOT_ALLOWED: {vresult.error}",
         ), ensure_ascii=False)
 
     if params.output_format not in _VALID_OUTPUT_FORMATS:

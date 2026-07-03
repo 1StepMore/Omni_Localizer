@@ -24,6 +24,7 @@ from ol_mcp.tools import (
 )
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
@@ -60,10 +61,14 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
 
     glossary: dict[str, dict[str, Any]] | None = None
     if params.glossary_path:
-        try:
-            glossary = load_glossary_from_path(params.glossary_path)
-        except Exception as e:  # expected — glossary load is best-effort
-            warnings.append(f"Glossary load failed: {e}")
+        _gv = get_default_validator().validate_path(params.glossary_path)
+        if not _gv.success:
+            warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
+        else:
+            try:
+                glossary = load_glossary_from_path(params.glossary_path)
+            except Exception as e:  # expected — glossary load is best-effort
+                warnings.append(f"Glossary load failed: {e}")
 
     pool = ModelPool.get_instance(config_path)
     repair_pipeline = MDRepairPipeline()

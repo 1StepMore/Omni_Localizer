@@ -126,7 +126,7 @@ _task_tracker = InMemoryTaskTracker()
 # lower-level ``mcp.server.Server`` + ``stdio_server()`` pattern works
 # correctly, so we use it instead. Tool implementations are unchanged;
 # the dispatch happens in ``list_tools()`` / ``call_tool()`` below.
-mcp = Server("omni-localizer")
+mcp = Server("ol-mcp")
 
 # (callable, pydantic input model, description) — one entry per tool.
 TOOL_REGISTRY: dict[str, tuple[Callable[..., Awaitable[str] | str], type[BaseModel], str]] = {}

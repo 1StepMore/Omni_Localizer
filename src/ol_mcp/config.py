@@ -2,18 +2,23 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class ServerConfig:
-    """Configuration for the OL MCP server."""
+    """Configuration for the OL MCP server.
+
+    Timeout precedence:
+    1. ``MCP_TOOL_TIMEOUT`` env var (unified cross-module name, Phase 2)
+    2. Class default (120 seconds)
+    """
 
     config_path: str = "config/default.yaml"
     default_source_lang: str = "en"
     default_target_lang: str = "zh"
     concurrency_limit: int = 5
-    timeout: float = 180.0
+    timeout: float = field(default_factory=lambda: float(os.environ.get("MCP_TOOL_TIMEOUT", "120")))
     metrics_dir: str = "/tmp/omni-metrics"
 
 

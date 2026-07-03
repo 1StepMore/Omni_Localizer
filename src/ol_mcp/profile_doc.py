@@ -11,6 +11,7 @@ _logger = logging.getLogger(__name__)
 
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
     ProfileDocInput,
     _error_response,
@@ -37,6 +38,17 @@ async def profile_doc(params: ProfileDocInput) -> str:
     auth_ok, _ = check_auth(params.shared_secret)
     if not auth_ok:
         return json.dumps(auth_failure_response(), ensure_ascii=False)
+
+    if params.config_path:
+        vresult = get_default_validator().validate_path(params.config_path)
+        if not vresult.success:
+            return json.dumps(
+                _error_response(
+                    "OL_INVALID_INPUT",
+                    f"OL_PATH_NOT_ALLOWED: {vresult.error}",
+                ),
+                ensure_ascii=False,
+            )
 
     try:
         from ol_style.doc_profiler import profile_document
