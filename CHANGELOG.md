@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Issue #44 §1 Glossary coverage report** (`src/ol_terminology/coverage.py`): new `format_coverage_report()` and `compute_coverage_stats()` (returns `CoverageStats` dataclass) post-translation statistics. Wraps the existing `verify_translation()` to produce a human-readable report: total terms, matched in source, unmatched, and match-type breakdown (Exact / Fuzzy >80% / Case-normalized). When `--coverage-threshold` is set and matched% falls below it, a `⚠ WARNING:` prefix is added. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. CLI: `--report-coverage` and `--coverage-threshold <0-100>` on both `ol translate-md` and `ol translate-xliff`. Non-blocking; informational only. No LLM, no network.
+
+- **Issue #44 §2 Polish grammar instructions** (`src/ol_xliff/polish.py:_build_polish_prompt`): extended the polish consistency-check prompt with 4 new rule categories — SPELLING (e.g. 'Carrierr' → 'Carrier'), GRAMMAR (subject-verb agreement, articles, prepositions, tense), NON-STANDARD EXPRESSION (calques like 'revenue balance' → 'break-even'), and REDUNDANCY (e.g. 'always been continuously' → 'been continuously'). Also added an explicit "preserve original style and terminology" instruction to prevent over-rewriting. Backward-compatible: existing `--polish` callers see the new rules in addition to the previous 4 (term inconsistency, missing conjunction, format, quote).
+
+- **Issue #44 §3 Cultural transformation rule** (`src/ol_terminology/rag_injector.py:build_translate_prompt`): new RULE in the translation prompt instructing the LLM to recognize culture-bound idioms and metaphors (e.g. 与狼共舞, 马到成功, 画蛇添足) and rewrite them as culturally-equivalent expressions in the target language rather than literal-translating. Examples given inline (与狼共舞 → "competing with industry giants"). The rule preserves factual content; only the metaphorical part is transformed. Applies to all language pairs where the source contains culture-bound expressions; no source-language check needed.
+
 - **Terminology Verifier** (`src/ol_terminology/verifier.py`): pure-logic post-translation terminology checker. Compares source/target text against a verified glossary and reports `verified` / `mismatches` / `absent` / `inconsistencies` / `low_confidence`. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. No LLM, no network — designed for Agent-layer upstream web search + downstream lightweight check. Exposed via `ol verify-terms` CLI and `verify_terms` MCP tool.
 
 - **T1.0 §2 Proper-noun preservation rule** in `build_translate_prompt()`: the LLM is now instructed to keep unknown proper nouns (company, product, brand, person names) in their original pinyin/Chinese characters rather than guessing an English translation.
@@ -20,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **T3.0 §3 `--polish` post-translation consistency pass**: new `ol_xliff/polish.py` module with `_build_polish_prompt`, `_parse_polish_response` (2-pass regex + fallback heuristic), and `polish_translated_units`. Runs a single LLM call across all translated units to fix cross-unit inconsistencies (terminology, missing conjunctions, format, quote style). CLI flag `--polish` on `ol translate-xliff`; `polish` field on MCP `TranslateXliffInput`. Budget guard at 50K chars; pool's `system_message_override` is used to switch LLM role.
 
 - **T4.0 §4 爱上海尔 glossary fixture** at `tests/fixtures/glossary_爱上海尔.json`: 6 terms (开利→Carrier, 三翼鸟→Sanyiniao, 滚筒洗衣机→drum washing machine, 波轮洗衣机→pulsator washing machine, 朗境→Lanjing, 海尔朗境 X11→Haier Lanjing X11).
+
+### Changed
+
+- **T5.1 Version bumped to 0.7.0** (was 0.6.0). Three new P1 features (Issue #44 §1-§3) are backward compatible — all existing CLI flags, MCP fields, and Python APIs work unchanged.
 
 ### Changed
 
