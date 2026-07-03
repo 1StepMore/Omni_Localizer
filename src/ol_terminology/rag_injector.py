@@ -75,7 +75,13 @@ def build_translate_prompt(
         f"RULE: If you encounter an unknown proper noun (company name, product "
         f"name, brand name, person name), ALWAYS keep the original pinyin or "
         f"Chinese characters rather than guessing an English translation. "
-        f"When in doubt, preserve the original."
+        f"When in doubt, preserve the original.\n\n"
+        f"RULE: If the source contains culture-bound idioms, metaphors, or "
+        f"classical references (e.g., 与狼共舞, 马到成功, 画蛇添足), do NOT "
+        f"do a word-for-word literal translation. Instead, rewrite them as "
+        f"culturally-equivalent expressions the {tgt_lang} reader can "
+        f"understand (e.g., 与狼共舞 → 'competing with industry giants'). "
+        f"Preserve the factual content; only transform the metaphorical part."
     )
     parts.insert(0, instruction)
 

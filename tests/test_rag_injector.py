@@ -146,3 +146,50 @@ class TestProperNounRule:
         assert "RULE:" in result
         assert "preserve the original" in result
         assert "pinyin" in result.lower() or "chinese characters" in result.lower()
+
+
+class TestCulturalTransformationRule:
+    """OL#44 §3: Cultural transformation rules in build_translate_prompt.
+
+    Issue #44 §3.1: Chinese cultural idioms (成语, metaphors, classical
+    references) like '与狼共舞' or '马到成功' should NOT be literal-translated.
+    The LLM should rewrite them to equivalent expressions English readers
+    can understand (e.g., '与狼共舞' → 'competing with industry giants').
+
+    The rule applies to all language pairs where the source is CJK-flavored
+    — it instructs the LLM to:
+      - Recognize culture-bound idioms
+      - NOT do word-for-word translation
+      - Rewrite to culturally-equivalent expressions in the target language
+      - Preserve factual information, only transform the metaphorical part
+    """
+
+    def test_cultural_rule_present_in_basic_prompt(self):
+        """The cultural rule must appear in the basic translation prompt."""
+        result = build_translate_prompt("Hello world", "en", "zh")
+        assert "cultural" in result.lower() or "idiom" in result.lower()
+
+    def test_cultural_rule_has_examples(self):
+        """The rule must include at least one example idiom ('与狼共舞' or similar)."""
+        result = build_translate_prompt("Hello world", "en", "zh")
+        assert "与狼共舞" in result or "idiom" in result.lower() or "metaphor" in result.lower()
+
+    def test_cultural_rule_with_chinese_source(self):
+        """Rule applies when source is Chinese (primary use case)."""
+        result = build_translate_prompt("与狼共舞的时代已经来临", "zh", "en")
+        assert "cultural" in result.lower() or "idiom" in result.lower()
+
+    def test_cultural_rule_with_glossary(self):
+        """Cultural rule AND glossary section both present when glossary is injected."""
+        glossary_terms = [{"term": "Carrier", "translation": "开利"}]
+        result = build_translate_prompt(
+            "与狼共舞", "zh", "en", glossary_terms=glossary_terms,
+        )
+        assert "cultural" in result.lower() or "idiom" in result.lower()
+        assert "[Glossary Terms" in result
+
+    def test_cultural_rule_preserves_factual_content(self):
+        """The rule must instruct the LLM to preserve factual information."""
+        result = build_translate_prompt("Hello world", "en", "zh")
+        prompt_lower = result.lower()
+        assert "factual" in prompt_lower or "fact" in prompt_lower or "preserve" in prompt_lower
