@@ -194,6 +194,41 @@ class TestMcpServerModule:
         assert pkg_mcp is not None
 
 
+class TestTranslateInputStyleGuideAndPolish:
+    """T1.1 tests for styleguide_path/no_styleguide/polish fields on TranslateInput."""
+
+    def test_styleguide_path_default_none(self):
+        from ol_mcp.tools import TranslateInput
+        params = TranslateInput(content="# Hello", source_lang="en", target_lang="zh")
+        assert params.styleguide_path is None
+
+    def test_polish_default_false(self):
+        from ol_mcp.tools import TranslateInput
+        params = TranslateInput(content="# Hello", source_lang="en", target_lang="zh")
+        assert params.polish is False
+
+    def test_no_styleguide_default_false(self):
+        from ol_mcp.tools import TranslateInput
+        params = TranslateInput(content="# Hello", source_lang="en", target_lang="zh")
+        assert params.no_styleguide is False
+
+    def test_styleguide_path_accepts_path(self):
+        from ol_mcp.tools import TranslateInput
+        params = TranslateInput(
+            content="# Hello", source_lang="en", target_lang="zh",
+            styleguide_path="/tmp/sg.json",
+        )
+        assert params.styleguide_path == "/tmp/sg.json"
+
+    def test_polish_can_be_true(self):
+        from ol_mcp.tools import TranslateInput
+        params = TranslateInput(
+            content="# Hello", source_lang="en", target_lang="zh",
+            polish=True,
+        )
+        assert params.polish is True
+
+
 class TestTranslateXliffInputStyleGuide:
     """T2.3 tests for styleguide_path field on TranslateXliffInput."""
 

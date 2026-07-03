@@ -73,12 +73,27 @@ async def _translate_single(
     glossary_max_terms: int = 5,
     no_glossary: bool = False,
     no_restoration: bool = False,
+    styleguide_path: str | None = None,
+    no_styleguide: bool = False,
+    polish: bool = False,
 ) -> tuple[str, list[str]]:
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
 
     try:
         shielded, shield_map = shield_markdown(content)
+
+        styleguide_section: str | None = None
+        if styleguide_path and not no_styleguide:
+            from ol_style.schema import StyleGuide
+            try:
+                sg = StyleGuide.from_json_file(styleguide_path)
+                styleguide_section = sg.to_prompt_section()
+            except Exception as e:
+                warnings.append(f"StyleGuide load failed: {e}")
+                styleguide_section = None
+        if no_styleguide:
+            styleguide_section = None
 
         context = None
         if glossary and not no_glossary:
@@ -90,7 +105,15 @@ async def _translate_single(
                     tgt_lang=target_lang,
                     tm_matches=None,
                     glossary_terms=terms,
+                    style_guide=styleguide_section,
                 )
+        elif styleguide_section:
+            context = build_translate_prompt(
+                text=shielded,
+                src_lang=source_lang,
+                tgt_lang=target_lang,
+                style_guide=styleguide_section,
+            )
 
         pool = ModelPool.get_instance(config_path)
         translated = await pool.translate(shielded, source_lang, target_lang, context)
@@ -107,6 +130,10 @@ async def _translate_single(
         # to the same standard refs already present in the text and must be
         # dropped to avoid polluting the output.
         repaired = _dedup_b64_image_refs(repaired)
+
+        if polish:
+            from ol_xliff.polish import polish_md_text
+            repaired = await polish_md_text(repaired, source_lang, target_lang, pool)
 
         return repaired, warnings
     except Exception as e:
@@ -125,6 +152,9 @@ async def _run_translate_md_async(
     no_glossary: bool,
     no_restoration: bool,
     add_frontmatter: bool,
+    styleguide_path: str | None = None,
+    no_styleguide: bool = False,
+    polish: bool = False,
 ) -> None:
     """Background coroutine for async translate_md_text. Updates task tracker."""
     try:
@@ -148,6 +178,9 @@ async def _run_translate_md_async(
             glossary_max_terms=glossary_max_terms,
             no_glossary=no_glossary,
             no_restoration=no_restoration,
+            styleguide_path=styleguide_path,
+            no_styleguide=no_styleguide,
+            polish=polish,
         )
 
         if add_frontmatter:
@@ -203,6 +236,9 @@ async def translate_md_text(params: TranslateInput) -> str:
             no_glossary=params.no_glossary,
             no_restoration=params.no_restoration,
             add_frontmatter=params.add_frontmatter,
+            styleguide_path=params.styleguide_path,
+            no_styleguide=params.no_styleguide,
+            polish=params.polish,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -241,6 +277,9 @@ async def translate_md_text(params: TranslateInput) -> str:
             glossary_max_terms=params.glossary_max_terms,
             no_glossary=params.no_glossary,
             no_restoration=params.no_restoration,
+            styleguide_path=params.styleguide_path,
+            no_styleguide=params.no_styleguide,
+            polish=params.polish,
         )
 
         from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
