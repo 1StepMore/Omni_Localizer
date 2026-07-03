@@ -29,6 +29,205 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+class TestTranslateFileTimeoutField:
+    """T2.0 tests for timeout field on TranslateFileInput."""
+
+    def test_timeout_field_default_is_300(self):
+        """Default timeout should be 300."""
+        params = TranslateFileInput(
+            file_path="/tmp/test.txt",
+            source_lang="en",
+            target_lang="zh",
+        )
+        assert params.timeout == 300
+
+    def test_timeout_field_accepts_custom_value(self):
+        """Custom timeout value should be accepted."""
+        params = TranslateFileInput(
+            file_path="/tmp/test.txt",
+            source_lang="en",
+            target_lang="zh",
+            timeout=120,
+        )
+        assert params.timeout == 120
+
+    def test_timeout_field_has_minimum_constraint(self):
+        """timeout must be >= 1."""
+        from pydantic import ValidationError
+        try:
+            TranslateFileInput(
+                file_path="/tmp/test.txt",
+                source_lang="en",
+                target_lang="zh",
+                timeout=0,
+            )
+            assert False, "Should have raised ValidationError for timeout=0"
+        except ValidationError:
+            pass
+
+    def test_timeout_field_has_maximum_constraint(self):
+        """timeout must be <= 3600."""
+        from pydantic import ValidationError
+        try:
+            TranslateFileInput(
+                file_path="/tmp/test.txt",
+                source_lang="en",
+                target_lang="zh",
+                timeout=4000,
+            )
+            assert False, "Should have raised ValidationError for timeout=4000"
+        except ValidationError:
+            pass
+
+
+class TestTranslateFileTimeoutPropagation:
+    """T2.1 tests for timeout propagation to subprocess.run.
+
+    These tests mock subprocess.run to intercept the timeout kwarg
+    and verify it matches expectations. The actual translate_file
+    function may error due to missing OPP/OL/ORF binaries or other
+    environment issues — that's fine, we only care that the timeout
+    kwarg is forwarded correctly.
+    """
+
+    def test_custom_timeout_is_passed_to_all_subprocess_calls(self, tmp_path):
+        """Custom timeout value (120) is forwarded to all 3 subprocess.run calls."""
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        from ol_mcp import translate_file as tf_module
+        from ol_mcp.translate_file import translate_file
+        from ol_mcp.tools import TranslateFileInput
+
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("hello world")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+
+        captured_timeouts: list[int | None] = []
+
+        def mock_run(cmd, **kwargs):
+            captured_timeouts.append(kwargs.get("timeout"))
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_result.stdout = ""
+            # OPP: create .md and .xlf in --output-dir
+            if any("opp" in str(c) for c in cmd[:3]):
+                try:
+                    out_idx = next(i for i, c in enumerate(cmd) if c == "--output-dir")
+                    o = Path(cmd[out_idx + 1])
+                    o.mkdir(parents=True, exist_ok=True)
+                    stem = Path(cmd[1]).stem
+                    (o / f"{stem}.md").write_text(f"# {stem}\n", encoding="utf-8")
+                    (o / f"{stem}.xlf").write_text("<xliff></xliff>", encoding="utf-8")
+                except (ValueError, StopIteration, IndexError):
+                    pass
+            # OL translate: create .translated.md from input .md
+            elif any("translate" in str(c) for c in cmd[:3]):
+                md_src = [a for a in cmd if a.endswith(".md") and "translated" not in a]
+                if md_src:
+                    src_md = Path(md_src[0])
+                    if src_md.exists():
+                        dst_md = src_md.parent / f"{src_md.stem}.translated.md"
+                        dst_md.write_text("# translated\n", encoding="utf-8")
+            # ORF apply: create output at -o path
+            elif any("apply" in str(c) for c in cmd[:3]):
+                try:
+                    out_idx = next(i for i, c in enumerate(cmd) if c == "-o")
+                    Path(cmd[out_idx + 1]).write_bytes(b"PK\x03\x04fake-output")
+                except (StopIteration, IndexError):
+                    pass
+            return mock_result
+
+        params = TranslateFileInput(
+            file_path=str(test_file),
+            source_lang="en",
+            target_lang="zh",
+            output_dir=str(out_dir),
+            timeout=120,
+        )
+
+        with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
+            try:
+                _run(translate_file(params))
+            except Exception:
+                pass
+
+        assert len(captured_timeouts) == 3, (
+            f"Expected 3 subprocess calls, got {len(captured_timeouts)}: {captured_timeouts}"
+        )
+        for t in captured_timeouts:
+            assert t == 120, f"Expected timeout=120, got {t} in {captured_timeouts}"
+
+    def test_default_timeout_300_is_passed_to_subprocess(self, tmp_path):
+        """Default timeout (300) is forwarded when not specified."""
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        from ol_mcp import translate_file as tf_module
+        from ol_mcp.translate_file import translate_file
+        from ol_mcp.tools import TranslateFileInput
+
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("hello world")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+
+        captured_timeouts: list[int | None] = []
+
+        def mock_run(cmd, **kwargs):
+            captured_timeouts.append(kwargs.get("timeout"))
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_result.stdout = ""
+            # OPP: create .md and .xlf in --output-dir
+            if any("opp" in str(c) for c in cmd[:3]):
+                try:
+                    out_idx = next(i for i, c in enumerate(cmd) if c == "--output-dir")
+                    o = Path(cmd[out_idx + 1])
+                    o.mkdir(parents=True, exist_ok=True)
+                    stem = Path(cmd[1]).stem
+                    (o / f"{stem}.md").write_text(f"# {stem}\n", encoding="utf-8")
+                    (o / f"{stem}.xlf").write_text("<xliff></xliff>", encoding="utf-8")
+                except (ValueError, StopIteration, IndexError):
+                    pass
+            elif any("translate" in str(c) for c in cmd[:3]):
+                md_src = [a for a in cmd if a.endswith(".md") and "translated" not in a]
+                if md_src:
+                    src_md = Path(md_src[0])
+                    if src_md.exists():
+                        dst_md = src_md.parent / f"{src_md.stem}.translated.md"
+                        dst_md.write_text("# translated\n", encoding="utf-8")
+            elif any("apply" in str(c) for c in cmd[:3]):
+                try:
+                    out_idx = next(i for i, c in enumerate(cmd) if c == "-o")
+                    Path(cmd[out_idx + 1]).write_bytes(b"PK\x03\x04fake-output")
+                except (StopIteration, IndexError):
+                    pass
+            return mock_result
+
+        params = TranslateFileInput(
+            file_path=str(test_file),
+            source_lang="en",
+            target_lang="zh",
+            output_dir=str(out_dir),
+        )
+
+        with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
+            try:
+                _run(translate_file(params))
+            except Exception:
+                pass
+
+        assert len(captured_timeouts) == 3, (
+            f"Expected 3 calls, got {len(captured_timeouts)}: {captured_timeouts}"
+        )
+        for t in captured_timeouts:
+            assert t == 300, f"Expected default timeout=300, got {t}"
+
+
 class TestTranslateFileTool:
     """Issue #37: translate_file MCP tool — file-based end-to-end."""
 

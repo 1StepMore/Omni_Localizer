@@ -137,7 +137,7 @@ async def translate_file(params: TranslateFileInput) -> str:
             opp_cmd.extend(["--config", params.config_path])
 
         result = subprocess.run(
-            opp_cmd, capture_output=True, text=True, timeout=300,
+            opp_cmd,             capture_output=True, text=True, timeout=params.timeout,
         )
         if result.returncode != 0:
             return json.dumps(_error_response(
@@ -184,7 +184,7 @@ async def translate_file(params: TranslateFileInput) -> str:
             ol_cmd.extend(["--config", params.config_path])
 
         result = subprocess.run(
-            ol_cmd, capture_output=True, text=True, timeout=300,
+            ol_cmd,             capture_output=True, text=True, timeout=params.timeout,
         )
         if result.returncode != 0:
             return json.dumps(_error_response(
@@ -218,7 +218,7 @@ async def translate_file(params: TranslateFileInput) -> str:
         ]
 
         result = subprocess.run(
-            orf_cmd, capture_output=True, text=True, timeout=300,
+            orf_cmd,             capture_output=True, text=True, timeout=params.timeout,
         )
         if result.returncode != 0:
             return json.dumps(_error_response(

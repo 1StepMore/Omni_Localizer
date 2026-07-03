@@ -178,6 +178,20 @@ class TranslateInput(BaseModel):
         default=False,
         description="Skip the A12.4 post-translation placeholder restoration (CLI: --no-restoration)",
     )
+    styleguide_path: str | None = Field(
+        default=None,
+        description="Path to a StyleGuide JSON file (output of ol profile-doc). "
+                    "Style rules are injected into the translation prompt.",
+    )
+    no_styleguide: bool = Field(
+        default=False,
+        description="Skip StyleGuide injection even if styleguide_path is set.",
+    )
+    polish: bool = Field(
+        default=False,
+        description="After translation, run a lightweight consistency pass "
+                    "to fix cross-unit inconsistencies.",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
     traceparent: str | None = Field(
         default=None,
@@ -316,6 +330,13 @@ class TranslateFileInput(BaseModel):
     keep_temp: bool = Field(default=False, description="Keep temp files on success for debugging")
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth")
     traceparent: str | None = Field(default=None, description="W3C Trace Context traceparent")
+    timeout: int = Field(
+        default=300,
+        ge=1,
+        le=3600,
+        description="Subprocess timeout in seconds for each pipeline step (opp, ol, orf). "
+                    "Default 300s (5 min). Max 3600s (1 hour).",
+    )
 
 
 class TMEntry(BaseModel):
