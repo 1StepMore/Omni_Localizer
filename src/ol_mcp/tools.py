@@ -300,6 +300,12 @@ class ExtractTermsInput(BaseModel):
 
     texts: list[str] = Field(description="Source texts to extract terms from")
     top_n: int = Field(default=20, ge=1, le=100, description="Max terms to return")
+    language: str | None = Field(
+        default=None,
+        description="Language hint: auto (None, default), en, zh, ja. "
+                    "If None, the language is detected from the input text. "
+                    "Otherwise, the value is passed directly to YAKE.",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 

@@ -26,6 +26,12 @@ def extract_terms(
         None, "--output", "-o", help="Output JSON file (or write stdout if omitted)"
     ),
     top_n: int = typer.Option(20, "--top-n", "-n", help="Max number of terms to return"),
+    language: str = typer.Option(
+        "auto", "--language", "-l",
+        help="Language hint: auto (default), en, zh, ja. "
+             "If 'auto', the language is detected from the input text. "
+             "Otherwise, the value is passed directly to YAKE.",
+    ),
 ) -> None:
     """Extract key terms from source text. Requires: pip install omni-localizer[ml]."""
     try:
@@ -48,7 +54,8 @@ def extract_terms(
         typer.echo("Error: input text is empty", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
-    all_terms = _extract_terms(texts)
+    lang_param = None if language == "auto" else language
+    all_terms = _extract_terms(texts, language=lang_param)
     # YAKE scores: lower = more relevant. Sort ascending to get top terms first.
     sorted_terms = sorted(
         all_terms.items(), key=lambda kv: kv[1], reverse=False

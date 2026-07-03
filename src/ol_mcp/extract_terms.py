@@ -50,7 +50,7 @@ async def extract_terms(params: ExtractTermsInput) -> str:
         )
 
     try:
-        all_terms = _extract_terms(params.texts)
+        all_terms = _extract_terms(params.texts, language=params.language)
         # YAKE scores: lower = more relevant. Sort ascending to get top terms first.
         sorted_terms = sorted(
             all_terms.items(), key=lambda kv: kv[1], reverse=False

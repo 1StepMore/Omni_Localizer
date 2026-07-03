@@ -398,6 +398,95 @@ class TestTranslateXliffStyleGuide:
         )
 
 
+class TestExtractTermsLanguage:
+    """T2.2 tests for the --language flag on ol extract-terms CLI.
+
+    Issue #43: Added --language flag for explicit language control
+    (auto/en/zh/ja). Default 'auto' triggers auto-detection in extractor.
+    """
+
+    HELP_TEXT = "extract-terms"
+
+    def test_language_flag_shown_in_help(self):
+        """--language flag appears in ol extract-terms --help."""
+        result = runner.invoke(app, ["extract-terms", "--help"])
+        assert result.exit_code == 0
+        assert "--language" in result.output
+
+    def test_language_default_is_auto(self):
+        """Default language is 'auto'."""
+        result = runner.invoke(app, ["extract-terms", "--help"])
+        assert result.exit_code == 0
+        assert "auto" in result.output.lower()
+
+    def test_language_zh_invokes_extractor_with_zh(self):
+        """--language zh passes language='zh' to extract_terms."""
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("海尔集团是中国最大的家电制造商之一。")
+            input_path = f.name
+
+        with patch("ol_terminology.extractor.extract_terms") as mock_extract:
+            mock_extract.return_value = {"海尔": 0.1}
+            result = runner.invoke(
+                app,
+                ["extract-terms", "-i", input_path, "--language", "zh"],
+            )
+            assert result.exit_code == 0
+            mock_extract.assert_called_once()
+            assert mock_extract.call_args.kwargs.get("language") == "zh"
+
+        Path(input_path).unlink()
+
+    def test_language_auto_invokes_extractor_with_none(self):
+        """--language auto passes language=None to extract_terms."""
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("海尔集团是中国最大的家电制造商之一。")
+            input_path = f.name
+
+        with patch("ol_terminology.extractor.extract_terms") as mock_extract:
+            mock_extract.return_value = {"海尔": 0.1}
+            result = runner.invoke(
+                app,
+                ["extract-terms", "-i", input_path, "--language", "auto"],
+            )
+            assert result.exit_code == 0
+            mock_extract.assert_called_once()
+            # 'auto' is mapped to None by the CLI before passing to extractor
+            assert mock_extract.call_args.kwargs.get("language") is None
+
+        Path(input_path).unlink()
+
+    def test_no_language_flag_uses_auto(self):
+        """When --language is omitted, default is auto (mapped to None)."""
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test text")
+            input_path = f.name
+
+        with patch("ol_terminology.extractor.extract_terms") as mock_extract:
+            mock_extract.return_value = {"test": 0.1}
+            result = runner.invoke(
+                app,
+                ["extract-terms", "-i", input_path],
+            )
+            assert result.exit_code == 0
+            mock_extract.assert_called_once()
+            assert mock_extract.call_args.kwargs.get("language") is None
+
+        Path(input_path).unlink()
+
+
 class TestTranslateMdStyleGuide:
     """T1.2 tests for --styleguide and --no-styleguide on translate-md."""
 
