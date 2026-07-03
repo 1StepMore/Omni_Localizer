@@ -501,6 +501,20 @@ def translate_xliff(
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
     ),
+    report_coverage: bool = typer.Option(
+        False, "--report-coverage",
+        help="After translation, print a glossary coverage report "
+             "(total terms, matched, match-type breakdown). "
+             "Requires --glossary; ignored when no glossary is set.",
+    ),
+    coverage_threshold: float | None = typer.Option(
+        None, "--coverage-threshold",
+        min=0.0, max=100.0,
+        help="When --report-coverage is set, emit a ⚠ WARNING if matched "
+             "percentage falls below this threshold (0-100). "
+             "Does not fail the translation; informational only. "
+             "Ignored when --report-coverage is not set.",
+    ),
 ) -> int:
     try:
         if log_format:
@@ -634,6 +648,44 @@ def translate_xliff(
             no_styleguide=no_styleguide,
             polish=polish,
         )
+
+        # OL#44 §1: glossary coverage report. Non-blocking; informational.
+        if report_coverage and not no_glossary and loaded_glossary is not None:
+            try:
+                from ol_terminology.coverage import format_coverage_report
+                _original_text = input_path.read_text(encoding="utf-8")
+                _output_file_path = output_path / Path(input).name
+                _translated_text = _output_file_path.read_text(
+                    encoding="utf-8"
+                )
+                _report = format_coverage_report(
+                    source_text=_original_text,
+                    target_text=_translated_text,
+                    glossary=loaded_glossary,
+                    coverage_threshold=coverage_threshold,
+                )
+                if not json_output:
+                    typer.echo(_report)
+                logger.info(
+                    f"glossary_coverage_report printed "
+                    f"(threshold={coverage_threshold})"
+                )
+            except Exception as coverage_err:
+                logger.warning(
+                    f"Glossary coverage report failed: {coverage_err}"
+                )
+                if not json_output:
+                    typer.echo(
+                        f"⚠ WARNING: Glossary coverage report failed: "
+                        f"{coverage_err}",
+                        err=True,
+                    )
+        elif report_coverage and (no_glossary or loaded_glossary is None):
+            if not json_output:
+                typer.echo(
+                    "Glossary Coverage Report: no glossary provided "
+                    "(use --glossary <path> to enable coverage reporting)."
+                )
 
         output_file = output_path / Path(input).name
         if json_output:
