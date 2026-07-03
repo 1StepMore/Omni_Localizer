@@ -228,7 +228,7 @@ class _PromptCache:
         self._store.clear()
 
 
-def _resolve_env_vars(value: str) -> str:
+def _resolve_env_vars(value: str | None) -> str | None:
     """Resolve ${ENV_VAR} patterns in a value.
 
     Wave 4 (L-C2): replaced regex-based implementation with a simple split-join
