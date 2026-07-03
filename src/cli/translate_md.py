@@ -462,6 +462,8 @@ async def _translate_md_async(
     glossary: 'Glossary | None' = None,
     restoration_enabled: bool = True,
     glossary_max_terms: int = 5,
+    styleguide: str | None = None,
+    polish: bool = False,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
@@ -507,15 +509,26 @@ async def _translate_md_async(
             original_text, pool, judge, retry_mgr,
             src_lang, tgt_lang, limiter.md_semaphore, cfg,
             glossary=glossary,
+            styleguide=styleguide,
+            polish=polish,
         )
     else:
         shielded, shield_map = shield_markdown(original_text)
+
+        styleguide_context: str | None = None
+        if styleguide:
+            from ol_terminology.rag_injector import build_translate_prompt
+            styleguide_context = build_translate_prompt(
+                text=shielded, src_lang=src_lang, tgt_lang=tgt_lang,
+                style_guide=styleguide,
+            )
 
         if cfg.enable_lqa:
 
             async def translate_fn():
                 return await pool.translate(
-                    shielded, src_lang, tgt_lang, glossary=glossary,
+                    shielded, src_lang, tgt_lang,
+                    context=styleguide_context, glossary=glossary,
                 )
 
             async def judge_fn(source, translation, unit_id):
@@ -532,8 +545,6 @@ async def _translate_md_async(
                 if retry_result.warning:
                     logger.warning(f"LQA auto-retry: {retry_result.warning}")
             except Exception as translate_err:
-                # Defense in depth: mirror the XLIFF path's fallback so transient
-                # LLM failures don't kill the whole MD translation.
                 logger.warning(
                     f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
                     f"Falling back to source text."
@@ -542,7 +553,8 @@ async def _translate_md_async(
         else:
             try:
                 translated = await pool.translate(
-                    shielded, src_lang, tgt_lang, glossary=glossary,
+                    shielded, src_lang, tgt_lang,
+                    context=styleguide_context, glossary=glossary,
                 )
             except Exception as translate_err:
                 logger.warning(
@@ -556,6 +568,10 @@ async def _translate_md_async(
             repaired = unshield_markdown(repaired, shield_map)
         else:
             repaired = translated
+
+    if polish:
+        from ol_xliff.polish import polish_md_text
+        repaired = await polish_md_text(repaired, src_lang, tgt_lang, pool)
 
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
@@ -609,17 +625,14 @@ async def _translate_md_units_concurrent(
     md_text: str, pool, judge, retry_mgr,
     src_lang, tgt_lang, sem: asyncio.Semaphore,
     cfg, glossary=None,
+    styleguide: str | None = None,
+    polish: bool = False,
 ) -> str:
     """Translate MD by extracting trans-units and translating them concurrently.
 
     Extracts translatable units from the full markdown text, translates
     them in parallel via :func:`_translate_units_concurrent`, then
     unshields and reassembles the markdown document.
-
-    Args:
-        glossary: Optional glossary for terminology injection. Passed through
-                  to ``_translate_units_concurrent`` for parity with the serial
-                  MD path.
     """
     from ol_md.extractor import extract_and_shield_md_units
     units = extract_and_shield_md_units(md_text)
@@ -628,6 +641,7 @@ async def _translate_md_units_concurrent(
         units, pool, judge, retry_mgr,
         src_lang, tgt_lang, sem, MDRepairPipeline(),
         glossary=glossary,
+        styleguide=styleguide,
     )
 
     for i, result in enumerate(results):
@@ -637,6 +651,19 @@ async def _translate_md_units_concurrent(
             )
         unshielded = unshield_markdown(result.translated, units[i].shield_map)
         units[i].target_text = unshielded
+
+    if polish and units:
+        from ol_xliff.polish import polish_md_text
+        translated_parts = [u.target_text for u in units if u.target_text]
+        full_translated = "\n\n".join(translated_parts)
+        polished = await polish_md_text(full_translated, src_lang, tgt_lang, pool)
+        polished_parts = polished.split("\n\n")
+        target_idx = 0
+        for i, unit in enumerate(units):
+            if unit.target_text:
+                if target_idx < len(polished_parts):
+                    unit.target_text = polished_parts[target_idx]
+                    target_idx += 1
 
     from ol_buses.md_bus import parse_md_to_tokens
     from ol_md.token_stream import TokenPositionTracker
@@ -654,6 +681,8 @@ async def _translate_md_by_paragraph(
     add_frontmatter: bool,
     glossary: 'Glossary | None' = None,
     quiet: bool = False,
+    styleguide: str | None = None,
+    polish: bool = False,
 ) -> str:
     # Issue #35: Bypass the MCP tool (translate_md_text) to avoid
     # import-lock deadlock when concurrent=5 — the MCP handler imports
@@ -692,7 +721,16 @@ async def _translate_md_by_paragraph(
         async with sem:
             try:
                 shielded, shield_map = shield_markdown(p)
-                translated = await pool.translate(shielded, src, tgt)
+                styleguide_context = None
+                if styleguide:
+                    from ol_terminology.rag_injector import build_translate_prompt
+                    styleguide_context = build_translate_prompt(
+                        text=shielded, src_lang=src, tgt_lang=tgt,
+                        style_guide=styleguide,
+                    )
+                translated = await pool.translate(
+                    shielded, src, tgt, context=styleguide_context,
+                )
                 if shield_map:
                     unshielded = unshield_markdown(translated, shield_map)
                     repaired = MDRepairPipeline().repair(unshielded, p, shield_map)
@@ -723,6 +761,10 @@ async def _translate_md_by_paragraph(
     translated = [t for _, t in sorted(results, key=lambda x: x[0])]
 
     full = "\n\n".join(translated)
+
+    if polish:
+        from ol_xliff.polish import polish_md_text
+        full = await polish_md_text(full, src, tgt, pool)
 
     if add_frontmatter:
         rid = hashlib.md5(f"{input_path}{datetime.now(UTC)}".encode()).hexdigest()[:12]
@@ -799,6 +841,22 @@ def translate_md(
              "(default 5). Applies to --glossary / config glossary "
              "injection; ignored when --no-glossary is set.",
     ),
+    styleguide: str | None = typer.Option(
+        None, "--styleguide",
+        help="Path to a StyleGuide JSON file (output of ol profile-doc). "
+             "Style rules are injected into each trans-unit's system prompt.",
+    ),
+    no_styleguide: bool = typer.Option(
+        False, "--no-styleguide",
+        help="Skip StyleGuide injection even if --styleguide is set. "
+             "Provides symmetry with --no-glossary.",
+    ),
+    polish: bool = typer.Option(
+        False, "--polish",
+        help="After translation, run a lightweight consistency pass: "
+             "unify terminology, fix missing conjunctions, normalize formats. "
+             "Uses the cheapest available model.",
+    ),
     log_format: str | None = typer.Option(
         None, "--log-format",
         help="Log output format: 'console' (default) or 'json'. "
@@ -867,6 +925,28 @@ def translate_md(
         # Wave 4 (L-C1): glossary and restoration_enabled are now passed
         # directly as function arguments (not module-level globals).
 
+        styleguide_content: str | None = None
+        if styleguide:
+            from ol_style.schema import StyleGuide
+            try:
+                sg = StyleGuide.from_json_file(styleguide)
+                styleguide_content = sg.to_prompt_section()
+                if styleguide_content:
+                    logger.info(
+                        f"StyleGuide loaded: tone={sg.tone!r} register={sg.register!r}"
+                    )
+                else:
+                    logger.info(
+                        f"StyleGuide loaded but all fields empty: {styleguide}"
+                    )
+            except FileNotFoundError as e:
+                typer.echo(f"Error: StyleGuide file not found: {e}", err=True)
+                raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+        if no_styleguide:
+            styleguide_content = None
+            logger.info("StyleGuide disabled via --no-styleguide")
+
         # A6: cache check before any expensive LLM work.
         if _check_cache(
             input_path, output_path, config, no_cache=no_cache,
@@ -877,6 +957,9 @@ def translate_md(
             glossary_max_terms=glossary_max_terms,
             src_lang=src,
             tgt_lang=tgt,
+            styleguide=styleguide,
+            no_styleguide=no_styleguide,
+            polish=polish,
         ):
             cached_output = output_path / input_path.name
             if json_output:
@@ -894,6 +977,8 @@ def translate_md(
                     input_path, output_path, config, src, tgt, add_frontmatter,
                     glossary=loaded_glossary,
                     quiet=json_output,
+                    styleguide=styleguide_content,
+                    polish=polish,
                 ),
             )
         else:
@@ -902,6 +987,8 @@ def translate_md(
                     input_path, output_path, config, src, tgt, add_frontmatter,
                     glossary=loaded_glossary,
                     restoration_enabled=not no_restoration,
+                    styleguide=styleguide_content,
+                    polish=polish,
                 ),
             )
 
@@ -928,6 +1015,9 @@ def translate_md(
             glossary_max_terms=glossary_max_terms,
             src_lang=src,
             tgt_lang=tgt,
+            styleguide=styleguide,
+            no_styleguide=no_styleguide,
+            polish=polish,
         )
 
         if json_output:

@@ -154,3 +154,95 @@ async def polish_translated_units(
         f"Polish pass: applied {applied} correction(s) to {len(warnings)} unit(s)"
     )
     return warnings
+
+
+async def polish_md_text(
+    text: str, src_lang: str, tgt_lang: str, pool,
+) -> str:
+    """Apply the Polish consistency pass to a markdown string.
+
+    For MD, source and target are the SAME text (the translated MD). The polish
+    pass checks internal consistency of the translated output (terminology
+    unification, format normalization, missing conjunctions, quote style).
+
+    Splits text by paragraph boundaries (\\n\\n), creates pseudo TranslationUnit
+    objects, runs the polish internals, then rejoins.
+    """
+    if not text or not text.strip():
+        return text
+
+    paragraphs = text.split("\n\n")
+    if not paragraphs:
+        return text
+
+    from ol_core.dataclass import TranslationUnit
+
+    units = []
+    for i, p in enumerate(paragraphs):
+        if not p.strip():
+            continue
+        unit = TranslationUnit(
+            unit_id=f"md_para_{i}",
+            source_text=p,
+            target_text=p,  # src=tgt: consistency check on translated text
+            shield_map={},
+        )
+        units.append(unit)
+
+    if not units:
+        return text
+
+    pairs = []
+    for u in units:
+        pairs.append({
+            "id": u.unit_id,
+            "src": u.source_text[:200],
+            "tgt": u.target_text[:200],
+        })
+
+    total_chars = sum(len(p["src"]) + len(p["tgt"]) for p in pairs)
+    if total_chars > _MAX_POLISH_CHARS:
+        logger.warning(
+            f"MD polish skipped: {len(pairs)} paragraphs, {total_chars} chars "
+            f"exceeds max {_MAX_POLISH_CHARS}"
+        )
+        return text
+
+    prompt = _build_polish_prompt(pairs)
+    logger.info(
+        f"MD polish pass: checking {len(pairs)} paragraphs "
+        f"({total_chars} chars)"
+    )
+
+    try:
+        result = await pool.translate(
+            "", src_lang, tgt_lang, context=prompt, temperature=0.0,
+            system_message_override=_POLISH_SYSTEM_MESSAGE,
+        )
+    except Exception as e:
+        logger.warning(f"MD polish LLM call failed: {e}")
+        return text
+
+    corrections = _parse_polish_response(result)
+    if not corrections:
+        logger.info("MD polish pass: no issues found")
+        return text
+
+    unit_map = {u.unit_id: u for u in units}
+    para_index_map = {f"md_para_{i}": i for i in range(len(paragraphs))}
+    for corr in corrections:
+        uid = corr["id"]
+        if uid not in unit_map:
+            logger.warning(f"MD polish correction references unknown unit {uid}")
+            continue
+        idx = para_index_map.get(uid)
+        if idx is None:
+            continue
+        old_text = paragraphs[idx]
+        new_text = corr["fix"]
+        if new_text and new_text != old_text:
+            paragraphs[idx] = new_text
+
+    applied = len(corrections)
+    logger.info(f"MD polish pass: applied {applied} correction(s)")
+    return "\n\n".join(paragraphs)
