@@ -23,6 +23,47 @@ class TestBuildPolishPrompt:
         assert prompt.count("id: u2") >= 1
 
 
+class TestPolishGrammarInstructions:
+    """OL#44 §2: Polish prompt must check spelling, grammar, redundancy.
+
+    Issue #44 §2.1: the polish pass currently only checks term consistency,
+    format, conjunctions, quotes. The user-facing requirement is to extend
+    the prompt with:
+      1. spelling errors (e.g., 'Carrierr' → 'Carrier')
+      2. grammar errors (subject-verb agreement, articles, prepositions)
+      3. non-standard expressions ('revenue balance' → 'break-even')
+      4. redundant modifiers ('always been continuously' → 'been continuously')
+      5. preserve original style and terminology
+    """
+
+    def test_polish_prompt_includes_spelling_check(self):
+        from ol_xliff.polish import _build_polish_prompt
+        pairs = [{"id": "u1", "src": "Hello", "tgt": "你好"}]
+        prompt = _build_polish_prompt(pairs)
+        assert "spelling" in prompt.lower()
+
+    def test_polish_prompt_includes_grammar_check(self):
+        from ol_xliff.polish import _build_polish_prompt
+        pairs = [{"id": "u1", "src": "Hello", "tgt": "你好"}]
+        prompt = _build_polish_prompt(pairs)
+        assert "grammar" in prompt.lower()
+
+    def test_polish_prompt_includes_redundancy_check(self):
+        from ol_xliff.polish import _build_polish_prompt
+        pairs = [{"id": "u1", "src": "Hello", "tgt": "你好"}]
+        prompt = _build_polish_prompt(pairs)
+        assert "redundan" in prompt.lower()
+
+    def test_polish_prompt_preserves_style_rule(self):
+        from ol_xliff.polish import _build_polish_prompt
+        pairs = [{"id": "u1", "src": "Hello", "tgt": "你好"}]
+        prompt = _build_polish_prompt(pairs)
+        prompt_lower = prompt.lower()
+        assert "preserv" in prompt_lower or "preserves" in prompt_lower
+        assert "style" in prompt_lower
+        assert "terminology" in prompt_lower
+
+
 class TestParsePolishResponse:
     def test_no_issues(self):
         from ol_xliff.polish import _parse_polish_response
