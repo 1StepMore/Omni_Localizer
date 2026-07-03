@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -161,3 +162,87 @@ llm_pool:
             "--config", str(config_path),
         ])
         assert result.exit_code == 0
+
+
+class TestProfileDocBinaryFormats:
+    """T3.1 tests for profile-doc CLI with binary document formats."""
+
+    def test_docx_file_is_supported_via_cli(self, tmp_path):
+        """ol profile-doc should not crash on .docx files (T3.1 SURFACE check)."""
+        try:
+            from docx import Document
+        except ImportError:
+            pytest.skip("python-docx not installed")
+
+        docx_path = tmp_path / "test.docx"
+        doc = Document()
+        doc.add_paragraph("Hello from docx")
+        doc.add_paragraph("This is a test paragraph for profile-doc.")
+        doc.save(str(docx_path))
+
+        result = runner.invoke(app, ["profile-doc", str(docx_path)])
+        assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+        # The output should be valid JSON with the StyleGuide fields
+        try:
+            output = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # If the output isn't JSON (e.g., error message), re-check
+            pytest.fail(f"Output is not JSON: {result.stdout!r}")
+        assert "tone" in output, f"Missing 'tone' in output: {output}"
+        assert "summary" in output, f"Missing 'summary' in output: {output}"
+
+    def test_pptx_file_is_supported_via_cli(self, tmp_path):
+        """ol profile-doc should not crash on .pptx files."""
+        try:
+            from pptx import Presentation
+        except ImportError:
+            pytest.skip("python-pptx not installed")
+
+        pptx_path = tmp_path / "test.pptx"
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[0])
+        slide.shapes.title.text = "Hello from pptx"
+        prs.save(str(pptx_path))
+
+        result = runner.invoke(app, ["profile-doc", str(pptx_path)])
+        assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+        try:
+            output = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            pytest.fail(f"Output is not JSON: {result.stdout!r}")
+        assert "tone" in output, f"Missing 'tone' in output: {output}"
+
+    def test_real_docx_fixture_works_via_cli(self):
+        """The real E2E test fixture (.docx) can be profiled via the CLI."""
+        fixture = Path("爱上海尔_第二章_全球创牌 - E2E测试专用.docx")
+        if not fixture.exists():
+            pytest.skip(f"E2E fixture not found at {fixture}")
+
+        result = runner.invoke(app, ["profile-doc", str(fixture)])
+        assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+        try:
+            output = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            pytest.fail(f"Output is not JSON: {result.stdout!r}")
+        assert "tone" in output
+        assert "register" in output
+        assert "summary" in output
+        # The summary should be non-empty (the docx has content)
+        assert len(output.get("summary", "")) > 0, (
+            f"Summary should be non-empty for a real .docx: {output.get('summary')!r}"
+        )
+
+    def test_unsupported_binary_format_gives_clear_error(self, tmp_path):
+        """ol profile-doc on a fake .pdf gives a clear error message."""
+        fake_pdf = tmp_path / "test.pdf"
+        # Use bytes that are invalid UTF-8 to trigger UnicodeDecodeError
+        fake_pdf.write_bytes(b"\xff\xfe\x80\x50\x44\x46")
+
+        result = runner.invoke(app, ["profile-doc", str(fake_pdf)])
+        # Exit code should be non-zero (error)
+        assert result.exit_code != 0, f"Expected error exit code, got {result.exit_code}"
+        # The error message should mention unsupported format
+        combined = (result.output + (str(result.exception) if result.exception else "")).lower()
+        assert "unsupported" in combined or "format" in combined or "binary" in combined or "cannot read" in combined, (
+            f"Expected clear error about unsupported format, got: {combined[:300]}"
+        )
