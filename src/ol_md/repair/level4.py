@@ -9,7 +9,7 @@ _SENTENCE_END_RE = re.compile(r'([.!?])\s*$')
 
 def level4_safe_fallback(text: str, missing_placeholders: dict) -> str:
     if not missing_placeholders:
-        return text + '\n<!-- OL_WARN: Tag_auto_appended -->'
+        return text
 
     placeholder_strings = [missing_placeholders[k] for k in missing_placeholders]
 

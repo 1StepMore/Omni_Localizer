@@ -82,9 +82,9 @@ def extract_translatable_tokens(tokens) -> Iterator[TranslationUnit]:
         if hasattr(token, 'content') and token.content:
             content = token.content.strip()
             if content:
-                # Shield special tokens first
-                from ol_buses.md_shield import shield_special_tokens
-                shielded_text, shield_map = shield_special_tokens(content)
+                # Shield special tokens first (new shield with [OL:TYPE:NNNN] markers)
+                from ol_md.shield import shield_markdown
+                shielded_text, shield_map = shield_markdown(content)
 
                 yield TranslationUnit(
                     unit_id=f'md_{current_unit_id}',

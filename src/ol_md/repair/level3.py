@@ -69,10 +69,10 @@ class LiteLLMRestorer(LLMRestorer):
             for pid, content in shield_map.items()
         )
 
-        prompt = f"""You are a placeholder restoration specialist. The translation process shielded certain content (code blocks, math, etc.) with UUID markers. Your job is to FIX the translated text by restoring placeholders to their correct positions.
+        prompt = f"""You are a placeholder restoration specialist. The translation process shielded certain content (code blocks, math, links, images, etc.) with [OL:TYPE:NNNN] markers. Your job is to FIX the translated text by restoring placeholders to their correct positions.
 
 CRITICAL RULES:
-1. Markers like OLCODE_a1b2c3d4_E8f9_ or OLICODE_x7y8z9_ are SHIELDED CONTENT that should NOT be translated - restore the original content back
+1. Markers like [OL:CODE:0000], [OL:MATH:0001], [OL:LINK:0002], [OL:IMG:0003], [OL:HTML:0004], [OL:AUTOLINK:0005] are SHIELDED CONTENT that should NOT be translated - restore the original content back
 2. DO NOT translate or modify the markers - restore them verbatim along with their content
 3. Return ONLY the corrected translation text, nothing else
 

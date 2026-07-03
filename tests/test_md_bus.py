@@ -5,9 +5,9 @@ from ol_buses.md_bus import (
     parse_md_to_tokens,
     validate_md_structure,
 )
-from ol_buses.md_shield import (
-    shield_special_tokens,
-    unshield_special_tokens,
+from ol_md.shield import (
+    shield_markdown,
+    unshield_markdown,
 )
 from ol_core.dataclass import ChannelType
 
@@ -33,13 +33,13 @@ class TestMDBus:
     def test_shield_special_tokens(self):
         """Test shielding code blocks and math."""
         md = '# Hello\n\n```python\nprint("hi")\n```'
-        shielded, shield_map = shield_special_tokens(md)
-        assert '{{_OL_CODE_' in shielded
+        shielded, shield_map = shield_markdown(md)
+        assert '[OL:CODE:' in shielded
         assert len(shield_map) >= 1
 
     def test_unshield_special_tokens(self):
         """Test restoring special tokens from shield map."""
         shield_map = {'code_0000': '```python\nprint("hi")\n```'}
-        translated = '# Bonjour\n\n{{_OL_CODE_0000_}}'
-        restored = unshield_special_tokens(translated, shield_map)
+        translated = '# Bonjour\n\n[OL:CODE:0000]'
+        restored = unshield_markdown(translated, shield_map)
         assert '```python' in restored
