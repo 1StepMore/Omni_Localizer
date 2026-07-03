@@ -27,6 +27,11 @@ from ol_terminology.verifier import (
     TermVerificationReport,
     verify_translation,
 )
+from ol_terminology.coverage import (
+    CoverageStats,
+    compute_coverage_stats,
+    format_coverage_report,
+)
 
 __all__ = [
     "Glossary",          # NEW v1 dataclass-based API (PR12)
@@ -39,4 +44,7 @@ __all__ = [
     "InconsistencyEntry",
     "TermVerificationReport",
     "verify_translation",
+    "CoverageStats",
+    "compute_coverage_stats",
+    "format_coverage_report",
 ]
