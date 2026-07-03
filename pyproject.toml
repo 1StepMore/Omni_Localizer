@@ -42,6 +42,7 @@ ml = [
     "torch>=2.0.0",
     "sentence-transformers>=3.0.0,<4.0.0",
     "yake>=0.5.0",
+    "jieba>=0.42",
 ]
 mcp = [
     "mcp>=1.0.0",
