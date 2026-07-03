@@ -396,3 +396,106 @@ class TestTranslateXliffStyleGuide:
         assert result.exit_code == 0, (
             f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
         )
+
+
+class TestTranslateMdStyleGuide:
+    """T1.2 tests for --styleguide and --no-styleguide on translate-md."""
+
+    def test_styleguide_flag_shown_in_help(self):
+        """--styleguide appears in translate-md --help."""
+        result = runner.invoke(app, ["translate-md", "--help"])
+        assert result.exit_code == 0
+        assert "--styleguide" in result.output
+
+    def test_no_styleguide_flag_shown_in_help(self):
+        """--no-styleguide appears in translate-md --help."""
+        result = runner.invoke(app, ["translate-md", "--help"])
+        assert result.exit_code == 0
+        assert "--no-styleguide" in result.output
+
+    def test_polish_flag_shown_in_help(self):
+        """--polish appears in translate-md --help."""
+        result = runner.invoke(app, ["translate-md", "--help"])
+        assert result.exit_code == 0
+        assert "--polish" in result.output
+
+    def test_styleguide_file_not_found(self, tmp_path):
+        """Nonexistent styleguide file -> error with styleguide or not found in message."""
+        nonexistent = str(tmp_path / "no-such-styleguide.json")
+        md = tmp_path / "in.md"
+        md.write_text("# Hello\n", encoding="utf-8")
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                ["translate-md", str(md), "--styleguide", nonexistent, "-o", str(tmp_path / "out")],
+            )
+        assert result.exit_code != 0
+        combined = (result.output + (str(result.exception) if result.exception else "")).lower()
+        assert "styleguide" in combined or "not found" in combined
+
+    def test_no_styleguide_overrides_styleguide(self, tmp_path):
+        """When --no-styleguide is set, the styleguide (even if valid) is ignored."""
+        sg_path = tmp_path / "sg.json"
+        sg_path.write_text(
+            '{"tone":"formal","register":"technical","target_audience":"devs",'
+            '"key_conventions":[],"vocabulary":[],"avoid":[],"summary":"test"}',
+            encoding="utf-8",
+        )
+        md = tmp_path / "in.md"
+        md.write_text("# Hello\n", encoding="utf-8")
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-dummy-key"}):
+            result = runner.invoke(
+                app,
+                [
+                    "translate-md", str(md),
+                    "--styleguide", str(sg_path),
+                    "--no-styleguide",
+                    "-o", str(tmp_path / "out"),
+                ],
+            )
+        assert result.exit_code == 0, (
+            f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
+        )
+
+
+class TestPolishMdText:
+    """T1.2 tests for the polish_md_text() wrapper."""
+
+    def test_polish_md_text_returns_string(self):
+        """polish_md_text returns a non-empty string for valid input."""
+        import asyncio
+        from ol_xliff.polish import polish_md_text
+        from ol_pool.fake import _FakeModelPool
+
+        pool = _FakeModelPool()
+        result = asyncio.run(polish_md_text(
+            "# Hello\n\nThis is a test paragraph.",
+            "en", "zh", pool,
+        ))
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_polish_md_text_preserves_paragraphs(self):
+        """polish_md_text preserves paragraph boundaries."""
+        import asyncio
+        from ol_xliff.polish import polish_md_text
+        from ol_pool.fake import _FakeModelPool
+
+        pool = _FakeModelPool()
+        text = "Paragraph one.\n\nParagraph two.\n\nParagraph three."
+        result = asyncio.run(polish_md_text(text, "en", "zh", pool))
+        # Paragraphs should be rejoined with \n\n
+        assert "\n\n" in result
+        # Original paragraphs should all be present
+        for p in ["Paragraph one.", "Paragraph two.", "Paragraph three."]:
+            assert p in result
+
+    def test_polish_md_text_empty_input(self):
+        """polish_md_text handles empty input gracefully."""
+        import asyncio
+        from ol_xliff.polish import polish_md_text
+        from ol_pool.fake import _FakeModelPool
+
+        pool = _FakeModelPool()
+        result = asyncio.run(polish_md_text("", "en", "zh", pool))
+        assert result == ""
