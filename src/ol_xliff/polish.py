@@ -151,6 +151,12 @@ async def polish_translated_units(
         old_text = unit_map[uid].target_text
         new_text = corr["fix"]
         if new_text and new_text != old_text:
+            logger.info(
+                f"Polish correction: unit={uid} "
+                f"old={old_text[:80]!r} "
+                f"new={new_text[:80]!r} "
+                f"reason={corr['reason']!r}"
+            )
             unit_map[uid].target_text = new_text
             warnings.setdefault(uid, []).append(
                 f"polish:{corr['reason']}"

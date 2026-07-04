@@ -273,3 +273,52 @@ def write_target_back(
         )
 
     Path(output_path).write_text(content, encoding='utf-8')
+
+
+def check_cross_unit_uniqueness(
+    units: list,
+    _logger: Any = None,
+) -> list[str]:
+    """Check for units with identical target_text but different source_text.
+
+    Pure string comparison — no LLM overhead. Returns a list of warning
+    strings for logging/injection into the output XLIFF.
+
+    Args:
+        units: List of TranslationUnit-like objects (must have unit_id,
+               source_text, target_text attributes).
+        _logger: Optional logger; falls back to the module logger.
+
+    Returns:
+        List of warning strings, one per duplicated target found.
+    """
+    from collections import defaultdict
+
+    log = _logger or logging.getLogger(__name__)
+    # Group unit IDs by target text.
+    target_to_entries: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for unit in units:
+        tgt = getattr(unit, "target_text", None)
+        if tgt and tgt.strip():
+            target_to_entries[tgt].append(
+                (unit.unit_id, getattr(unit, "source_text", ""))
+            )
+
+    warnings: list[str] = []
+    for target_text, entries in target_to_entries.items():
+        if len(entries) < 2:
+            continue
+        source_set = {src for _, src in entries}
+        if len(source_set) > 1:
+            unit_ids = [uid for uid, _ in entries]
+            log.warning(
+                f"Cross-unit duplicate: target={target_text[:60]!r} "
+                f"shared by units={unit_ids} "
+                f"with different source texts"
+            )
+            warnings.append(
+                f"OL_WARN: CROSS_UNIT_DUPLICATE target={target_text[:60]!r} "
+                f"units={unit_ids}"
+            )
+
+    return warnings

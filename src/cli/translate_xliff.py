@@ -149,6 +149,11 @@ async def _translate_xliff_pipelined(
                     unit.source_text, src_lang, tgt_lang,
                     context=styleguide_context, glossary=glossary,
                 )
+                logger.info(
+                    f"XLIFF translate: unit={unit.unit_id} "
+                    f"src={unit.source_text[:50]!r} "
+                    f"tgt={first_pass_translations[idx][:50]!r}"
+                )
         except Exception as exc:  # expected — store exception, continue pipeline
             first_pass_translate_excs[idx] = exc
             async with _fp_lock:
@@ -159,6 +164,11 @@ async def _translate_xliff_pipelined(
             first_pass_results[idx] = await judge.judge(
                 unit.source_text, first_pass_translations[idx], unit.unit_id,
                 source_lang=src_lang, target_lang=tgt_lang,
+            )
+            _score = first_pass_results[idx].judge_overall_score
+            logger.info(
+                f"XLIFF judge: unit={unit.unit_id} "
+                f"score={_score:.1f} threshold={threshold:.1f}"
             )
         except Exception as exc:  # expected — store exception, continue pipeline
             first_pass_judge_excs[idx] = exc
@@ -183,6 +193,10 @@ async def _translate_xliff_pipelined(
         score = getattr(result, "judge_overall_score", 0.0)
         if score < threshold:
             needs_retry.append(i)
+            logger.info(
+                f"XLIFF retry: unit={unit.unit_id} "
+                f"score={score:.1f} < threshold={threshold:.1f}"
+            )
 
     # === Phase 4: re-translate + re-judge retry units AT THE END ===
     # Retries are scheduled AFTER all first-pass translates are done.
@@ -320,7 +334,7 @@ async def _translate_xliff_async(
 
     from ol_config.loader import load_config
     from ol_xliff.parser import XliffParser
-    from ol_buses.xliff_bus import write_target_back, _ensure_target_tags
+    from ol_buses.xliff_bus import check_cross_unit_uniqueness, write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
 
     cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
@@ -419,6 +433,9 @@ async def _translate_xliff_async(
         config={},
         warnings_per_unit=warnings_per_unit,
     )
+    cross_warnings = check_cross_unit_uniqueness(units, logger)
+    for cw in cross_warnings:
+        logger.warning(cw)
     output_file = str(output_path / input_path.name)
     write_target_back(ctx, output_file, warnings_per_unit=warnings_per_unit)
 
