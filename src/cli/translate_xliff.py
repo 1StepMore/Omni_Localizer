@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -436,6 +438,16 @@ async def _translate_xliff_async(
     cross_warnings = check_cross_unit_uniqueness(units, logger)
     for cw in cross_warnings:
         logger.warning(cw)
+        # Inject cross-unit uniqueness warnings into output XLIFF notes
+        # Warning format: "OL_WARN: CROSS_UNIT_DUPLICATE target='...' units=['10', '11']"
+        _m = re.search(r"units=\[(.*?)\]", cw)
+        if _m:
+            try:
+                _ids = ast.literal_eval("[" + _m.group(1) + "]")
+                for _uid in _ids:
+                    warnings_per_unit.setdefault(str(_uid), []).append(cw)
+            except Exception:
+                pass
     output_file = str(output_path / input_path.name)
     write_target_back(ctx, output_file, warnings_per_unit=warnings_per_unit)
 
