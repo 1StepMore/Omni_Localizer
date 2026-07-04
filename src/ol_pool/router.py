@@ -177,6 +177,13 @@ from ol_config.loader import load_config
 from ol_config.schema import LLMPoolConfig
 from ol_logging.core import get_logger
 
+
+class ModelPoolTruncationError(Exception):
+    """Raised when an LLM response finishes due to max_tokens (finish_reason='length')
+    rather than completing naturally. The caller can retry with a larger limit or
+    fall back to a model with a larger context window."""
+
+
 _logger = get_logger("pool")
 
 # 2026-06-17 round 6 (FIX-#11): cache value is (pool, config_mtime) so
@@ -614,7 +621,13 @@ class ModelPool:
                     model=model_str,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=4096,
                 )
+                if response.choices[0].finish_reason == "length":
+                    raise ModelPoolTruncationError(
+                        f"Translation response truncated at {4096} tokens "
+                        f"(finish_reason=length) for ~{len(text)} chars input"
+                    )
                 raw = response.choices[0].message.content
                 translated = _strip_thinking_blocks(raw)
                 if translated != raw:
@@ -659,6 +672,9 @@ class ModelPool:
                     raise
             except AuthenticationError:
                 _logger.error("Translation failed: AuthenticationError (no retry)")
+                raise
+            except ModelPoolTruncationError:
+                _logger.error("Translation failed: response truncated (max_tokens limit)")
                 raise
             except Exception as e:
                 _logger.error(f"Translation failed: {e}")
@@ -743,6 +759,7 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                 model="judging",
                 messages=messages,
                 temperature=temperature,
+                max_tokens=2048,
             )
         except Timeout as e:
             _logger.warning(f"Judge timeout: {e}")
@@ -905,6 +922,7 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                 model="profiling",
                 messages=messages,
                 temperature=0.0,
+                max_tokens=2048,
             )
         except Timeout as e:
             _logger.warning(f"Profile timeout: {e}")
