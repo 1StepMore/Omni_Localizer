@@ -184,6 +184,36 @@ _logger = get_logger("pool")
 _pool_cache: dict[str, tuple["ModelPool", float]] = {}
 
 
+class ModelPoolSourceLanguageResidualError(Exception):
+    """Raised when the LLM output still contains significant source-language text,
+    indicating the model did not actually translate the content.
+    Unlike ModelPoolTruncationError (finish_reason="length"), this catches
+    cases where the LLM returns source text verbatim with finish_reason="stop".
+    The caller should retry with the same input."""
+
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _has_source_language_residual(text: str, source_lang: str, target_lang: str) -> bool:
+    """Check if LLM output still contains significant source-language text.
+
+    For zh->en: checks if >15% of non-whitespace characters are CJK.
+    Returns False for other language pairs (future extension).
+    """
+    if source_lang == "zh" and target_lang == "en":
+        if not text.strip():
+            return False
+        cjk_count = len(_CJK_RE.findall(text))
+        alpha_count = len(re.findall(r"[a-zA-Z]", text))
+        total = cjk_count + alpha_count
+        if total == 0:
+            return False
+        ratio = cjk_count / total
+        return ratio > 0.15
+    return False
+
+
 class _PromptCache:
     """Content-addressed LRU cache for LLM completions.
 
@@ -635,6 +665,11 @@ class ModelPool:
                         f"Chinese typographic conventions to English"
                     )
                 translated = localized
+                if _has_source_language_residual(translated, source_lang, target_lang):
+                    raise ModelPoolSourceLanguageResidualError(
+                        f"Translation output contains {source_lang}-language residual "
+                        f"for {target_lang} target (CJK ratio > 15%)"
+                    )
                 _logger.debug(f"Translation response: {len(translated)} chars")
                 if self._cache_enabled and temperature == 0.0:
                     self._cache.put(cache_key, translated)
@@ -656,6 +691,14 @@ class ModelPool:
                     await asyncio.sleep(wait)
                 else:
                     _logger.error(f"Translation failed after 4 attempts: {e}")
+                    raise
+            except ModelPoolSourceLanguageResidualError as e:
+                if attempt < 3:
+                    wait = 2 ** attempt * 5
+                    _logger.warning(f"Source language residual detected, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    await asyncio.sleep(wait)
+                else:
+                    _logger.error(f"Translation failed after 4 attempts due to source language residual: {e}")
                     raise
             except AuthenticationError:
                 _logger.error("Translation failed: AuthenticationError (no retry)")
