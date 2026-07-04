@@ -188,7 +188,7 @@ async def polish_md_text(
         if not p.strip():
             continue
         unit = TranslationUnit(
-            unit_id=f"md_para_{i}",
+            unit_id=f"md-para-{i}",
             source_text=p,
             target_text=p,  # src=tgt: consistency check on translated text
             shield_map={},
@@ -235,7 +235,7 @@ async def polish_md_text(
         return text
 
     unit_map = {u.unit_id: u for u in units}
-    para_index_map = {f"md_para_{i}": i for i in range(len(paragraphs))}
+    para_index_map = {f"md-para-{i}": i for i in range(len(paragraphs))}
     for corr in corrections:
         uid = corr["id"]
         if uid not in unit_map:
