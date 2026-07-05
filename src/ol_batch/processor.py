@@ -17,6 +17,8 @@ from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
+from ol_config.schema import QualityGateConfig
+from ol_lqa.quality_gates import run_quality_gates
 from ol_terminology.glossary import get_relevant_terms
 from ol_terminology.rag_injector import build_translate_prompt
 
@@ -49,6 +51,7 @@ class BatchProcessor:
         enable_lqa: bool = False,
         lqa_threshold: float = 7.0,
         lqa_max_retries: int = 2,
+        quality_gates: QualityGateConfig | None = None,
     ) -> None:
         self._config = config
         self._pool = model_pool
@@ -62,6 +65,7 @@ class BatchProcessor:
         self._enable_lqa = enable_lqa
         self._lqa_threshold = lqa_threshold
         self._lqa_max_retries = lqa_max_retries
+        self._quality_gates = quality_gates
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
@@ -254,6 +258,14 @@ class BatchProcessor:
 
         repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
 
+        # Issue #56: run quality gates on the clean repaired text (before
+        # frontmatter is added, so length ratios measure content, not metadata).
+        qg_warnings: list[str] = []
+        if self._quality_gates is not None:
+            qg_warnings = self._collect_quality_gate_warnings(
+                input_path, original_text, repaired,
+            )
+
         if (
             self.add_frontmatter
             and input_path.suffix == ".md"
@@ -269,6 +281,14 @@ class BatchProcessor:
             )
             repaired = frontmatter + repaired
 
+        # Append quality gate warnings after frontmatter (if any) so they
+        # survive downstream markdown processing as trailing HTML comments.
+        if qg_warnings:
+            if input_path.suffix == ".md":
+                comment_lines = ["", "<!-- Quality gate warnings -->"]
+                comment_lines.extend(f"<!-- {w} -->" for w in qg_warnings)
+                repaired += "\n".join(comment_lines)
+
         if self._tm_service:
             try:
                 self._tm_service.add(shielded, repaired, self.src_lang, self.tgt_lang)
@@ -282,3 +302,51 @@ class BatchProcessor:
         output_file.write_text(repaired, encoding="utf-8")
 
         return TranslationResult(output_path=output_file)
+
+    def _collect_quality_gate_warnings(
+        self,
+        input_path: Path,
+        original_text: str,
+        repaired: str,
+    ) -> list[str]:
+        """Run quality gates on *original_text* → *repaired*, log and return warnings.
+
+        The caller is responsible for appending the returned warnings to the
+        output file (as ``<!-- OL_WARN:… -->`` comments for ``.md`` files).
+        Warnings are always logged at INFO level regardless of file type.
+        """
+        qg = self._quality_gates
+        any_enabled = (
+            qg.inline_tags
+            or qg.terminology
+            or qg.length_ratio.enabled
+            or qg.locale.enabled
+        )
+        if not any_enabled:
+            return []
+
+        try:
+            warnings = run_quality_gates(
+                source=original_text,
+                target=repaired,
+                glossary=self._glossary if self._glossary else None,
+                inline_tags_enabled=qg.inline_tags,
+                terminology_enabled=qg.terminology,
+                length_ratio_enabled=qg.length_ratio.enabled,
+                length_ratio_min=qg.length_ratio.min,
+                length_ratio_max=qg.length_ratio.max,
+                locale_enabled=qg.locale.enabled,
+                target_locale=qg.locale.target_locale,
+            )
+        except Exception as exc:
+            self._logger.warning(
+                "Quality gates failed for %s: %s", input_path.name, exc,
+            )
+            return []
+
+        for w in warnings:
+            self._logger.info(
+                "Quality gate warning for %s: %s", input_path.name, w,
+            )
+
+        return warnings

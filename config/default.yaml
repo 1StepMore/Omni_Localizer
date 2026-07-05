@@ -116,3 +116,16 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
+
+# Quality gate configuration for post-translation validation
+# Each gate can be independently enabled or disabled.
+quality_gates:
+  inline_tags: true
+  terminology: true
+  length_ratio:
+    enabled: true
+    min: 0.5
+    max: 2.0
+  locale:
+    enabled: true
+    target_locale: "en-US"

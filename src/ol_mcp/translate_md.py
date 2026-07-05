@@ -28,6 +28,8 @@ from ol_mcp.task_tracker import TaskStatus
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
+from ol_config.loader import load_config
+from ol_lqa.quality_gates import run_quality_gates
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 
@@ -184,6 +186,25 @@ async def _run_translate_md_async(
             polish=polish,
         )
 
+        # Post-translation quality gates (Issue #56)
+        try:
+            cfg, _ = load_config(resolved_config)
+            qg = cfg.quality_gates
+            gate_warnings = run_quality_gates(
+                content, result,
+                glossary=glossary,
+                inline_tags_enabled=qg.inline_tags,
+                terminology_enabled=qg.terminology and glossary is not None,
+                length_ratio_enabled=qg.length_ratio.enabled,
+                length_ratio_min=qg.length_ratio.min,
+                length_ratio_max=qg.length_ratio.max,
+                locale_enabled=qg.locale.enabled,
+                target_locale=qg.locale.target_locale,
+            )
+            warnings.extend(gate_warnings)
+        except Exception as gate_err:
+            _logger.warning("Quality gates failed: %s", gate_err)
+
         if add_frontmatter:
             from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
             safe_src = _validate_lang_code(source_lang)
@@ -298,6 +319,25 @@ async def translate_md_text(params: TranslateInput) -> str:
             no_styleguide=params.no_styleguide,
             polish=params.polish,
         )
+
+        # Post-translation quality gates (Issue #56)
+        try:
+            cfg, _ = load_config(config_path)
+            qg = cfg.quality_gates
+            gate_warnings = run_quality_gates(
+                params.content, result,
+                glossary=glossary,
+                inline_tags_enabled=qg.inline_tags,
+                terminology_enabled=qg.terminology and glossary is not None,
+                length_ratio_enabled=qg.length_ratio.enabled,
+                length_ratio_min=qg.length_ratio.min,
+                length_ratio_max=qg.length_ratio.max,
+                locale_enabled=qg.locale.enabled,
+                target_locale=qg.locale.target_locale,
+            )
+            warnings.extend(gate_warnings)
+        except Exception as gate_err:
+            _logger.warning("Quality gates failed: %s", gate_err)
 
         from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
 
