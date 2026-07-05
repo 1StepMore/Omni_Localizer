@@ -520,3 +520,145 @@ def run_quality_gates(
             _logger.exception("Gate 5 (source copy) failed: %s", exc)
 
     return all_warnings
+
+
+# ---------------------------------------------------------------------------
+# Gate 5 retry: re-translate units flagged as SOURCE_COPY
+# ---------------------------------------------------------------------------
+
+
+async def retry_source_copy_units(
+    units: list,
+    pool: Any,
+    src_lang: str,
+    tgt_lang: str,
+    quality_gates_cfg: Any,
+    glossary: dict[str, Any] | None,
+    warnings_per_unit: dict[str, list[str]],
+    max_retries: int = 1,
+) -> int:
+    """Re-translate units where Gate 5 detected source copy.
+
+    Called *after* quality gates have run and written their warnings.
+    Scans for ``OL_WARN: SOURCE_COPY`` entries, re-translates those
+    units through the LLM pool, applies the repair pipeline, and
+    re-runs quality gates on the retried translation.
+
+    If all retries still produce source copies, the last retry's
+    target is kept and the warning is upgraded to
+    ``OL_WARN: SOURCE_COPY (retry failed)``.
+
+    Args:
+        units: All translated units (may include units without warnings).
+        pool: Async LLM pool with a ``.translate(text, src, tgt, ...)`` method.
+        src_lang: Source language code.
+        tgt_lang: Target language code.
+        quality_gates_cfg: A ``QualityGateConfig``-like object with
+            ``inline_tags``, ``terminology``, ``length_ratio``,
+            ``locale``, and ``source_copy`` boolean attributes.
+        glossary: Glossary dict for terminology checks.
+        warnings_per_unit: Mutable dict mapping unit_id to warning list.
+            SOURCE_COPY entries are removed on retry and replaced with
+            the new gate results.
+        max_retries: Max LLM calls per retried unit (default 1).
+
+    Returns:
+        Number of units that were successfully re-translated
+        (SOURCE_COPY resolved).
+    """
+    # Collect unit IDs that have SOURCE_COPY warnings.
+    to_retry: list[str] = []
+    for uid, warns in warnings_per_unit.items():
+        if any("SOURCE_COPY" in w for w in warns):
+            to_retry.append(uid)
+
+    if not to_retry:
+        return 0
+
+    from ol_xliff.pipeline import XLIFFRepairPipeline
+    from ol_buses.xliff_shield import restore_tags
+
+    repair_pipeline = XLIFFRepairPipeline()
+    resolved = 0
+
+    for unit in units:
+        uid = unit.unit_id
+        if uid not in to_retry:
+            continue
+
+        # Retry loop.
+        still_copy = True
+        last_translation: str | None = None
+        for attempt in range(max_retries):
+            try:
+                new_target = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang,
+                )
+            except Exception:
+                _logger.warning(
+                    "SOURCE_COPY retry translate failed for unit=%s "
+                    "(attempt %d/%d)",
+                    uid, attempt + 1, max_retries,
+                )
+                break
+
+            # Apply repair pipeline (same as original translation path).
+            if unit.shield_map:
+                unshielded = restore_tags(new_target, unit.shield_map)
+                repaired, _ = repair_pipeline.repair(
+                    unshielded, unit.source_text, unit.shield_map,
+                )
+            else:
+                repaired = new_target
+
+            last_translation = repaired
+
+            # Re-run quality gates on the retried translation.
+            new_gate_warnings = run_quality_gates(
+                source=unit.source_text,
+                target=repaired,
+                glossary=glossary,
+                inline_tags_enabled=quality_gates_cfg.inline_tags,
+                terminology_enabled=(
+                    quality_gates_cfg.terminology and glossary is not None
+                ),
+                length_ratio_enabled=quality_gates_cfg.length_ratio.enabled,
+                length_ratio_min=quality_gates_cfg.length_ratio.min,
+                length_ratio_max=quality_gates_cfg.length_ratio.max,
+                locale_enabled=quality_gates_cfg.locale.enabled,
+                target_locale=quality_gates_cfg.locale.target_locale,
+                source_copy_enabled=quality_gates_cfg.source_copy,
+            )
+
+            still_copy = any("SOURCE_COPY" in w for w in new_gate_warnings)
+
+            # Update target_text regardless (best effort — if retry
+            # resolved the copy, this is the good translation; if not,
+            # it's at least a different try).
+            unit.target_text = repaired
+
+            # Replace warnings for this unit.
+            old_non_copy = [
+                w for w in warnings_per_unit.get(uid, [])
+                if "SOURCE_COPY" not in w
+            ]
+            warnings_per_unit[uid] = old_non_copy + new_gate_warnings
+
+            if not still_copy:
+                resolved += 1
+                break  # success
+
+        if still_copy and last_translation is not None:
+            # All retries failed — keep the last attempt but note it.
+            # Remove any fresh SOURCE_COPY lines from the gate re-run
+            # since the "retry failed" message is more informative.
+            warnings_per_unit[uid] = [
+                w for w in warnings_per_unit.get(uid, [])
+                if "SOURCE_COPY" not in w
+            ]
+            warnings_per_unit[uid].append(
+                "OL_WARN: SOURCE_COPY (retry failed — "
+                "kept best-effort translation)"
+            )
+
+    return resolved

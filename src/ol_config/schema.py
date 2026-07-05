@@ -131,6 +131,9 @@ class QualityGateConfig(BaseModel):
     source_copy: bool = Field(
         True, description="Warn when target text is identical to source (LLM echoed input back)"
     )
+    source_copy_retry: bool = Field(
+        True, description="Re-translate units flagged as SOURCE_COPY to try to get a real translation"
+    )
 
 
 class ProjectConfig(BaseModel):

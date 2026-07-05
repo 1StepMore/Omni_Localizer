@@ -32,7 +32,7 @@ from ol_xliff.parser import XliffParser
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
 from ol_config.loader import load_config
-from ol_lqa.quality_gates import run_quality_gates
+from ol_lqa.quality_gates import run_quality_gates, retry_source_copy_units
 
 
 async def _run_translate_xliff_async(
@@ -149,6 +149,7 @@ async def _run_translate_xliff_async(
             unit.target_text = repaired
 
         # Post-translation quality gates per unit (Issue #56)
+        cfg = None
         try:
             cfg, _ = load_config(resolved_config)
             qg = cfg.quality_gates
@@ -163,11 +164,29 @@ async def _run_translate_xliff_async(
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    source_copy_enabled=qg.source_copy,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
+
+        # Gate 5 retry: re-translate units with SOURCE_COPY.
+        if (
+            cfg is not None
+            and cfg.quality_gates.source_copy
+            and cfg.quality_gates.source_copy_retry
+        ):
+            n_retried = await retry_source_copy_units(
+                units, pool, source_lang, target_lang,
+                quality_gates_cfg=cfg.quality_gates,
+                glossary=glossary,
+                warnings_per_unit=warnings_per_unit,
+            )
+            if n_retried:
+                _logger.info(
+                    "SOURCE_COPY retry: %d unit(s) re-translated", n_retried
+                )
 
         if polish:
             from ol_xliff.polish import polish_translated_units
@@ -351,6 +370,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             unit.target_text = repaired
 
         # Post-translation quality gates per unit (Issue #56)
+        cfg = None
         try:
             cfg, _ = load_config(config_path)
             qg = cfg.quality_gates
@@ -365,11 +385,29 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    source_copy_enabled=qg.source_copy,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
+
+        # Gate 5 retry: re-translate units with SOURCE_COPY.
+        if (
+            cfg is not None
+            and cfg.quality_gates.source_copy
+            and cfg.quality_gates.source_copy_retry
+        ):
+            n_retried = await retry_source_copy_units(
+                units, pool, params.source_lang, params.target_lang,
+                quality_gates_cfg=cfg.quality_gates,
+                glossary=glossary,
+                warnings_per_unit=warnings_per_unit,
+            )
+            if n_retried:
+                _logger.info(
+                    "SOURCE_COPY retry: %d unit(s) re-translated", n_retried
+                )
 
         if params.polish:
             from ol_xliff.polish import polish_translated_units

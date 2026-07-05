@@ -13,6 +13,7 @@ from ol_lqa.quality_gates import (
     check_locale_conventions,
     check_source_copy,
     check_terminology_consistency,
+    retry_source_copy_units,
     run_quality_gates,
 )
 
@@ -645,3 +646,250 @@ class TestErrorResilience:
         # Source length 1, target length 100
         warnings = check_length_ratio("a", "b" * 100, max_ratio=3.0)
         assert len(warnings) == 1  # 100/1 = 100 > 3.0
+
+
+# =========================================================================
+# Gate 5 retry: retry_source_copy_units
+# =========================================================================
+
+
+class TestRetrySourceCopyUnits:
+    """Tests for retry_source_copy_units()."""
+
+    @pytest.mark.asyncio
+    async def test_no_source_copy_no_retry(self) -> None:
+        """No SOURCE_COPY warnings → retry does nothing, returns 0."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text="Hello", target_text="[zh] Hello"
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": ["OL_WARN: LENGTH_RATIO"],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, warnings_per_unit,
+        )
+        assert n == 0
+        assert pool._call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_source_copy_retry_success(self) -> None:
+        """SOURCE_COPY warning → retry succeeds → warning removed, target updated."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        source = "Hello world"
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text=source, target_text=source,
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": [
+                "OL_WARN: SOURCE_COPY — target is identical to source, "
+                "translation skipped / LLM echoed input back",
+            ],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, warnings_per_unit,
+        )
+        assert n == 1
+        assert pool._call_count == 1
+        # target_text should be updated to a real translation (not source copy)
+        assert units[0].target_text != source
+        assert "[zh]" in units[0].target_text
+        # SOURCE_COPY warning should be gone
+        assert not any(
+            "SOURCE_COPY" in w for w in warnings_per_unit["1"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_source_copy_retry_still_copy(self) -> None:
+        """Retry still produces SOURCE_COPY → warning upgraded, returns 0."""
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        source = "Still copy"
+
+        class _EchoPool:
+            """Fake pool that always echoes the source unchanged."""
+            _call_count = 0
+
+            async def translate(
+                self, text: str, src: str = "", tgt: str = "",
+                **kwargs: object,
+            ) -> str:
+                self._call_count += 1
+                return text  # echo back = source copy
+
+        pool = _EchoPool()
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text=source, target_text=source,
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": [
+                "OL_WARN: SOURCE_COPY — target is identical to source, "
+                "translation skipped / LLM echoed input back",
+            ],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, warnings_per_unit,
+        )
+        assert n == 0  # no successful retries
+        assert pool._call_count == 1
+        # Should have "retry failed" message
+        copy_warnings = [
+            w for w in warnings_per_unit["1"]
+            if "SOURCE_COPY" in w
+        ]
+        assert len(copy_warnings) == 1
+        assert "retry failed" in copy_warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_source_copy_retry_transport_error(self) -> None:
+        """Pool raises during retry → handled gracefully, original warning kept."""
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        source = "Hello"
+
+        class _FailingPool:
+            _call_count = 0
+
+            async def translate(
+                self, text: str, src: str = "", tgt: str = "",
+                **kwargs: object,
+            ) -> str:
+                self._call_count += 1
+                msg = "Connection error"
+                raise RuntimeError(msg)
+
+        pool = _FailingPool()
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text=source, target_text=source,
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": [
+                "OL_WARN: SOURCE_COPY — target is identical to source",
+            ],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, warnings_per_unit,
+        )
+        assert n == 0
+        assert pool._call_count == 1
+        # Original SOURCE_COPY warning should still be there
+        assert any(
+            "SOURCE_COPY" in w for w in warnings_per_unit["1"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_multiple_units_mixed(self) -> None:
+        """Multiple units: one with copy, one without → only one retried."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        source_a = "Copy me"
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text=source_a, target_text=source_a,
+            ),
+            TranslationUnit(
+                unit_id="2", source_text="Fine", target_text="[zh] Fine",
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": [
+                "OL_WARN: SOURCE_COPY — target is identical to source",
+            ],
+            "2": ["OL_WARN: LENGTH_RATIO"],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, warnings_per_unit,
+        )
+        assert n == 1
+        assert pool._call_count == 1
+        assert units[0].target_text != source_a
+        assert units[1].target_text == "[zh] Fine"  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_no_source_copy_warnings_empty_dict(self) -> None:
+        """Empty warnings_per_unit → retry does nothing."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text="Hello", target_text="[zh] Hello",
+            ),
+        ]
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None, {},
+        )
+        assert n == 0
+        assert pool._call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_source_copy_retry_max_retries_exhausted(self) -> None:
+        """max_retries=2 → both echo source → retry failed after 2 attempts."""
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        source = "Echo"
+
+        class _EchoPool:
+            _call_count = 0
+
+            async def translate(
+                self, text: str, src: str = "", tgt: str = "",
+                **kwargs: object,
+            ) -> str:
+                self._call_count += 1
+                return text
+
+        pool = _EchoPool()
+        units = [
+            TranslationUnit(
+                unit_id="1", source_text=source, target_text=source,
+            ),
+        ]
+        warnings_per_unit: dict[str, list[str]] = {
+            "1": [
+                "OL_WARN: SOURCE_COPY — target is identical to source",
+            ],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_source_copy_units(
+            units, pool, "en", "zh", cfg, None,
+            warnings_per_unit, max_retries=2,
+        )
+        assert n == 0
+        assert pool._call_count == 2  # both retries attempted
+        copy_warnings = [
+            w for w in warnings_per_unit["1"]
+            if "SOURCE_COPY" in w
+        ]
+        assert len(copy_warnings) == 1
+        assert "retry failed" in copy_warnings[0]

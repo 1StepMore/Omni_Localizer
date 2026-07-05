@@ -47,7 +47,7 @@ from cli._shared import (
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
-from ol_lqa.quality_gates import run_quality_gates
+from ol_lqa.quality_gates import run_quality_gates, retry_source_copy_units
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")
@@ -415,33 +415,36 @@ async def _translate_xliff_async(
             warnings_per_unit[unit.unit_id] = r.repair_warnings
 
     # Issue #56: Post-translation quality gates per unit (advisory, never raises).
+    # Build the glossary dict first so it's available both for gates and for
+    # the Gate 5 SOURCE_COPY retry below.
+    _glossary_dict_x: dict[str, Any] | None = None
+    if glossary is not None:
+        try:
+            if hasattr(glossary, "terms"):
+                _glossary_dict_x = {}
+                for _src, _tgts in glossary.terms.items():
+                    _glossary_dict_x[_src] = {
+                        "translation": _tgts[0] if _tgts else "",
+                        "variants": {_t: _t for _t in _tgts[1:]},
+                        "confidence": 1.0,
+                    }
+            else:
+                _glossary_dict_x = {}
+                logger.warning(
+                    "Cannot convert Glossary for XLIFF quality gates — "
+                    "missing 'terms' attribute"
+                )
+        except Exception:
+            _glossary_dict_x = {}
+            logger.warning("Glossary conversion failed for XLIFF quality gates")
+
     if hasattr(cfg, "quality_gates") and (
         cfg.quality_gates.inline_tags
         or cfg.quality_gates.terminology
         or cfg.quality_gates.length_ratio.enabled
         or cfg.quality_gates.locale.enabled
+        or cfg.quality_gates.source_copy
     ):
-        _glossary_dict_x: dict[str, Any] | None = None
-        if glossary is not None:
-            try:
-                if hasattr(glossary, "terms"):
-                    _glossary_dict_x = {}
-                    for _src, _tgts in glossary.terms.items():
-                        _glossary_dict_x[_src] = {
-                            "translation": _tgts[0] if _tgts else "",
-                            "variants": {_t: _t for _t in _tgts[1:]},
-                            "confidence": 1.0,
-                        }
-                else:
-                    _glossary_dict_x = {}
-                    logger.warning(
-                        "Cannot convert Glossary for XLIFF quality gates — "
-                        "missing 'terms' attribute"
-                    )
-            except Exception:
-                _glossary_dict_x = {}
-                logger.warning("Glossary conversion failed for XLIFF quality gates")
-
         for _xu in units:
             if _xu.target_text:
                 _xuw = run_quality_gates(
@@ -458,9 +461,26 @@ async def _translate_xliff_async(
                     length_ratio_max=cfg.quality_gates.length_ratio.max,
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
+                    source_copy_enabled=cfg.quality_gates.source_copy,
                 )
                 if _xuw:
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
+
+    # Gate 5 retry: re-translate units with SOURCE_COPY.
+    if (
+        cfg.quality_gates.source_copy
+        and cfg.quality_gates.source_copy_retry
+    ):
+        n_retried = await retry_source_copy_units(
+            units, pool, src_lang, tgt_lang,
+            quality_gates_cfg=cfg.quality_gates,
+            glossary=_glossary_dict_x,
+            warnings_per_unit=warnings_per_unit,
+        )
+        if n_retried:
+            logger.info(
+                f"SOURCE_COPY retry: {n_retried} unit(s) re-translated"
+            )
 
     logger.info(f"Translation complete: {len(units)} units")
 
