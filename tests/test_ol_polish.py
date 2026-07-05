@@ -153,17 +153,17 @@ class TestPolishAppliesCorrections:
         from ol_xliff.polish import polish_translated_units
 
         unit1 = SimpleNamespace(
-            unit_id="u1", source_text="hello", target_text="carrie",
+            unit_id="u1", source_text="hola", target_text="hello",
         )
         unit2 = SimpleNamespace(
-            unit_id="u2", source_text="world", target_text="globe",
+            unit_id="u2", source_text="mundo", target_text="world",
         )
         units = [unit1, unit2]
 
         llm_response = (
             "id: u1\n"
-            "fix: Carrier\n"
-            "reason: TERM_INCONSISTENCY"
+            "fix: Hello\n"
+            "reason: CAPITALIZATION: capitalize Hello"
         )
 
         pool = MagicMock()
@@ -173,8 +173,8 @@ class TestPolishAppliesCorrections:
 
         pool.translate = AsyncMock(side_effect=fake_translate)
 
-        warnings = await polish_translated_units(units, "en", "zh", pool)
-        assert unit1.target_text == "Carrier"
-        assert unit2.target_text == "globe"
+        warnings = await polish_translated_units(units, "es", "en", pool)
+        assert unit1.target_text == "Hello"
+        assert unit2.target_text == "world"
         assert "u1" in warnings
-        assert "TERM_INCONSISTENCY" in warnings["u1"][0]
+        assert "CAPITALIZATION" in warnings["u1"][0]

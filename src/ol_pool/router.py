@@ -195,15 +195,15 @@ class ModelPoolSourceLanguageResidualError(Exception):
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
-def _has_source_language_residual(text: str, source_lang: str, target_lang: str) -> bool:
+def has_source_language_residual(text: str, source_lang: str, target_lang: str) -> bool:
     """Check if LLM output still contains significant source-language text.
 
     For zh->en: checks if >15% of non-whitespace characters are CJK.
     Returns False for other language pairs (future extension).
     """
+    if not text.strip():
+        return False
     if source_lang == "zh" and target_lang == "en":
-        if not text.strip():
-            return False
         cjk_count = len(_CJK_RE.findall(text))
         alpha_count = len(re.findall(r"[a-zA-Z]", text))
         total = cjk_count + alpha_count
@@ -678,7 +678,7 @@ class ModelPool:
                         f"Chinese typographic conventions to English"
                     )
                 translated = localized
-                if _has_source_language_residual(translated, source_lang, target_lang):
+                if has_source_language_residual(translated, source_lang, target_lang):
                     raise ModelPoolSourceLanguageResidualError(
                         f"Translation output contains {source_lang}-language residual "
                         f"for {target_lang} target (CJK ratio > 15%)"
