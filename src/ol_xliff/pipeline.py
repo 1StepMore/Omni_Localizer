@@ -67,7 +67,7 @@ class XLIFFRepairPipeline:
         current_text = text
         warnings: list[str] = []
 
-        cleaned, modified = level1_regex_clean(current_text)
+        cleaned, modified = level1_regex_clean(current_text, shield_map)
         if modified:
             current_text = cleaned
 
