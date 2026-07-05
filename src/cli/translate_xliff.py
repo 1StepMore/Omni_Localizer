@@ -47,7 +47,11 @@ from cli._shared import (
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
-from ol_lqa.quality_gates import run_quality_gates
+from ol_lqa.quality_gates import (
+    format_warning_summary,
+    retry_critical_failures,
+    run_quality_gates,
+)
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")
@@ -414,12 +418,13 @@ async def _translate_xliff_async(
             # contract relied on by warnings extraction downstream).
             warnings_per_unit[unit.unit_id] = r.repair_warnings
 
-    # Issue #56: Post-translation quality gates per unit (advisory, never raises).
+    # Issue #56/57: Post-translation quality gates per unit (advisory, never raises).
     if hasattr(cfg, "quality_gates") and (
         cfg.quality_gates.inline_tags
         or cfg.quality_gates.terminology
         or cfg.quality_gates.length_ratio.enabled
         or cfg.quality_gates.locale.enabled
+        or cfg.quality_gates.source_copy
     ):
         _glossary_dict_x: dict[str, Any] | None = None
         if glossary is not None:
@@ -458,11 +463,37 @@ async def _translate_xliff_async(
                     length_ratio_max=cfg.quality_gates.length_ratio.max,
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
+                    source_copy_enabled=cfg.quality_gates.source_copy,
                 )
                 if _xuw:
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
 
+    # Gate 5 retry: re-translate units with critical failures (SOURCE_COPY
+    # or TRANSLATION_FAILED).
+    if (
+        hasattr(cfg, "quality_gates")
+        and cfg.quality_gates.retry_on_translation_failed
+        or (
+            cfg.quality_gates.source_copy
+            and cfg.quality_gates.source_copy_retry
+        )
+    ):
+        n_retried = await retry_critical_failures(
+            units, pool, src_lang, tgt_lang,
+            quality_gates_cfg=cfg.quality_gates,
+            glossary=_glossary_dict_x,
+            warnings_per_unit=warnings_per_unit,
+        )
+        if n_retried:
+            logger.info(
+                "RETRY: %d unit(s) re-translated (SOURCE_COPY / TRANSLATION_FAILED)", n_retried
+            )
+
     logger.info(f"Translation complete: {len(units)} units")
+    logger.info(
+        "WARN_SUMMARY: %s",
+        format_warning_summary(warnings_per_unit),
+    )
 
     if polish:
         from ol_xliff.polish import polish_translated_units
