@@ -128,6 +128,19 @@ class QualityGateConfig(BaseModel):
         default_factory=LocaleGateConfig,
         description="Locale gate configuration",
     )
+    source_script_check: bool = Field(
+        True,
+        description="Gate 6: detect source-language script characters "
+        "(e.g. CJK) that leaked into the target translation. "
+        "Automatically suppressed when source text contains no "
+        "CJK characters or the target locale is a CJK locale.",
+    )
+    protocol_artifact_check: bool = Field(
+        True,
+        description="Gate 7: detect LLM protocol/metadata markers "
+        "(e.g. [USERTEXTSTART], [INST], [SYSTEM_PROMPT]) that "
+        "reflected into the translated text as literal content.",
+    )
 
 
 class ProjectConfig(BaseModel):

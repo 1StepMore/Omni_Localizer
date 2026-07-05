@@ -11,6 +11,9 @@ from ol_lqa.quality_gates import (
     check_inline_tag_counts,
     check_length_ratio,
     check_locale_conventions,
+    check_protocol_artifacts,
+    check_source_copy,
+    check_source_script_fragments,
     check_terminology_consistency,
     run_quality_gates,
 )
@@ -570,3 +573,146 @@ class TestErrorResilience:
         # Source length 1, target length 100
         warnings = check_length_ratio("a", "b" * 100, max_ratio=3.0)
         assert len(warnings) == 1  # 100/1 = 100 > 3.0
+
+
+# =========================================================================
+# Gate 5: check_source_copy
+# =========================================================================
+
+
+class TestCheckSourceCopy:
+    """Gate 5 — detect when LLM echoes the source text unchanged."""
+
+    def test_identical_source_and_target(self) -> None:
+        """Exact match should trigger SOURCE_COPY."""
+        warnings = check_source_copy("海尔 is a brand", "海尔 is a brand")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_numeric_content_skipped(self) -> None:
+        """Pure numbers should not trigger SOURCE_COPY."""
+        warnings = check_source_copy("123", "123")
+        assert len(warnings) == 0
+
+    def test_non_identical_no_warning(self) -> None:
+        """Different source and target should not warn."""
+        warnings = check_source_copy("你好", "Hello")
+        assert len(warnings) == 0
+
+    def test_empty_strings(self) -> None:
+        """Empty strings should be safe."""
+        warnings = check_source_copy("", "")
+        assert len(warnings) == 0
+
+
+# =========================================================================
+# Gate 6: check_source_script_fragments
+# =========================================================================
+
+
+class TestCheckSourceScriptFragments:
+    """Gate 6 — detect CJK characters that leaked into a non-CJK target."""
+
+    def test_cjk_residual_detected(self) -> None:
+        """CJK in target with CJK source should be flagged."""
+        warnings = check_source_script_fragments(
+            "第二" "章" "海尔的全球创牌",
+            "Chapter 2" "海尔" "'s Global Brand Creation",
+            target_locale="en-US",
+        )
+        assert len(warnings) >= 1
+        assert "SOURCE_SCRIPT_FRAGMENT" in warnings[0]
+        # Should mention the offending characters by codepoint
+        assert any("U+6D77" in w for w in warnings)  # 海
+        assert any("U+5C14" in w for w in warnings)  # 尔
+
+    def test_no_cjk_in_source_suppressed(self) -> None:
+        """No CJK in source means no warning even if CJK appears in target."""
+        warnings = check_source_script_fragments(
+            "Hello world",
+            "Hello" "世界" "world",
+            target_locale="en-US",
+        )
+        assert len(warnings) == 0
+
+    def test_no_cjk_in_target_suppressed(self) -> None:
+        """No CJK in target should return empty."""
+        warnings = check_source_script_fragments(
+            "我爱编程", "I love programming", target_locale="en-US",
+        )
+        assert len(warnings) == 0
+
+    def test_cjk_target_locale_suppressed(self) -> None:
+        """Target locale zh/ja/ko should not flag CJK in target."""
+        warnings = check_source_script_fragments(
+            "海尔", "海尔", target_locale="zh-CN",
+        )
+        assert len(warnings) == 0
+
+    def test_empty_strings(self) -> None:
+        """Empty source and target should not crash."""
+        warnings = check_source_script_fragments("", "", target_locale="en-US")
+        assert len(warnings) == 0
+    
+    def test_ja_source_and_target_locale_suppressed(self) -> None:
+        """Japanese source with Japanese target locale: CJK is expected."""
+        warnings = check_source_script_fragments(
+            "こんにちは", "こんにちは世界", target_locale="ja-JP",
+        )
+        assert len(warnings) == 0
+
+
+# =========================================================================
+# Gate 7: check_protocol_artifacts
+# =========================================================================
+
+
+class TestCheckProtocolArtifacts:
+    """Gate 7 — detect LLM protocol/metadata markers in translated text."""
+
+    def test_usertextstart_detected(self) -> None:
+        """[USERTEXTSTART] should be flagged."""
+        warnings = check_protocol_artifacts(
+            "[USERTEXTSTART]\nHello world\n[USERTEXTEND]"
+        )
+        assert len(warnings) >= 1
+        assert "PROTOCOL_ARTIFACT" in warnings[0]
+
+    def test_user_text_start_detected(self) -> None:
+        """[USER_TEXT_START] should be flagged."""
+        warnings = check_protocol_artifacts(
+            "Translation [USER_TEXT_START] here"
+        )
+        assert len(warnings) >= 1
+        assert "USER_TEXT_START" in warnings[0]
+
+    def test_inst_marker_detected(self) -> None:
+        """[INST] markers should be flagged."""
+        warnings = check_protocol_artifacts("[INST] Translate this [/INST]")
+        assert len(warnings) >= 1
+
+    def test_out_of_band_detected(self) -> None:
+        """[OUT-OF-BAND markers should be flagged."""
+        warnings = check_protocol_artifacts(
+            "[OUT-OF-BAND USER MESSAGE] hidden text [/OUT-OF-BAND]"
+        )
+        assert len(warnings) >= 1
+
+    def test_clean_text_no_warnings(self) -> None:
+        """Normal translation text should not trigger Gate 7."""
+        warnings = check_protocol_artifacts(
+            "This is a normal English sentence."
+        )
+        assert len(warnings) == 0
+
+    def test_empty_string(self) -> None:
+        """Empty strings should be safe."""
+        warnings = check_protocol_artifacts("")
+        assert len(warnings) == 0
+
+    def test_multiple_patterns_deduplicated(self) -> None:
+        """Same marker appearing multiple times should only warn once."""
+        text = "[USERTEXTSTART] hello [USERTEXTSTART] world [USERTEXTEND]"
+        warnings = check_protocol_artifacts(text)
+        # Two unique markers: USERTEXTSTART and USERTEXTEND
+        assert len(warnings) == 2
