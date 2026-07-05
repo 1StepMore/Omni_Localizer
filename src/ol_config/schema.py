@@ -128,14 +128,18 @@ class QualityGateConfig(BaseModel):
         default_factory=LocaleGateConfig,
         description="Locale gate configuration",
     )
-    source_copy: bool = Field(
-        True, description="Warn when target text is identical to source (LLM echoed input back)"
+    source_script_check: bool = Field(
+        True,
+        description="Gate 6: detect source-language script characters "
+        "(e.g. CJK) that leaked into the target translation. "
+        "Automatically suppressed when source text contains no "
+        "CJK characters or the target locale is a CJK locale.",
     )
-    source_copy_retry: bool = Field(
-        True, description="Re-translate units flagged as SOURCE_COPY to try to get a real translation"
-    )
-    retry_on_translation_failed: bool = Field(
-        True, description="Re-translate units where the LLM call failed (TRANSLATION_FAILED)"
+    protocol_artifact_check: bool = Field(
+        True,
+        description="Gate 7: detect LLM protocol/metadata markers "
+        "(e.g. [USERTEXTSTART], [INST], [SYSTEM_PROMPT]) that "
+        "reflected into the translated text as literal content.",
     )
 
 
