@@ -409,10 +409,19 @@ def check_source_copy(source: str, target: str) -> list[str]:
     short input with inline formatting, proper nouns that look like
     English, chapter numbers, etc.).
 
+    Skips strings that contain no alphabetic characters (pure numbers,
+    symbols, whitespace-only) — these should remain unchanged across
+    translation and are not meaningful copy-echo signals.
+
     Returns:
-        List of ``OL_WARN: SOURCE_COPY`` strings (empty if source != target).
+        List of ``OL_WARN: SOURCE_COPY`` strings (empty if source != target
+        or the text contains no translatable content).
     """
     if source.strip() == target.strip():
+        # Skip pure numeric/symbolic content — numbers and symbols should
+        # remain unchanged across translation; flagging them is noise.
+        if not re.search(r"[a-zA-Z\u4e00-\u9fff]", source):
+            return []
         return [
             "OL_WARN: SOURCE_COPY — target is identical to source, "
             "translation skipped / LLM echoed input back"

@@ -546,11 +546,20 @@ class TestCheckSourceCopy:
         """When content differs after stripping, no warning."""
         assert check_source_copy("  hello  ", "world") == []
 
-    def test_empty_source_and_target(self) -> None:
-        """Both strings empty — identical, flagged."""
-        warnings = check_source_copy("", "")
+    def test_pure_numbers_not_flagged(self) -> None:
+        """Pure numbers/symbols that are unchanged should not be flagged."""
+        assert check_source_copy("×116 ×54", "×116 ×54") == []
+        assert check_source_copy("#46", "#46") == []
+
+    def test_mixed_content_with_numbers_flagged(self) -> None:
+        """Content with both text and numbers should still be flagged."""
+        warnings = check_source_copy("第二章海尔的全球创牌", "第二章海尔的全球创牌")
         assert len(warnings) == 1
         assert "OL_WARN: SOURCE_COPY" in warnings[0]
+
+    def test_empty_source_and_target(self) -> None:
+        """Both strings empty — no alpha content, not flagged."""
+        assert check_source_copy("", "") == []
 
     def test_empty_source_nonempty_target_clean(self) -> None:
         """One empty, one non-empty is not a copy."""
