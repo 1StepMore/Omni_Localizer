@@ -61,3 +61,27 @@ class TestXLIFFBus:
         translated = 'Bonjour {{_OL_XTAG_x_1_}} world'
         restored = restore_tags(translated, shield_map)
         assert '<x' in restored
+
+    def test_restore_tags_strips_orphan_new_format(self):
+        """OL#58: LLM-invented {{OLXTAGex4_}} (with trailing underscore)
+        that can't be matched to the shield_map must be stripped from output."""
+        shield_map = {'bx_ex_4': '<bx id="4"/><ex id="4"/>'}
+        # LLM output: invented {{OLXTAGex4_}} with trailing underscore,
+        # plus the canonical {{_OL_XTAG_bx_ex_4_}} that survived
+        translated = (
+            "2.Chapter Haier's Global Branding{{OLXTAGex4_}}"
+        )
+        restored = restore_tags(translated, shield_map)
+        assert '{{OLXTAG' not in restored, (
+            f"Orphan placeholder survived: {restored}"
+        )
+        assert restored == "2.Chapter Haier's Global Branding"
+
+    def test_restore_tags_strips_orphan_standard_format(self):
+        """OL#58: LLM-invented {{OLXTAGex4}} (standard non-canonical format)
+        that can't be matched must also be stripped."""
+        shield_map = {'bx_ex_4': '<bx id="4"/><ex id="4"/>'}
+        translated = "Some text{{OLXTAGex4}}"
+        restored = restore_tags(translated, shield_map)
+        assert '{{OLXTAG' not in restored
+        assert restored == "Some text"
