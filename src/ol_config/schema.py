@@ -128,6 +128,9 @@ class QualityGateConfig(BaseModel):
         default_factory=LocaleGateConfig,
         description="Locale gate configuration",
     )
+    source_copy: bool = Field(
+        True, description="Warn when target text is identical to source (LLM echoed input back)"
+    )
 
 
 class ProjectConfig(BaseModel):

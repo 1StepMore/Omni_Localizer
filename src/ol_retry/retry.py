@@ -52,14 +52,18 @@ class RetryManager:
                 # Translation failed; fall back to the source text and flag
                 # transport_error so downstream consumers can distinguish this
                 # from a genuine low-score retry.
+                warning = (
+                    f"OL_WARN: TRANSLATION_FAILED "
+                    f"({type(translate_err).__name__}: {str(translate_err)[:200]})"
+                )
+                # OL#57: the fallback is the original source text.  When the
+                # source and target are identical, downstream quality gates
+                # (Gate 5, check_source_copy) will flag this as SOURCE_COPY.
                 return RetryResult(
                     attempts=attempt + 1,
                     final_score=0.0,
                     best_translation=source_text,
-                    warning=(
-                        f"OL_WARN: TRANSLATION_FAILED "
-                        f"({type(translate_err).__name__}: {str(translate_err)[:200]})"
-                    ),
+                    warning=warning,
                     attempt_history=attempt_history,
                     exception=translate_err,
                     transport_error=True,

@@ -397,6 +397,30 @@ def check_locale_conventions(
 
 
 # ---------------------------------------------------------------------------
+# Gate 5: Source copy detection
+# ---------------------------------------------------------------------------
+
+
+def check_source_copy(source: str, target: str) -> list[str]:
+    """Gate 5 — detect when LLM echoes the source text back unchanged.
+
+    Compares the stripped source and target.  When they are identical,
+    the LLM effectively skipped the translation request (common for
+    short input with inline formatting, proper nouns that look like
+    English, chapter numbers, etc.).
+
+    Returns:
+        List of ``OL_WARN: SOURCE_COPY`` strings (empty if source != target).
+    """
+    if source.strip() == target.strip():
+        return [
+            "OL_WARN: SOURCE_COPY — target is identical to source, "
+            "translation skipped / LLM echoed input back"
+        ]
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -413,6 +437,7 @@ def run_quality_gates(
     length_ratio_max: float | None = None,
     locale_enabled: bool = True,
     target_locale: str | None = None,
+    source_copy_enabled: bool = True,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -433,6 +458,7 @@ def run_quality_gates(
         locale_enabled: Run Gate 4 (locale conventions).
         target_locale: Target locale override.  Falls back to
             ``OL_TARGET_LOCALE`` env var.
+        source_copy_enabled: Run Gate 5 (source copy detection).
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -476,5 +502,12 @@ def run_quality_gates(
             )
         except Exception as exc:
             _logger.exception("Gate 4 (locale conventions) failed: %s", exc)
+
+    # Gate 5
+    if source_copy_enabled:
+        try:
+            all_warnings.extend(check_source_copy(source, target))
+        except Exception as exc:
+            _logger.exception("Gate 5 (source copy) failed: %s", exc)
 
     return all_warnings

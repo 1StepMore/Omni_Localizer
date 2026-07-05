@@ -11,6 +11,7 @@ from ol_lqa.quality_gates import (
     check_inline_tag_counts,
     check_length_ratio,
     check_locale_conventions,
+    check_source_copy,
     check_terminology_consistency,
     run_quality_gates,
 )
@@ -515,6 +516,71 @@ class TestRunQualityGates:
         )
         # Should not crash, terminology just won't check anything
         assert isinstance(warnings, list)
+
+
+# =========================================================================
+# Gate 5: check_source_copy
+# =========================================================================
+
+
+class TestCheckSourceCopy:
+    """Gate 5 — detect when LLM echoes source text unchanged."""
+
+    def test_identical_source_and_target_flagged(self) -> None:
+        """When source == target, a SOURCE_COPY warning is emitted."""
+        warnings = check_source_copy("第二章海尔的全球创牌", "第二章海尔的全球创牌")
+        assert len(warnings) == 1
+        assert "OL_WARN: SOURCE_COPY" in warnings[0]
+
+    def test_different_source_and_target_clean(self) -> None:
+        """When source != target, no warning."""
+        assert check_source_copy("你好世界", "Hello World") == []
+
+    def test_whitespace_differs_after_strip_clean(self) -> None:
+        """Leading/trailing whitespace differences do not suppress the warning when content matches."""
+        warnings = check_source_copy("  hello  ", "hello")
+        assert len(warnings) == 1
+        assert "OL_WARN: SOURCE_COPY" in warnings[0]
+
+    def test_meaningful_differs_after_strip_clean(self) -> None:
+        """When content differs after stripping, no warning."""
+        assert check_source_copy("  hello  ", "world") == []
+
+    def test_empty_source_and_target(self) -> None:
+        """Both strings empty — identical, flagged."""
+        warnings = check_source_copy("", "")
+        assert len(warnings) == 1
+        assert "OL_WARN: SOURCE_COPY" in warnings[0]
+
+    def test_empty_source_nonempty_target_clean(self) -> None:
+        """One empty, one non-empty is not a copy."""
+        assert check_source_copy("", "hello") == []
+
+    def test_source_copy_via_orchestrator(self) -> None:
+        """run_quality_gates with source_copy_enabled=True flags copy."""
+        warnings = run_quality_gates(
+            source="海尔全球创牌",
+            target="海尔全球创牌",
+            source_copy_enabled=True,
+            inline_tags_enabled=False,
+            terminology_enabled=False,
+            length_ratio_enabled=False,
+            locale_enabled=False,
+        )
+        assert any("OL_WARN: SOURCE_COPY" in w for w in warnings)
+
+    def test_source_copy_disabled(self) -> None:
+        """Setting source_copy_enabled=False suppresses Gate 5."""
+        warnings = run_quality_gates(
+            source="海尔全球创牌",
+            target="海尔全球创牌",
+            source_copy_enabled=False,
+            inline_tags_enabled=False,
+            terminology_enabled=False,
+            length_ratio_enabled=False,
+            locale_enabled=False,
+        )
+        assert not any("OL_WARN: SOURCE_COPY" in w for w in warnings)
 
 
 # =========================================================================
