@@ -13,7 +13,8 @@ from ol_lqa.quality_gates import (
     check_locale_conventions,
     check_source_copy,
     check_terminology_consistency,
-    retry_source_copy_units,
+    format_warning_summary,
+    retry_critical_failures,
     run_quality_gates,
 )
 
@@ -649,12 +650,12 @@ class TestErrorResilience:
 
 
 # =========================================================================
-# Gate 5 retry: retry_source_copy_units
+# Gate 5 retry: retry_critical_failures
 # =========================================================================
 
 
-class TestRetrySourceCopyUnits:
-    """Tests for retry_source_copy_units()."""
+class TestRetryCriticalFailures:
+    """Tests for retry_critical_failures()."""
 
     @pytest.mark.asyncio
     async def test_no_source_copy_no_retry(self) -> None:
@@ -673,7 +674,7 @@ class TestRetrySourceCopyUnits:
             "1": ["OL_WARN: LENGTH_RATIO"],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, warnings_per_unit,
         )
         assert n == 0
@@ -700,7 +701,7 @@ class TestRetrySourceCopyUnits:
             ],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, warnings_per_unit,
         )
         assert n == 1
@@ -745,18 +746,18 @@ class TestRetrySourceCopyUnits:
             ],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, warnings_per_unit,
         )
         assert n == 0  # no successful retries
         assert pool._call_count == 1
-        # Should have "retry failed" message
+        # Should have "retry exhausted" message
         copy_warnings = [
             w for w in warnings_per_unit["1"]
-            if "SOURCE_COPY" in w
+            if "FAILED_RETRY" in w
         ]
         assert len(copy_warnings) == 1
-        assert "retry failed" in copy_warnings[0]
+        assert "retry exhausted" in copy_warnings[0]
 
     @pytest.mark.asyncio
     async def test_source_copy_retry_transport_error(self) -> None:
@@ -789,7 +790,7 @@ class TestRetrySourceCopyUnits:
             ],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, warnings_per_unit,
         )
         assert n == 0
@@ -823,7 +824,7 @@ class TestRetrySourceCopyUnits:
             "2": ["OL_WARN: LENGTH_RATIO"],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, warnings_per_unit,
         )
         assert n == 1
@@ -845,7 +846,7 @@ class TestRetrySourceCopyUnits:
             ),
         ]
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None, {},
         )
         assert n == 0
@@ -881,7 +882,7 @@ class TestRetrySourceCopyUnits:
             ],
         }
         cfg = QualityGateConfig()
-        n = await retry_source_copy_units(
+        n = await retry_critical_failures(
             units, pool, "en", "zh", cfg, None,
             warnings_per_unit, max_retries=2,
         )
@@ -889,7 +890,82 @@ class TestRetrySourceCopyUnits:
         assert pool._call_count == 2  # both retries attempted
         copy_warnings = [
             w for w in warnings_per_unit["1"]
-            if "SOURCE_COPY" in w
+            if "FAILED_RETRY" in w
         ]
         assert len(copy_warnings) == 1
-        assert "retry failed" in copy_warnings[0]
+        assert "retry exhausted" in copy_warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_translation_failed_retry_success(self):
+        """TRANSLATION_FAILED warning -> retry succeeds -> resolved."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        source = "Hello world"
+        units = [
+            TranslationUnit(unit_id="1", source_text=source, target_text=source),
+        ]
+        warnings_per_unit = {
+            "1": ["OL_WARN: TRANSLATION_FAILED (TimeoutError: LLM timed out)"],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_critical_failures(units, pool, "en", "zh", cfg, None, warnings_per_unit)
+        assert n == 1
+        assert pool._call_count == 1
+        assert units[0].target_text != source
+        assert "[zh]" in units[0].target_text
+
+    @pytest.mark.asyncio
+    async def test_translation_failed_and_source_copy_both_retried(self):
+        """Both SOURCE_COPY and TRANSLATION_FAILED -> both retried."""
+        from ol_pool.fake import _FakeModelPool
+        from ol_core.dataclass import TranslationUnit
+        from ol_config.schema import QualityGateConfig
+
+        pool = _FakeModelPool()
+        units = [
+            TranslationUnit(unit_id="1", source_text="Copy me", target_text="Copy me"),
+            TranslationUnit(unit_id="2", source_text="Hello world", target_text="Hello world"),
+        ]
+        warnings_per_unit = {
+            "1": ["OL_WARN: SOURCE_COPY - target is identical to source"],
+            "2": ["OL_WARN: TRANSLATION_FAILED (RuntimeError: API error)"],
+        }
+        cfg = QualityGateConfig()
+        n = await retry_critical_failures(units, pool, "en", "zh", cfg, None, warnings_per_unit)
+        assert n == 2
+        assert pool._call_count == 2
+        assert units[0].target_text != "Copy me"
+        assert units[1].target_text != "Hello world"
+
+
+class TestFormatWarningSummary:
+    """Tests for format_warning_summary()."""
+
+    def test_empty_warnings(self):
+        assert format_warning_summary({}) == "0 warnings"
+
+    def test_single_warning(self):
+        result = format_warning_summary({"1": ["OL_WARN: SOURCE_COPY - test"]})
+        assert "1 warnings" in result
+        assert "SOURCE_COPY" in result
+
+    def test_multiple_types(self):
+        result = format_warning_summary({
+            "1": ["OL_WARN: LENGTH_RATIO - ratio 3.5 exceeds max"],
+            "2": ["OL_WARN: SOURCE_COPY - target is identical"],
+            "3": ["OL_WARN: LENGTH_RATIO - ratio 2.1", "OL_WARN: UNIT_SPELLING - British"],
+        })
+        assert "4 warnings" in result
+        assert "LENGTH_RATIO" in result
+        assert "SOURCE_COPY" in result
+        assert "UNIT_SPELLING" in result
+
+    def test_non_ol_warn_lines(self):
+        result = format_warning_summary({
+            "1": ["Some random line", "OL_WARN: SOURCE_COPY - test"],
+        })
+        assert "1 warnings" in result
+        assert "SOURCE_COPY" in result

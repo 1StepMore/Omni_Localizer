@@ -527,7 +527,7 @@ def run_quality_gates(
 # ---------------------------------------------------------------------------
 
 
-async def retry_source_copy_units(
+async def retry_critical_failures(
     units: list,
     pool: Any,
     src_lang: str,
@@ -537,16 +537,26 @@ async def retry_source_copy_units(
     warnings_per_unit: dict[str, list[str]],
     max_retries: int = 1,
 ) -> int:
-    """Re-translate units where Gate 5 detected source copy.
+    """Re-translate units where a critical pipeline failure was detected.
 
-    Called *after* quality gates have run and written their warnings.
-    Scans for ``OL_WARN: SOURCE_COPY`` entries, re-translates those
-    units through the LLM pool, applies the repair pipeline, and
-    re-runs quality gates on the retried translation.
+    Scans ``warnings_per_unit`` for ``OL_WARN: SOURCE_COPY`` or
+    ``OL_WARN: TRANSLATION_FAILED`` entries.  For each affected unit,
+    calls ``pool.translate()`` again, applies the repair pipeline,
+    and re-runs quality gates on the retried translation.
 
-    If all retries still produce source copies, the last retry's
-    target is kept and the warning is upgraded to
-    ``OL_WARN: SOURCE_COPY (retry failed)``.
+    Covers two scenarios:
+
+    * **SOURCE_COPY** — the LLM echoed the source text back unchanged.
+      Gate 5 catches this and the retry gives the LLM another chance
+      to produce a real translation.
+
+    * **TRANSLATION_FAILED** — the translation call itself raised an
+      exception (timeout, rate limit, API error).  The pipeline drops
+      the source text as a fallback; retry is the only way to recover.
+
+    If all retries still fail (still copy or another transport error),
+    the last best-effort target is kept and the warning is upgraded
+    to ``OL_WARN: SOURCE_COPY (retry failed)``.
 
     Args:
         units: All translated units (may include units without warnings).
@@ -558,18 +568,20 @@ async def retry_source_copy_units(
             ``locale``, and ``source_copy`` boolean attributes.
         glossary: Glossary dict for terminology checks.
         warnings_per_unit: Mutable dict mapping unit_id to warning list.
-            SOURCE_COPY entries are removed on retry and replaced with
-            the new gate results.
+            SOURCE_COPY / TRANSLATION_FAILED entries are removed on
+            retry and replaced with the new gate results.
         max_retries: Max LLM calls per retried unit (default 1).
 
     Returns:
         Number of units that were successfully re-translated
-        (SOURCE_COPY resolved).
+        (critical failure resolved).
     """
-    # Collect unit IDs that have SOURCE_COPY warnings.
+    _CRITICAL_PREFIXES = ("SOURCE_COPY", "TRANSLATION_FAILED")
+
+    # Collect unit IDs that have critical warnings.
     to_retry: list[str] = []
     for uid, warns in warnings_per_unit.items():
-        if any("SOURCE_COPY" in w for w in warns):
+        if any(_p in w for w in warns for _p in _CRITICAL_PREFIXES):
             to_retry.append(uid)
 
     if not to_retry:
@@ -657,8 +669,41 @@ async def retry_source_copy_units(
                 if "SOURCE_COPY" not in w
             ]
             warnings_per_unit[uid].append(
-                "OL_WARN: SOURCE_COPY (retry failed — "
+                "OL_WARN: FAILED_RETRY (retry exhausted — "
                 "kept best-effort translation)"
             )
 
     return resolved
+
+
+# ---------------------------------------------------------------------------
+# Warning summary
+# ---------------------------------------------------------------------------
+
+
+def format_warning_summary(warnings_per_unit: dict[str, list[str]]) -> str:
+    """Build a one-line summary of all ``OL_WARN`` codes for a translation run.
+
+    Example::
+
+        12 warnings (LENGTH_RATIO×8, SOURCE_COPY×1, UNIT_SPELLING×1, INLINE_TAG_MISMATCH×2)
+
+    Returns:
+        Human-readable summary string.  Returns ``"0 warnings"`` when
+        *warnings_per_unit* is empty or contains no ``OL_WARN`` entries.
+    """
+    from collections import Counter
+
+    codes: list[str] = []
+    for warns in warnings_per_unit.values():
+        for w in warns:
+            m = re.search(r"OL_WARN:\s*(\w+)", w)
+            if m:
+                codes.append(m.group(1))
+
+    if not codes:
+        return "0 warnings"
+
+    counts = Counter(codes)
+    parts = [f"{code}×{n}" for code, n in counts.most_common()]
+    return f'{sum(counts.values())} warnings ({", ".join(parts)})'

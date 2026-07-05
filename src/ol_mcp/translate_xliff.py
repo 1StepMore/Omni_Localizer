@@ -32,7 +32,7 @@ from ol_xliff.parser import XliffParser
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
 from ol_config.loader import load_config
-from ol_lqa.quality_gates import run_quality_gates, retry_source_copy_units
+from ol_lqa.quality_gates import run_quality_gates, retry_critical_failures
 
 
 async def _run_translate_xliff_async(
@@ -171,13 +171,15 @@ async def _run_translate_xliff_async(
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
 
-        # Gate 5 retry: re-translate units with SOURCE_COPY.
-        if (
-            cfg is not None
-            and cfg.quality_gates.source_copy
-            and cfg.quality_gates.source_copy_retry
+        # Gate 5 retry: re-translate units with critical failures.
+        if cfg is not None and (
+            cfg.quality_gates.retry_on_translation_failed
+            or (
+                cfg.quality_gates.source_copy
+                and cfg.quality_gates.source_copy_retry
+            )
         ):
-            n_retried = await retry_source_copy_units(
+            n_retried = await retry_critical_failures(
                 units, pool, source_lang, target_lang,
                 quality_gates_cfg=cfg.quality_gates,
                 glossary=glossary,
@@ -185,7 +187,7 @@ async def _run_translate_xliff_async(
             )
             if n_retried:
                 _logger.info(
-                    "SOURCE_COPY retry: %d unit(s) re-translated", n_retried
+                    "RETRY: %d unit(s) re-translated (SOURCE_COPY / TRANSLATION_FAILED)", n_retried
                 )
 
         if polish:
@@ -392,13 +394,15 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
 
-        # Gate 5 retry: re-translate units with SOURCE_COPY.
-        if (
-            cfg is not None
-            and cfg.quality_gates.source_copy
-            and cfg.quality_gates.source_copy_retry
+        # Gate 5 retry: re-translate units with critical failures.
+        if cfg is not None and (
+            cfg.quality_gates.retry_on_translation_failed
+            or (
+                cfg.quality_gates.source_copy
+                and cfg.quality_gates.source_copy_retry
+            )
         ):
-            n_retried = await retry_source_copy_units(
+            n_retried = await retry_critical_failures(
                 units, pool, params.source_lang, params.target_lang,
                 quality_gates_cfg=cfg.quality_gates,
                 glossary=glossary,
@@ -406,7 +410,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             )
             if n_retried:
                 _logger.info(
-                    "SOURCE_COPY retry: %d unit(s) re-translated", n_retried
+                    "RETRY: %d unit(s) re-translated (SOURCE_COPY / TRANSLATION_FAILED)", n_retried
                 )
 
         if params.polish:

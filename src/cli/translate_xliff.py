@@ -47,7 +47,7 @@ from cli._shared import (
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
-from ol_lqa.quality_gates import run_quality_gates, retry_source_copy_units
+from ol_lqa.quality_gates import run_quality_gates, retry_critical_failures, format_warning_summary
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")
@@ -466,12 +466,16 @@ async def _translate_xliff_async(
                 if _xuw:
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
 
-    # Gate 5 retry: re-translate units with SOURCE_COPY.
+    # Gate 5 retry: re-translate units with critical failures (SOURCE_COPY
+    # or TRANSLATION_FAILED).
     if (
-        cfg.quality_gates.source_copy
-        and cfg.quality_gates.source_copy_retry
+        cfg.quality_gates.retry_on_translation_failed
+        or (
+            cfg.quality_gates.source_copy
+            and cfg.quality_gates.source_copy_retry
+        )
     ):
-        n_retried = await retry_source_copy_units(
+        n_retried = await retry_critical_failures(
             units, pool, src_lang, tgt_lang,
             quality_gates_cfg=cfg.quality_gates,
             glossary=_glossary_dict_x,
@@ -479,10 +483,14 @@ async def _translate_xliff_async(
         )
         if n_retried:
             logger.info(
-                f"SOURCE_COPY retry: {n_retried} unit(s) re-translated"
+                "RETRY: %d unit(s) re-translated (SOURCE_COPY / TRANSLATION_FAILED)", n_retried
             )
 
     logger.info(f"Translation complete: {len(units)} units")
+    logger.info(
+        "WARN_SUMMARY: %s",
+        format_warning_summary(warnings_per_unit),
+    )
 
     if polish:
         from ol_xliff.polish import polish_translated_units

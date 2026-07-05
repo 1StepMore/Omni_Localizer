@@ -134,6 +134,9 @@ class QualityGateConfig(BaseModel):
     source_copy_retry: bool = Field(
         True, description="Re-translate units flagged as SOURCE_COPY to try to get a real translation"
     )
+    retry_on_translation_failed: bool = Field(
+        True, description="Re-translate units where the LLM call failed (TRANSLATION_FAILED)"
+    )
 
 
 class ProjectConfig(BaseModel):
