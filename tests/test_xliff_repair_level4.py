@@ -107,3 +107,78 @@ class TestRepairLevel4:
         x_1_pos = text_out.index('<x id="1"/>')
         assert x_1_pos < text_out.index('</unit>')
         assert 'before-unit-end' in warnings[0]
+
+    # ── bx/ex half-aware tests ─────────────────────────────────────────
+
+    def test_bx_ex_both_missing_insert_both(self):
+        text = '<unit id="1"><source>Hello world</source></unit>'
+        missing = {'bx_1': '<bx id="1"/>', 'ex_1': '<ex id="1"/>'}
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert '<bx id="1"/>' in text_out
+        assert '<ex id="1"/>' in text_out
+        assert len(warnings) == 2
+
+    def test_bx_in_text_ex_missing_only_ex_inserted(self):
+        """bx already in text (L3 restored), ex missing → only ex inserted,
+        bx not duplicated."""
+        text = '<unit id="1"><source>Hello <bx id="1"/> world</source></unit>'
+        missing = {'bx_1': '<bx id="1"/>', 'ex_1': '<ex id="1"/>'}
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert text_out.count('<bx id="1"/>') == 1, \
+            "bx should not be duplicated"
+        assert text_out.count('<ex id="1"/>') == 1, \
+            "ex should be inserted once"
+        assert len(warnings) == 1, \
+            "only ex should be in warnings"
+
+    def test_ex_in_text_bx_missing_only_bx_inserted(self):
+        """ex already in text (L3 restored), bx missing → only bx inserted,
+        ex not duplicated."""
+        text = '<unit id="1"><source>Hello <ex id="1"/> world</source></unit>'
+        missing = {'bx_1': '<bx id="1"/>', 'ex_1': '<ex id="1"/>'}
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert text_out.count('<ex id="1"/>') == 1, \
+            "ex should not be duplicated"
+        assert text_out.count('<bx id="1"/>') == 1, \
+            "bx should be inserted once"
+        assert len(warnings) == 1, \
+            "only bx should be in warnings"
+
+    def test_bx_ex_both_in_text_skipped(self):
+        """Both halves already restored by L3 → nothing inserted."""
+        text = '<unit id="1"><source><bx id="1"/>text<ex id="1"/></source></unit>'
+        missing = {'bx_1': '<bx id="1"/>', 'ex_1': '<ex id="1"/>'}
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert text_out == text, "text should be unchanged"
+        assert warnings == [], "no warnings for skipped tags"
+
+    def test_bx_missing_ex_placeholder_present(self):
+        """Only bx missing, ex placeholder still in text → bx inserted once."""
+        text = '<unit id="1"><source>Hello {{_OL_XTAG_ex_1_}} world</source></unit>'
+        missing = {'bx_1': '<bx id="1"/>'}
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert text_out.count('<bx id="1"/>') == 1
+        assert '<ex id="1"/>' not in text_out
+        assert len(warnings) == 1
+
+    def test_mixed_bx_ex_with_non_paired(self):
+        """Mix of bx/ex and non-paired tags: bx/ex half-aware, others unaffected."""
+        text = '<unit id="1"><source>Hello <bx id="1"/> world</source></unit>'
+        missing = {
+            'bx_1': '<bx id="1"/>',
+            'ex_1': '<ex id="1"/>',
+            'x_2': '<x id="2"/>',
+            'ph_3': '<ph id="3"/>',
+        }
+        text_out, warnings = level4_safe_fallback(text, missing)
+
+        assert text_out.count('<bx id="1"/>') == 1
+        assert '<ex id="1"/>' in text_out
+        assert '<x id="2"/>' in text_out
+        assert '<ph id="3"/>' in text_out
+        assert len(warnings) == 3

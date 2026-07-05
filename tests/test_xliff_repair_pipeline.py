@@ -142,3 +142,54 @@ class TestXLIFFRepairPipeline:
         text = 'Hello world'
         shield_map = {'x_1': '<x id="1"/>'}
         assert pipeline.is_complete(text, shield_map, strict=True) is False
+
+    def test_l1_normalizes_raw_bx_ex_combined_fix(self):
+        """Issue #55: L1 normalizes raw XML bx/ex tags to placeholders,
+        preventing L4 from duplicating tag halves.
+
+        L1's normalize_raw_xml_tags() converts LLM-emitted raw XML tags
+        (e.g. ``<bx id=\"1\" type=\"bold\"/>``) back to
+        ``{{_OL_XTAG_bx_1_}}`` placeholders whenever the key exists in
+        shield_map.  After normalization, is_complete() returns True,
+        the cascade stops at L1, and L4 never runs — so no duplicate
+        tag halves are appended.
+
+        The combined fix also means L4's bx/ex-pair dedup check (``if
+        bx_val not in text`` / ``if ex_val not in text``) is exercised
+        rather than the old blind-append path.
+
+        """
+        pipeline = XLIFFRepairPipeline()
+
+        # Text containing raw bx/ex XML tags emitted by LLM (no
+        # {{_OL_XTAG_*_}} placeholders present at all).
+        text = (
+            'This is a <bx id="1" type="bold"/>bold text'
+            '<ex id="1" type="bold"/> with raw tags'
+        )
+        shield_map = {
+            'bx_1': '<bx id="1" type="bold"/>',
+            'ex_1': '<ex id="1" type="bold"/>',
+        }
+
+        result, warnings = pipeline.repair(text, 'original', shield_map)
+
+        # L1 normalizes raw bx/ex → {{_OL_XTAG_*_}} placeholders.
+        # Each must appear exactly once (no duplication).
+        assert result.count('{{_OL_XTAG_bx_1_}}') == 1, (
+            f'Expected exactly one bx_1 placeholder, got: {result!r}'
+        )
+        assert result.count('{{_OL_XTAG_ex_1_}}') == 1, (
+            f'Expected exactly one ex_1 placeholder, got: {result!r}'
+        )
+
+        # No raw XML tags remain in the result (L1 consumed them).
+        assert '<bx id="1" type="bold"/>' not in result, (
+            'Raw bx tag should have been normalized away by L1'
+        )
+        assert '<ex id="1" type="bold"/>' not in result, (
+            'Raw ex tag should have been normalized away by L1'
+        )
+
+        # Cascade stopped at L1 — no warnings.
+        assert warnings == [], f'Expected no warnings, got: {warnings}'
