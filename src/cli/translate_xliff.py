@@ -47,6 +47,7 @@ from cli._shared import (
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
+from ol_lqa.quality_gates import run_quality_gates
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")
@@ -412,6 +413,54 @@ async def _translate_xliff_async(
             # Repair warnings replace the per-unit list (pre-existing
             # contract relied on by warnings extraction downstream).
             warnings_per_unit[unit.unit_id] = r.repair_warnings
+
+    # Issue #56: Post-translation quality gates per unit (advisory, never raises).
+    if hasattr(cfg, "quality_gates") and (
+        cfg.quality_gates.inline_tags
+        or cfg.quality_gates.terminology
+        or cfg.quality_gates.length_ratio.enabled
+        or cfg.quality_gates.locale.enabled
+    ):
+        _glossary_dict_x: dict[str, Any] | None = None
+        if glossary is not None:
+            try:
+                if hasattr(glossary, "terms"):
+                    _glossary_dict_x = {}
+                    for _src, _tgts in glossary.terms.items():
+                        _glossary_dict_x[_src] = {
+                            "translation": _tgts[0] if _tgts else "",
+                            "variants": {_t: _t for _t in _tgts[1:]},
+                            "confidence": 1.0,
+                        }
+                else:
+                    _glossary_dict_x = {}
+                    logger.warning(
+                        "Cannot convert Glossary for XLIFF quality gates — "
+                        "missing 'terms' attribute"
+                    )
+            except Exception:
+                _glossary_dict_x = {}
+                logger.warning("Glossary conversion failed for XLIFF quality gates")
+
+        for _xu in units:
+            if _xu.target_text:
+                _xuw = run_quality_gates(
+                    source=_xu.source_text,
+                    target=_xu.target_text,
+                    glossary=_glossary_dict_x,
+                    inline_tags_enabled=cfg.quality_gates.inline_tags,
+                    terminology_enabled=(
+                        cfg.quality_gates.terminology
+                        and _glossary_dict_x is not None
+                    ),
+                    length_ratio_enabled=cfg.quality_gates.length_ratio.enabled,
+                    length_ratio_min=cfg.quality_gates.length_ratio.min,
+                    length_ratio_max=cfg.quality_gates.length_ratio.max,
+                    locale_enabled=cfg.quality_gates.locale.enabled,
+                    target_locale=cfg.quality_gates.locale.target_locale,
+                )
+                if _xuw:
+                    warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
 
     logger.info(f"Translation complete: {len(units)} units")
 

@@ -31,6 +31,8 @@ from ol_terminology.rag_injector import build_translate_prompt
 from ol_xliff.parser import XliffParser
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_buses.xliff_shield import restore_tags
+from ol_config.loader import load_config
+from ol_lqa.quality_gates import run_quality_gates
 
 
 async def _run_translate_xliff_async(
@@ -145,6 +147,27 @@ async def _run_translate_xliff_async(
             else:
                 repaired = translated
             unit.target_text = repaired
+
+        # Post-translation quality gates per unit (Issue #56)
+        try:
+            cfg, _ = load_config(resolved_config)
+            qg = cfg.quality_gates
+            for unit in units:
+                gate_warnings = run_quality_gates(
+                    unit.source_text, unit.target_text,
+                    glossary=glossary,
+                    inline_tags_enabled=qg.inline_tags,
+                    terminology_enabled=qg.terminology and glossary is not None,
+                    length_ratio_enabled=qg.length_ratio.enabled,
+                    length_ratio_min=qg.length_ratio.min,
+                    length_ratio_max=qg.length_ratio.max,
+                    locale_enabled=qg.locale.enabled,
+                    target_locale=qg.locale.target_locale,
+                )
+                if gate_warnings:
+                    warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
+        except Exception as gate_err:
+            _logger.warning("Quality gates failed: %s", gate_err)
 
         if polish:
             from ol_xliff.polish import polish_translated_units
@@ -326,6 +349,27 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 repaired = translated
 
             unit.target_text = repaired
+
+        # Post-translation quality gates per unit (Issue #56)
+        try:
+            cfg, _ = load_config(config_path)
+            qg = cfg.quality_gates
+            for unit in units:
+                gate_warnings = run_quality_gates(
+                    unit.source_text, unit.target_text,
+                    glossary=glossary,
+                    inline_tags_enabled=qg.inline_tags,
+                    terminology_enabled=qg.terminology and glossary is not None,
+                    length_ratio_enabled=qg.length_ratio.enabled,
+                    length_ratio_min=qg.length_ratio.min,
+                    length_ratio_max=qg.length_ratio.max,
+                    locale_enabled=qg.locale.enabled,
+                    target_locale=qg.locale.target_locale,
+                )
+                if gate_warnings:
+                    warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
+        except Exception as gate_err:
+            _logger.warning("Quality gates failed: %s", gate_err)
 
         if params.polish:
             from ol_xliff.polish import polish_translated_units

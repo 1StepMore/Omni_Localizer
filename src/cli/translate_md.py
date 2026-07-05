@@ -47,6 +47,7 @@ from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_core.dataclass import TranslationUnit
+from ol_lqa.quality_gates import run_quality_gates
 
 logger = get_logger("cli")
 
@@ -618,6 +619,57 @@ async def _translate_md_async(
     output_file = output_path / input_path.name
     output_file.write_text(output_content, encoding="utf-8")
 
+    # Issue #56: Post-translation quality gates (advisory, never raises).
+    if hasattr(cfg, "quality_gates") and (
+        cfg.quality_gates.inline_tags
+        or cfg.quality_gates.terminology
+        or cfg.quality_gates.length_ratio.enabled
+        or cfg.quality_gates.locale.enabled
+    ):
+        _glossary_dict: dict[str, Any] | None = None
+        if glossary is not None:
+            try:
+                if hasattr(glossary, "terms"):
+                    _glossary_dict = {}
+                    for _src, _tgts in glossary.terms.items():  # type: ignore[union-attr]
+                        _glossary_dict[_src] = {
+                            "translation": _tgts[0] if _tgts else "",
+                            "variants": {_t: _t for _t in _tgts[1:]},
+                            "confidence": 1.0,
+                        }
+                else:
+                    _glossary_dict = {}
+                    logger.warning(
+                        "Cannot convert Glossary for quality gates — "
+                        "missing 'terms' attribute"
+                    )
+            except Exception:
+                _glossary_dict = {}
+                logger.warning("Glossary conversion failed for quality gates")
+
+        _qg_warnings = run_quality_gates(
+            source=original_text,
+            target=output_content,
+            glossary=_glossary_dict,
+            inline_tags_enabled=cfg.quality_gates.inline_tags,
+            terminology_enabled=(
+                cfg.quality_gates.terminology and _glossary_dict is not None
+            ),
+            length_ratio_enabled=cfg.quality_gates.length_ratio.enabled,
+            length_ratio_min=cfg.quality_gates.length_ratio.min,
+            length_ratio_max=cfg.quality_gates.length_ratio.max,
+            locale_enabled=cfg.quality_gates.locale.enabled,
+            target_locale=cfg.quality_gates.locale.target_locale,
+        )
+        if _qg_warnings:
+            _warn_block = "\n\n<!-- Quality gate warnings -->\n"
+            for _w in _qg_warnings:
+                _warn_block += f"<!-- {_w} -->\n"
+            output_file.write_text(
+                output_content + _warn_block,
+                encoding="utf-8",
+            )
+
     return str(output_file)
 
 
@@ -779,6 +831,64 @@ async def _translate_md_by_paragraph(
 
     output_file = output_path / input_path.name
     output_file.write_text(full, encoding="utf-8")
+
+    # Issue #56: Post-translation quality gates (advisory, never raises).
+    from ol_config.loader import load_config as _load_cfg
+
+    _cfg_by_para, _ = _load_cfg(
+        config or os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
+    )
+    if hasattr(_cfg_by_para, "quality_gates") and (
+        _cfg_by_para.quality_gates.inline_tags
+        or _cfg_by_para.quality_gates.terminology
+        or _cfg_by_para.quality_gates.length_ratio.enabled
+        or _cfg_by_para.quality_gates.locale.enabled
+    ):
+        _glossary_dict_p: dict[str, Any] | None = None
+        if glossary is not None:
+            try:
+                if hasattr(glossary, "terms"):
+                    _glossary_dict_p = {}
+                    for _src, _tgts in glossary.terms.items():
+                        _glossary_dict_p[_src] = {
+                            "translation": _tgts[0] if _tgts else "",
+                            "variants": {_t: _t for _t in _tgts[1:]},
+                            "confidence": 1.0,
+                        }
+                else:
+                    _glossary_dict_p = {}
+                    logger.warning(
+                        "Cannot convert Glossary for quality gates — "
+                        "missing 'terms' attribute"
+                    )
+            except Exception:
+                _glossary_dict_p = {}
+                logger.warning("Glossary conversion failed for quality gates")
+
+        _qg_warnings_p = run_quality_gates(
+            source=raw,
+            target=full,
+            glossary=_glossary_dict_p,
+            inline_tags_enabled=_cfg_by_para.quality_gates.inline_tags,
+            terminology_enabled=(
+                _cfg_by_para.quality_gates.terminology
+                and _glossary_dict_p is not None
+            ),
+            length_ratio_enabled=_cfg_by_para.quality_gates.length_ratio.enabled,
+            length_ratio_min=_cfg_by_para.quality_gates.length_ratio.min,
+            length_ratio_max=_cfg_by_para.quality_gates.length_ratio.max,
+            locale_enabled=_cfg_by_para.quality_gates.locale.enabled,
+            target_locale=_cfg_by_para.quality_gates.locale.target_locale,
+        )
+        if _qg_warnings_p:
+            _warn_block_p = "\n\n<!-- Quality gate warnings -->\n"
+            for _w in _qg_warnings_p:
+                _warn_block_p += f"<!-- {_w} -->\n"
+            output_file.write_text(
+                full + _warn_block_p,
+                encoding="utf-8",
+            )
+
     return str(output_file)
 
 

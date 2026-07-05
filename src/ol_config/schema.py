@@ -86,6 +86,50 @@ class LLMPoolConfig(BaseModel):
                 )
         return self
 
+
+class LengthRatioGateConfig(BaseModel):
+    """Length ratio quality gate configuration.
+
+    Validates that the translated length stays within a reasonable
+    ratio of the source length (source_len * min <= target_len <= source_len * max).
+    """
+
+    enabled: bool = Field(True, description="Enable length ratio check")
+    min: float = Field(0.5, description="Minimum source/target length ratio")
+    max: float = Field(2.0, description="Maximum source/target length ratio")
+
+
+class LocaleGateConfig(BaseModel):
+    """Locale quality gate configuration.
+
+    Validates that the translated output uses the expected locale
+    conventions (date formats, number formats, etc.).
+    """
+
+    enabled: bool = Field(True, description="Enable locale check")
+    target_locale: str = Field("en-US", description="Expected target locale (BCP-47 format)")
+
+
+class QualityGateConfig(BaseModel):
+    """Quality gate configuration for translation validation.
+
+    Controls which post-translation quality gates are active and
+    how they are configured. Each sub-gate can be independently
+    enabled or disabled.
+    """
+
+    inline_tags: bool = Field(True, description="Verify inline tags are preserved in translation")
+    terminology: bool = Field(True, description="Verify glossary terms are used correctly")
+    length_ratio: LengthRatioGateConfig = Field(
+        default_factory=LengthRatioGateConfig,
+        description="Length ratio gate configuration",
+    )
+    locale: LocaleGateConfig = Field(
+        default_factory=LocaleGateConfig,
+        description="Locale gate configuration",
+    )
+
+
 class ProjectConfig(BaseModel):
     """Main project configuration."""
 
@@ -109,3 +153,7 @@ class ProjectConfig(BaseModel):
     max_input_size_mb: int = Field(50, ge=1, description="Reject input files larger than this (MB)")
     max_xliff_concurrent: int = Field(20, ge=1, description="Max concurrent in-flight trans-unit translations in XLIFF path")
     max_md_concurrent: int = Field(5, ge=1, description="Max concurrent in-flight trans-unit translations in MD path. Set to 1 to force the serial shield+translate path (1 translate + 1 judge call instead of per-unit calls); dramatically faster for large docs with slow judge models.")
+    quality_gates: QualityGateConfig = Field(
+        default_factory=QualityGateConfig,
+        description="Quality gate configuration for post-translation validation",
+    )

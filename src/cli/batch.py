@@ -70,6 +70,7 @@ async def _translate_batch_async(
         config=batch_config, model_pool=pool, limiter=limiter, glossary=glossary,
         enable_lqa=enable_lqa,
         lqa_threshold=lqa_threshold, lqa_max_retries=lqa_max_retries,
+        quality_gates=cfg.quality_gates,
     )
 
     start_time = time.time()
