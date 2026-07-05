@@ -397,6 +397,39 @@ def check_locale_conventions(
 
 
 # ---------------------------------------------------------------------------
+# Gate 5: Source copy detection (Issue #57)
+# ---------------------------------------------------------------------------
+
+
+def check_source_copy(source: str, target: str) -> list[str]:
+    """Gate 5 — detect when LLM echoes the source text back unchanged.
+
+    Compares the stripped source and target.  When they are identical,
+    the LLM effectively skipped the translation request (common for
+    short input with inline formatting, proper nouns that look like
+    English, chapter numbers, etc.).
+
+    Skips strings that contain no alphabetic characters (pure numbers,
+    symbols, whitespace-only) — these should remain unchanged across
+    translation and are not meaningful copy-echo signals.
+
+    Returns:
+        List of ``OL_WARN: SOURCE_COPY`` strings (empty if source != target
+        or the text contains no translatable content).
+    """
+    if source.strip() == target.strip():
+        # Skip pure numeric/symbolic content — numbers and symbols should
+        # remain unchanged across translation; flagging them is noise.
+        if not re.search(r"[a-zA-Z\u4e00-\u9fff]", source):
+            return []
+        return [
+            "OL_WARN: SOURCE_COPY — target is identical to source, "
+            "translation skipped / LLM echoed input back"
+        ]
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -413,6 +446,7 @@ def run_quality_gates(
     length_ratio_max: float | None = None,
     locale_enabled: bool = True,
     target_locale: str | None = None,
+    source_copy_enabled: bool = True,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -433,6 +467,7 @@ def run_quality_gates(
         locale_enabled: Run Gate 4 (locale conventions).
         target_locale: Target locale override.  Falls back to
             ``OL_TARGET_LOCALE`` env var.
+        source_copy_enabled: Run Gate 5 (source copy detection).
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -477,4 +512,187 @@ def run_quality_gates(
         except Exception as exc:
             _logger.exception("Gate 4 (locale conventions) failed: %s", exc)
 
+    # Gate 5
+    if source_copy_enabled:
+        try:
+            all_warnings.extend(check_source_copy(source, target))
+        except Exception as exc:
+            _logger.exception("Gate 5 (source copy) failed: %s", exc)
+
     return all_warnings
+
+
+# ---------------------------------------------------------------------------
+# Gate 5 retry: re-translate units flagged as SOURCE_COPY
+# ---------------------------------------------------------------------------
+
+
+async def retry_critical_failures(
+    units: list,
+    pool: Any,
+    src_lang: str,
+    tgt_lang: str,
+    quality_gates_cfg: Any,
+    glossary: dict[str, Any] | None,
+    warnings_per_unit: dict[str, list[str]],
+    max_retries: int = 1,
+) -> int:
+    """Re-translate units where a critical pipeline failure was detected.
+
+    Scans ``warnings_per_unit`` for ``OL_WARN: SOURCE_COPY`` or
+    ``OL_WARN: TRANSLATION_FAILED`` entries.  For each affected unit,
+    calls ``pool.translate()`` again, applies the repair pipeline,
+    and re-runs quality gates on the retried translation.
+
+    Covers two scenarios:
+
+    * **SOURCE_COPY** — the LLM echoed the source text back unchanged.
+      Gate 5 catches this and the retry gives the LLM another chance
+      to produce a real translation.
+
+    * **TRANSLATION_FAILED** — the translation call itself raised an
+      exception (timeout, rate limit, API error).  The pipeline drops
+      the source text as a fallback; retry is the only way to recover.
+
+    If all retries still fail (still copy or another transport error),
+    the last best-effort target is kept and the warning is upgraded
+    to ``OL_WARN: FAILED_RETRY (retry exhausted -- kept best-effort translation)``.
+
+    Args:
+        units: All translated units (may include units without warnings).
+        pool: Async LLM pool with a ``.translate(text, src, tgt, ...)`` method.
+        src_lang: Source language code.
+        tgt_lang: Target language code.
+        quality_gates_cfg: A ``QualityGateConfig``-like object with
+            ``inline_tags``, ``terminology``, ``length_ratio``,
+            ``locale``, and ``source_copy`` boolean attributes.
+        glossary: Glossary dict for terminology checks.
+        warnings_per_unit: Mutable dict mapping unit_id to warning list.
+            SOURCE_COPY / TRANSLATION_FAILED entries are removed on
+            retry and replaced with the new gate results.
+        max_retries: Max LLM calls per retried unit (default 1).
+
+    Returns:
+        Number of units that were successfully re-translated
+        (critical failure resolved).
+    """
+    _CRITICAL_PREFIXES = ("SOURCE_COPY", "TRANSLATION_FAILED")
+
+    to_retry: list[str] = []
+    for uid, warns in warnings_per_unit.items():
+        if any(_p in w for w in warns for _p in _CRITICAL_PREFIXES):
+            to_retry.append(uid)
+
+    if not to_retry:
+        return 0
+
+    from ol_xliff.pipeline import XLIFFRepairPipeline
+    from ol_buses.xliff_shield import restore_tags
+
+    repair_pipeline = XLIFFRepairPipeline()
+    resolved = 0
+
+    for unit in units:
+        uid = unit.unit_id
+        if uid not in to_retry:
+            continue
+
+        still_copy = True
+        last_translation: str | None = None
+        for attempt in range(max_retries):
+            try:
+                new_target = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang,
+                )
+            except Exception:
+                _logger.warning(
+                    "SOURCE_COPY retry translate failed for unit=%s "
+                    "(attempt %d/%d)",
+                    uid, attempt + 1, max_retries,
+                )
+                break
+
+            if unit.shield_map:
+                unshielded = restore_tags(new_target, unit.shield_map)
+                repaired, _ = repair_pipeline.repair(
+                    unshielded, unit.source_text, unit.shield_map,
+                )
+            else:
+                repaired = new_target
+
+            last_translation = repaired
+
+            new_gate_warnings = run_quality_gates(
+                source=unit.source_text,
+                target=repaired,
+                glossary=glossary,
+                inline_tags_enabled=quality_gates_cfg.inline_tags,
+                terminology_enabled=(
+                    quality_gates_cfg.terminology and glossary is not None
+                ),
+                length_ratio_enabled=quality_gates_cfg.length_ratio.enabled,
+                length_ratio_min=quality_gates_cfg.length_ratio.min,
+                length_ratio_max=quality_gates_cfg.length_ratio.max,
+                locale_enabled=quality_gates_cfg.locale.enabled,
+                target_locale=quality_gates_cfg.locale.target_locale,
+                source_copy_enabled=quality_gates_cfg.source_copy,
+            )
+
+            still_copy = any("SOURCE_COPY" in w for w in new_gate_warnings)
+
+            unit.target_text = repaired
+
+            old_non_copy = [
+                w for w in warnings_per_unit.get(uid, [])
+                if "SOURCE_COPY" not in w
+            ]
+            warnings_per_unit[uid] = old_non_copy + new_gate_warnings
+
+            if not still_copy:
+                resolved += 1
+                break
+
+        if still_copy and last_translation is not None:
+            warnings_per_unit[uid] = [
+                w for w in warnings_per_unit.get(uid, [])
+                if "SOURCE_COPY" not in w
+            ]
+            warnings_per_unit[uid].append(
+                "OL_WARN: FAILED_RETRY (retry exhausted -- "
+                "kept best-effort translation)"
+            )
+
+    return resolved
+
+
+# ---------------------------------------------------------------------------
+# Warning summary
+# ---------------------------------------------------------------------------
+
+
+def format_warning_summary(warnings_per_unit: dict[str, list[str]]) -> str:
+    """Build a one-line summary of all ``OL_WARN`` codes for a translation run.
+
+    Example::
+
+        12 warnings (LENGTH_RATIOx8, SOURCE_COPYx1, UNIT_SPELLINGx1, INLINE_TAG_MISMATCHx2)
+
+    Returns:
+        Human-readable summary string.  Returns ``"0 warnings"`` when
+        *warnings_per_unit* is empty or contains no ``OL_WARN`` entries.
+    """
+    from collections import Counter
+
+    codes: list[str] = []
+    for warns in warnings_per_unit.values():
+        for w in warns:
+            m = re.search(r"OL_WARN:\s*(\w+)", w)
+            if m:
+                codes.append(m.group(1))
+
+    if not codes:
+        return "0 warnings"
+
+    counts = Counter(codes)
+    parts = [f"{code}x{n}" for code, n in counts.most_common()]
+    return f'{sum(counts.values())} warnings ({", ".join(parts)})'
