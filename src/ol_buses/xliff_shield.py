@@ -74,6 +74,14 @@ def restore_tags(target_text: str, tag_map: dict[str, str]) -> str:
 
     result = _TRAILING_ACTUAL_RE.sub("", result)
 
+    # Strip any remaining {{OLXTAG<type><id>}} / {{OLXTAG<type><id>_}} patterns
+    # that couldn't be matched to the tag_map. The LLM sometimes invents its own
+    # placeholder format with a trailing underscore (e.g. {{OLXTAGex4_}} instead
+    # of the canonical {{OLXTAGex4}}). If it didn't match any tag in the map
+    # the placeholder is unrecoverable and leaving it in the text would create
+    # a visible artifact in the final document.
+    result = re.sub(r'\{\{OLXTAG(bx|ex|x)\d+_?\}\}', '', result)
+
     return result
 
 

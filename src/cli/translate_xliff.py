@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import sys
 import typer
 
 if TYPE_CHECKING:
@@ -494,6 +495,7 @@ async def _translate_xliff_async(
         "WARN_SUMMARY: %s",
         format_warning_summary(warnings_per_unit),
     )
+    print(f"WARN_SUMMARY: {format_warning_summary(warnings_per_unit)}", file=sys.stderr)
 
     if polish:
         from ol_xliff.polish import polish_translated_units
