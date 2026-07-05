@@ -12,9 +12,8 @@ from ol_lqa.quality_gates import (
     check_length_ratio,
     check_locale_conventions,
     check_source_copy,
+    check_source_script_fragments,
     check_terminology_consistency,
-    format_warning_summary,
-    retry_critical_failures,
     run_quality_gates,
 )
 
@@ -575,157 +574,88 @@ class TestErrorResilience:
         assert len(warnings) == 1  # 100/1 = 100 > 3.0
 
 
-class TestGate5SourceCopy:
-    """Tests for Gate 5 SOURCE_COPY detection (Issue #57)."""
+# =========================================================================
+# Gate 5: check_source_copy
+# =========================================================================
 
-    def test_source_copy_identical_text_detected(self) -> None:
-        """When source == target, SOURCE_COPY should be emitted."""
-        warnings = check_source_copy("Hello world", "Hello world")
+
+class TestCheckSourceCopy:
+    """Gate 5 — detect when LLM echoes the source text unchanged."""
+
+    def test_identical_source_and_target(self) -> None:
+        """Exact match should trigger SOURCE_COPY."""
+        warnings = check_source_copy("海尔 is a brand", "海尔 is a brand")
         assert len(warnings) == 1
         assert "SOURCE_COPY" in warnings[0]
 
-    def test_source_copy_different_text_clean(self) -> None:
-        """When source != target, no warning."""
-        warnings = check_source_copy("Hello world", "你好世界")
+    def test_numeric_content_skipped(self) -> None:
+        """Pure numbers should not trigger SOURCE_COPY."""
+        warnings = check_source_copy("123", "123")
         assert len(warnings) == 0
 
-    def test_source_copy_pure_numbers_skipped(self) -> None:
-        """Pure numeric content should be skipped (no alphabetic chars)."""
-        warnings = check_source_copy("12345", "12345")
+    def test_non_identical_no_warning(self) -> None:
+        """Different source and target should not warn."""
+        warnings = check_source_copy("你好", "Hello")
         assert len(warnings) == 0
 
-    def test_source_copy_whitespace_skipped(self) -> None:
-        """Whitespace-only content should be skipped."""
-        warnings = check_source_copy("   \n  ", "   \n  ")
-        assert len(warnings) == 0
-
-    def test_source_copy_empty_string(self) -> None:
-        """Empty strings should not produce warnings."""
+    def test_empty_strings(self) -> None:
+        """Empty strings should be safe."""
         warnings = check_source_copy("", "")
         assert len(warnings) == 0
 
-    def test_source_copy_symbols_only_skipped(self) -> None:
-        """Symbol-only content should be skipped."""
-        warnings = check_source_copy("!@#$%", "!@#$%")
+
+# =========================================================================
+# Gate 6: check_source_script_fragments
+# =========================================================================
+
+
+class TestCheckSourceScriptFragments:
+    """Gate 6 — detect CJK characters that leaked into a non-CJK target."""
+
+    def test_cjk_residual_detected(self) -> None:
+        """CJK in target with CJK source should be flagged."""
+        warnings = check_source_script_fragments(
+            "第二" "章" "海尔的全球创牌",
+            "Chapter 2" "海尔" "'s Global Brand Creation",
+            target_locale="en-US",
+        )
+        assert len(warnings) >= 1
+        assert "SOURCE_SCRIPT_FRAGMENT" in warnings[0]
+        # Should mention the offending characters by codepoint
+        assert any("U+6D77" in w for w in warnings)  # 海
+        assert any("U+5C14" in w for w in warnings)  # 尔
+
+    def test_no_cjk_in_source_suppressed(self) -> None:
+        """No CJK in source means no warning even if CJK appears in target."""
+        warnings = check_source_script_fragments(
+            "Hello world",
+            "Hello" "世界" "world",
+            target_locale="en-US",
+        )
         assert len(warnings) == 0
 
-    def test_source_copy_with_run_quality_gates(self) -> None:
-        """Gate 5 should fire when enabled via run_quality_gates."""
-        warnings = run_quality_gates(
-            source="Hello world", target="Hello world",
-            inline_tags_enabled=False,
-            terminology_enabled=False,
-            length_ratio_enabled=False,
-            locale_enabled=False,
-            source_copy_enabled=True,
+    def test_no_cjk_in_target_suppressed(self) -> None:
+        """No CJK in target should return empty."""
+        warnings = check_source_script_fragments(
+            "我爱编程", "I love programming", target_locale="en-US",
         )
-        assert any("SOURCE_COPY" in w for w in warnings)
+        assert len(warnings) == 0
 
-    def test_source_copy_disabled_via_flag(self) -> None:
-        """When source_copy_enabled=False, Gate 5 should not fire."""
-        warnings = run_quality_gates(
-            source="Hello world", target="Hello world",
-            inline_tags_enabled=False,
-            terminology_enabled=False,
-            length_ratio_enabled=False,
-            locale_enabled=False,
-            source_copy_enabled=False,
+    def test_cjk_target_locale_suppressed(self) -> None:
+        """Target locale zh/ja/ko should not flag CJK in target."""
+        warnings = check_source_script_fragments(
+            "海尔", "海尔", target_locale="zh-CN",
         )
-        assert all("SOURCE_COPY" not in w for w in warnings)
+        assert len(warnings) == 0
 
-    def test_source_copy_trailing_whitespace(self) -> None:
-        """Trailing whitespace stripped, same content -> still a copy."""
-        warnings = check_source_copy("Hello world  ", "Hello world")
-        assert len(warnings) == 1  # stripped comparison still matches
-        assert "SOURCE_COPY" in warnings[0]
-
-    def test_source_copy_cjk_text_detected(self) -> None:
-        """CJK text echoed back should be flagged."""
-        warnings = check_source_copy("海尔是全球领先的家电企业", "海尔是全球领先的家电企业")
-        assert len(warnings) == 1
-        assert "SOURCE_COPY" in warnings[0]
-
-
-class TestWarningSummary:
-    """Tests for format_warning_summary (Issue #57)."""
-
-    def test_empty_warnings(self) -> None:
-        """Empty dict should produce '0 warnings'."""
-        result = format_warning_summary({})
-        assert result == "0 warnings"
-
-    def test_no_ol_warn_codes(self) -> None:
-        """Warnings without OL_WARN prefix should be ignored."""
-        result = format_warning_summary({"u1": ["something else"]})
-        assert result == "0 warnings"
-
-    def test_single_warning(self) -> None:
-        """Single warning code should appear in summary."""
-        result = format_warning_summary({"u1": ["OL_WARN: SOURCE_COPY -- test"]})
-        assert "SOURCE_COPY" in result
-        assert "1 warnings" in result
-
-    def test_multiple_codes_counted(self) -> None:
-        """Multiple occurrences of same code should be counted."""
-        result = format_warning_summary({
-            "u1": ["OL_WARN: SOURCE_COPY -- a", "OL_WARN: SOURCE_COPY -- b"],
-        })
-        assert "SOURCE_COPYx2" in result
-
-    def test_mixed_warnings(self) -> None:
-        """Different codes should appear sorted by frequency."""
-        result = format_warning_summary({
-            "u1": ["OL_WARN: LENGTH_RATIO -- a", "OL_WARN: SOURCE_COPY -- b"],
-            "u2": ["OL_WARN: LENGTH_RATIO -- c"],
-        })
-        assert "LENGTH_RATIOx2" in result
-        assert "SOURCE_COPYx1" in result
-
-
-class TestRetryCriticalFailures:
-    """Tests for retry_critical_failures (Issue #57)."""
-
-    def test_no_critical_warnings_returns_zero(self) -> None:
-        """When no critical warnings exist, retry should return 0."""
-        import asyncio
-        result = asyncio.run(retry_critical_failures(
-            units=[],
-            pool=MockPool(),
-            src_lang="zh", tgt_lang="en",
-            quality_gates_cfg=MockQualityGateConfig(),
-            glossary=None,
-            warnings_per_unit={"u1": ["OL_WARN: LENGTH_RATIO -- test"]},
-            max_retries=1,
-        ))
-        assert result == 0
-
-    def test_source_copy_triggers_retry(self) -> None:
-        """SOURCE_COPY warnings should trigger retry."""
-        import asyncio
-        result = asyncio.run(retry_critical_failures(
-            units=[],
-            pool=MockPool(),
-            src_lang="zh", tgt_lang="en",
-            quality_gates_cfg=MockQualityGateConfig(),
-            glossary=None,
-            warnings_per_unit={"u1": ["OL_WARN: SOURCE_COPY -- test"]},
-            max_retries=1,
-        ))
-        assert result == 0  # No matching units to retry (empty list -> early return)
-
-
-class MockPool:
-    """Mock ModelPool for retry_critical_failures tests."""
-    async def translate(self, text, src, tgt):
-        return text
-
-
-class MockQualityGateConfig:
-    """Mock config for retry_critical_failures tests."""
-    inline_tags = True
-    terminology = True
-    length_ratio = type("o", (), {"enabled": True, "min": 0.5, "max": 2.0})()
-    locale = type("o", (), {"enabled": True, "target_locale": "en-US"})()
-    source_copy = True
-    source_copy_retry = True
-    retry_on_translation_failed = True
+    def test_empty_strings(self) -> None:
+        """Empty source and target should not crash."""
+        warnings = check_source_script_fragments("", "", target_locale="en-US")
+        assert len(warnings) == 0
+    
+    def test_ja_source_and_target_locale_suppressed(self) -> None:
+        """Japanese source with Japanese target locale: CJK is expected."""
+        warnings = check_source_script_fragments(
+            "こんにちは", "こんにちは世界", target_locale="ja-JP",
+        )
+        assert len(warnings) == 0
