@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 import re
 
+from ol_pool.router import has_source_language_residual
+
 logger = logging.getLogger(__name__)
 
 _MAX_POLISH_CHARS = 50_000
@@ -151,6 +153,13 @@ async def polish_translated_units(
         old_text = unit_map[uid].target_text
         new_text = corr["fix"]
         if new_text and new_text != old_text:
+            if has_source_language_residual(new_text, src_lang, tgt_lang):
+                logger.warning(
+                    f"Polish correction SKIPPED for unit={uid}: "
+                    f"fix reverts to source language "
+                    f"({new_text[:80]!r})"
+                )
+                continue
             logger.info(
                 f"Polish correction: unit={uid} "
                 f"old={old_text[:80]!r} "
@@ -253,6 +262,13 @@ async def polish_md_text(
         old_text = paragraphs[idx]
         new_text = corr["fix"]
         if new_text and new_text != old_text:
+            if has_source_language_residual(new_text, src_lang, tgt_lang):
+                logger.warning(
+                    f"MD polish correction SKIPPED for {uid}: "
+                    f"fix reverts to source language "
+                    f"({new_text[:80]!r})"
+                )
+                continue
             paragraphs[idx] = new_text
 
     applied = len(corrections)
