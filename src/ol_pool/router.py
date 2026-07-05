@@ -658,6 +658,54 @@ class ModelPool:
                         f"Translation response truncated at {4096} tokens "
                         f"(finish_reason=length) for ~{len(text)} chars input"
                     )
+
+                # OL#47 secondary heuristic: detect truncated output even
+                # when the API reports finish_reason="stop".  Three signals:
+                #   a. Output ends with "..." or ".." (abrupt termination)
+                #   b. Output ends with non-sentence-terminal punctuation
+                #      (, ; : — –) for inputs longer than 500 chars
+                #   c. usage.completion_tokens >= 90 % of max_tokens (4096)
+                if response.choices[0].finish_reason == "stop":
+                    _content = response.choices[0].message.content or ""
+                    _truncated = False
+                    _trunc_reasons: list[str] = []
+
+                    # (a) trailing ellipsis / double-dot
+                    if _content.endswith("...") or _content.endswith(".."):
+                        _truncated = True
+                        _trunc_reasons.append("output ends with '...' or '..'")
+
+                    # (b) non-sentence-terminal punctuation on long inputs
+                    if not _truncated and len(text) > 500:
+                        _non_terminal = (",", ";", ":", "—", "–")
+                        if any(_content.rstrip().endswith(p) for p in _non_terminal):
+                            _truncated = True
+                            _trunc_reasons.append(
+                                "output ends with non-sentence-terminal punctuation"
+                            )
+
+                    # (c) completion_tokens near the max_tokens limit
+                    if not _truncated:
+                        _usage = getattr(response, "usage", None)
+                        if _usage is not None:
+                            _ct = getattr(_usage, "completion_tokens", None)
+                            # isinstance(_ct, int) guards against MagicMock
+                            # objects (the existing happy-path test doesn't
+                            # set usage, so getattr would return a MagicMock
+                            # instance that is truthy but not an int).
+                            if isinstance(_ct, int) and _ct >= int(0.9 * 4096):
+                                _truncated = True
+                                _trunc_reasons.append(
+                                    f"completion_tokens ({_ct}) >= 90% of max_tokens (4096)"
+                                )
+
+                    if _truncated:
+                        raise ModelPoolTruncationError(
+                            f"Translation response appears truncated (finish_reason=stop, "
+                            f"heuristics: {'; '.join(_trunc_reasons)}) "
+                            f"for ~{len(text)} chars input"
+                        )
+
                 raw = response.choices[0].message.content
                 translated = _strip_thinking_blocks(raw)
                 if translated != raw:
@@ -828,6 +876,15 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                 "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
                 "reason": f"judge_unknown: {type(e).__name__}: {e}", "transport_error": True,
             }
+        # Truncation detection: fail-closed when finish_reason == "length"
+        if response.choices[0].finish_reason == "length":
+            _logger.warning(
+                "Judge response truncated (finish_reason=length); returning fail-closed"
+            )
+            return {
+                "accuracy": 0, "fluency": 0, "adequacy": 0, "score": 0,
+                "reason": "truncated", "truncated": True,
+            }
         import json
         try:
             content = response.choices[0].message.content.strip()
@@ -982,6 +1039,13 @@ Return only valid JSON. Do not wrap it in markdown fences or add any prose outsi
                 "error": f"profile_unknown: {type(e).__name__}: {e}",
                 "transport_error": True,
             }
+
+        # Truncation detection: finish_reason == "length" → return error dict
+        if response.choices[0].finish_reason == "length":
+            _logger.warning(
+                "Profile response truncated (finish_reason=length); returning error"
+            )
+            return {"error": "truncated", "truncated": True, "transport_error": True}
 
         try:
             raw_text = response.choices[0].message.content or ""
