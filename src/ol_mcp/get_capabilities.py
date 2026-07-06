@@ -11,10 +11,11 @@ from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 
 
-# 14 MCP tools (this one included — 8 original + 6 from prior session)
+# MCP tools exposed by this server
 _TOOLS = [
     "translate_md_text", "translate_xliff", "judge_text",
     "load_glossary", "get_relevant_terms", "search_tm",
+    "verify_terms",
     "batch_translate_texts", "get_translation_status",
     "extract_terms", "add_tm_entries", "shield_md_text",
     "unshield_md_text", "generate_report", "inspect_config",

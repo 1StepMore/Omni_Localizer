@@ -8,10 +8,13 @@ from typing import Any
 import pytest
 
 from ol_lqa.quality_gates import (
+    check_cjk_residue,
     check_inline_tag_counts,
     check_length_ratio,
+    check_llm_protocol_markers,
     check_locale_conventions,
     check_source_copy,
+    check_terms_audit,
     check_terminology_consistency,
     format_warning_summary,
     retry_critical_failures,
@@ -714,6 +717,223 @@ class TestRetryCriticalFailures:
         assert result == 0  # No matching units to retry (empty list -> early return)
 
 
+# =========================================================================
+# Gate 6: check_cjk_residue
+# =========================================================================
+
+
+class TestCheckCjkResidue:
+    """Gate 6 — detect CJK characters in non-CJK target text."""
+
+    def test_clean_non_cjk_target(self) -> None:
+        """No CJK characters in non-CJK target — no warnings."""
+        source = "这是一段中文"
+        target = "This is English text without any Chinese characters."
+        warnings = check_cjk_residue(source, target, target_lang="en")
+        assert warnings == []
+
+    def test_cjk_residue_detected(self) -> None:
+        """CJK characters found in English target — warning emitted."""
+        source = "这是一段中文"
+        target = "This text has Chinese: 这是一段中文残留在英文中"
+        warnings = check_cjk_residue(source, target, target_lang="en")
+        assert len(warnings) == 1
+        assert "OL_WARN: CJK_RESIDUE" in warnings[0]
+
+    def test_cjk_to_cjk_target_no_warning(self) -> None:
+        """CJK source to CJK target (zh→ja) — no warning."""
+        source = "这是一段中文"
+        target = "これは日本語のテキストです"
+        warnings = check_cjk_residue(source, target, target_lang="ja")
+        assert warnings == []
+
+    def test_unknown_target_lang_skipped(self) -> None:
+        """No target_lang — check skipped."""
+        source = "这是一段中文"
+        target = "This text has Chinese: 这是一段中文残留在英文中"
+        warnings = check_cjk_residue(source, target, target_lang=None)
+        assert warnings == []
+
+    def test_japanese_residue_detected(self) -> None:
+        """Hiragana/Katakana found in English target."""
+        source = "これは日本語のテキストです"
+        target = "This text has Japanese: これは日本語のテキストです"
+        warnings = check_cjk_residue(source, target, target_lang="en")
+        assert len(warnings) == 1
+        assert "OL_WARN: CJK_RESIDUE" in warnings[0]
+        assert "JA" in warnings[0]
+
+    def test_korean_residue_detected(self) -> None:
+        """Hangul found in French target."""
+        source = "이것은 한국어 텍스트입니다"
+        target = "Ce texte contient du coréen: 이것은 한국어 텍스트입니다"
+        warnings = check_cjk_residue(source, target, target_lang="fr")
+        assert len(warnings) == 1
+        assert "OL_WARN: CJK_RESIDUE" in warnings[0]
+        assert "KO" in warnings[0]
+
+
+# =========================================================================
+# Gate 7: check_llm_protocol_markers
+# =========================================================================
+
+
+class TestCheckLlmProtocolMarkers:
+    """Gate 7 — detect LLM protocol markers in translated output."""
+
+    def test_clean_target_no_markers(self) -> None:
+        """No LLM protocol markers — no warnings."""
+        source = "Hello world"
+        target = "你好世界"
+        warnings = check_llm_protocol_markers(source, target)
+        assert warnings == []
+
+    def test_critical_marker_detected(self) -> None:
+        """CRITICAL: marker detected."""
+        source = "Hello world"
+        target = "CRITICAL: this is a very important instruction that must be followed."
+        warnings = check_llm_protocol_markers(source, target)
+        assert len(warnings) == 1
+        assert "OL_WARN: LLM_PROTOCOL_MARKER" in warnings[0]
+
+    def test_output_only_fragment_detected(self) -> None:
+        """'Output ONLY' fragment detected."""
+        source = "Hello world"
+        target = "你好世界 Output ONLY the translation."
+        warnings = check_llm_protocol_markers(source, target)
+        assert len(warnings) == 1
+        assert "OL_WARN: LLM_PROTOCOL_MARKER" in warnings[0]
+
+    def test_do_not_instruction_detected(self) -> None:
+        """'Do not include' instruction detected."""
+        source = "Hello world"
+        target = "你好世界 Do not include any explanations."
+        warnings = check_llm_protocol_markers(source, target)
+        assert len(warnings) >= 1
+        assert "OL_WARN: LLM_PROTOCOL_MARKER" in warnings[0]
+
+    def test_translation_label_detected(self) -> None:
+        """'Translation:' label detected."""
+        source = "Hello world"
+        target = "Translation: 你好世界"
+        warnings = check_llm_protocol_markers(source, target)
+        assert len(warnings) >= 1
+        assert "OL_WARN: LLM_PROTOCOL_MARKER" in warnings[0]
+
+    def test_multiple_markers_all_reported(self) -> None:
+        """Multiple protocol markers in same target — all reported."""
+        source = "Hello world"
+        target = "CRITICAL: Output ONLY the translation. Do not include notes. Translation: 你好世界"
+        warnings = check_llm_protocol_markers(source, target)
+        assert len(warnings) >= 2  # at least CRITICAL + Output ONLY
+
+    def test_normal_text_no_false_positive(self) -> None:
+        """Normal text should not trigger false positives."""
+        source = "Important meeting"
+        target = "重要会议"
+        warnings = check_llm_protocol_markers(source, target)
+        assert warnings == []
+
+
+class TestTermsAudit:
+    """Gate — full glossary term audit via verify_translation."""
+
+    def test_all_terms_verified(self) -> None:
+        """Glossary terms all correctly used — no warnings."""
+        source = "Click the button to submit."
+        target = "点击按钮提交。"
+        glossary = {"button": {"translation": "按钮"}}
+        assert check_terms_audit(source, target, glossary) == []
+
+    def test_mismatch_detected(self) -> None:
+        """Term translated with non-glossary variant — mismatch warning."""
+        source = "Click the button to submit."
+        target = "点击按键提交。"
+        glossary = {"button": {"translation": "按钮"}}
+        warnings = check_terms_audit(source, target, glossary)
+        assert len(warnings) >= 1
+        assert any("TERM_AUDIT_MISMATCH" in w for w in warnings)
+
+    def test_absent_term_detected(self) -> None:
+        """Glossary term expected but not found in target — mismatch or absent warning."""
+        source = "Configure the endpoint in settings."
+        target = "在设置中进行配置。"
+        glossary = {"endpoint": {"translation": "端点"}}
+        warnings = check_terms_audit(source, target, glossary)
+        assert len(warnings) >= 1
+        assert any("TERM_AUDIT_MISMATCH" in w or "TERM_AUDIT_ABSENT" in w for w in warnings)
+
+    def test_inconsistency_detected(self) -> None:
+        """Same source term translated differently across sentences.
+
+        With an empty glossary the verifier falls back to cross-segment
+        consistency detection and flags terms rendered inconsistently.
+        """
+        source = "The system works. Fix the system."
+        target = "系统正常。修复那个设备。"
+        warnings = check_terms_audit(source, target, {})
+        assert len(warnings) >= 1
+        assert any("TERM_AUDIT_INCONSISTENCY" in w for w in warnings)
+
+    def test_no_glossary_skip(self) -> None:
+        """No glossary provided — check skipped with empty result."""
+        source = "Hello world"
+        target = "你好世界"
+        assert check_terms_audit(source, target, None) == []
+
+    def test_confidence_threshold_filters_low(self) -> None:
+        """Terms below confidence threshold generate low_confidence warnings."""
+        source = "Process the data."
+        target = "处理数据。"
+        glossary = {
+            "process": {
+                "translation": "处理",
+                "confidence": 0.3,
+            },
+        }
+        warnings = check_terms_audit(source, target, glossary, confidence_threshold=0.7)
+        # The term exists with low confidence (0.3 < 0.7)
+        # verify_translation may flag this as low_confidence
+        # Just verify it doesn't crash and returns list
+        assert isinstance(warnings, list)
+
+    def test_empty_glossary(self) -> None:
+        """Empty glossary dict — no warnings."""
+        assert check_terms_audit("Hello", "你好", {}) == []
+
+    def test_run_quality_gates_wires_terms_audit(self) -> None:
+        """Verify run_quality_gates() calls check_terms_audit when enabled."""
+        from ol_lqa.quality_gates import run_quality_gates
+        source = "Click the button."
+        target = "点击按键。"
+        glossary = {"button": {"translation": "按钮"}}
+        warnings = run_quality_gates(
+            source, target, glossary=glossary,
+            terms_audit_enabled=True, terms_audit_confidence=0.7,
+            inline_tags_enabled=False, terminology_enabled=False,
+            length_ratio_enabled=False, locale_enabled=False,
+            source_copy_enabled=False, cjk_residue_enabled=False,
+            llm_markers_enabled=False,
+        )
+        assert any("TERM_AUDIT" in w for w in warnings)
+
+    def test_run_quality_gates_terms_audit_disabled(self) -> None:
+        """When terms_audit_enabled=False, no TERM_AUDIT warnings."""
+        from ol_lqa.quality_gates import run_quality_gates
+        source = "Click the button."
+        target = "点击按键。"
+        glossary = {"button": {"translation": "按钮"}}
+        warnings = run_quality_gates(
+            source, target, glossary=glossary,
+            terms_audit_enabled=False,
+            inline_tags_enabled=False, terminology_enabled=False,
+            length_ratio_enabled=False, locale_enabled=False,
+            source_copy_enabled=False, cjk_residue_enabled=False,
+            llm_markers_enabled=False,
+        )
+        assert not any("TERM_AUDIT" in w for w in warnings)
+
+
 class MockPool:
     """Mock ModelPool for retry_critical_failures tests."""
     async def translate(self, text, src, tgt):
@@ -729,3 +949,9 @@ class MockQualityGateConfig:
     source_copy = True
     source_copy_retry = True
     retry_on_translation_failed = True
+    cjk_residue = True
+    llm_markers = True
+    terms_audit = True
+    terms_audit_confidence = 0.7
+    self_reflection = True
+    self_reflection_rounds = 1

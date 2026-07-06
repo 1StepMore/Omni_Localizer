@@ -430,6 +430,231 @@ def check_source_copy(source: str, target: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Gate 6: CJK residue in non-CJK target (Issue #61)
+# ---------------------------------------------------------------------------
+
+# CJK character ranges
+_RE_CJK = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")  # CJK Unified Ideographs
+_RE_HIRAGANA = re.compile(r"[\u3040-\u309f]")  # Hiragana
+_RE_KATAKANA = re.compile(r"[\u30a0-\u30ff]")  # Katakana
+_RE_HANGUL = re.compile(r"[\uac00-\ud7af\u1100-\u11ff]")  # Hangul
+
+# Non-CJK target locales that should not contain CJK characters
+_NON_CJK_LOCALES_TARGET = {"en", "fr", "de", "es", "pt", "it", "nl", "ru", "ar"}
+
+
+def _contains_cjk(text: str) -> bool:
+    """Check if text contains any CJK characters."""
+    return bool(
+        _RE_CJK.search(text)
+        or _RE_HIRAGANA.search(text)
+        or _RE_KATAKANA.search(text)
+        or _RE_HANGUL.search(text)
+    )
+
+
+def _detect_cjk_language(text: str) -> str | None:
+    """Detect which CJK language is present: 'zh', 'ja', 'ko', or None.
+
+    Priority: hiragana/katakana → hangul → CJK ideographs.
+    Japanese Kanji shares Unicode ranges with Chinese, so we check
+    hiragana/katakana first to distinguish ja from zh.
+    """
+    if _RE_HIRAGANA.search(text) or _RE_KATAKANA.search(text):
+        return "ja"
+    if _RE_HANGUL.search(text):
+        return "ko"
+    if _RE_CJK.search(text):
+        return "zh"
+    return None
+
+
+def check_cjk_residue(
+    source: str,
+    target: str,
+    target_lang: str | None = None,
+) -> list[str]:
+    """Gate 6 — detect CJK characters leaked into a non-CJK target.
+
+    When translating from a CJK source language (zh/ja/ko) into a non-CJK
+    target language (en/fr/de/...), warns if any CJK characters remain in
+    the translated text.
+
+    Args:
+        source: Source (pre-translation) text.
+        target: Target (translated) text.
+        target_lang: Target language code (e.g. ``en``, ``fr``, ``de``).
+            When ``None``, the check is skipped because we cannot determine
+            whether CJK characters are expected or not.
+
+    Returns:
+        List of ``OL_WARN: CJK_RESIDUE`` strings (empty if clean or skipped).
+    """
+    if target_lang is None:
+        return []
+
+    lang_code = target_lang.split("-")[0].lower()
+    if lang_code not in _NON_CJK_LOCALES_TARGET:
+        # Target is a CJK language — CJK characters expected, skip check
+        return []
+
+    if not _contains_cjk(target):
+        return []
+
+    # Identify which CJK characters
+    cjk_lang = _detect_cjk_language(target)
+    if cjk_lang is None:
+        # Edge case: found CJK but couldn't classify — still a residue
+        return ["OL_WARN: CJK_RESIDUE — CJK characters found in non-CJK target text"]
+
+    return [
+        f"OL_WARN: CJK_RESIDUE — {cjk_lang.upper()} characters found in "
+        f"{lang_code.upper()} target text (leaked from source)"
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Gate 7: LLM protocol markers detection (Issues #62 / #63)
+# ---------------------------------------------------------------------------
+
+# Patterns for LLM protocol markers that should never appear in translated output
+_RE_LLM_CRITICAL = re.compile(
+    r"\b(?:CRITICAL|IMPORTANT|NOTE|WARNING|CAUTION|REMEMBER)\b\s*:",
+    re.IGNORECASE,
+)
+_RE_LLM_OUTPUT_ONLY = re.compile(
+    r"\bOutput\s+(?:ONLY|only)\b",
+    re.IGNORECASE,
+)
+_RE_LLM_DO_NOT = re.compile(
+    r"\bDo\s+not\s+(?:include|add|remove|change|modify|translate|output)\b",
+    re.IGNORECASE,
+)
+_RE_LLM_TRANSLATION = re.compile(
+    r"\b(?:Translation|Translated text|Target language)\s*:",
+    re.IGNORECASE,
+)
+
+
+def check_llm_protocol_markers(
+    source: str,
+    target: str,
+) -> list[str]:
+    """Gate 7 — detect LLM protocol markers in translated output.
+
+    LLMs sometimes echo system-prompt instructions or protocol markers
+    into the translated text. Common patterns include:
+
+    * ``CRITICAL:`` / ``IMPORTANT:`` / ``NOTE:`` markers
+    * ``Output ONLY the translation`` fragments
+    * ``Do not include any explanations`` instructions
+    * ``Translation:`` / ``Translated text:`` labels
+
+    These markers indicate that the LLM's output contains leaked
+    system-prompt fragments and should be re-translated or cleaned.
+
+    Args:
+        source: Source (pre-translation) text.
+        target: Target (translated) text.
+
+    Returns:
+        List of ``OL_WARN: LLM_PROTOCOL_MARKER`` strings (empty if clean).
+    """
+    warnings: list[str] = []
+
+    if _RE_LLM_CRITICAL.search(target):
+        warnings.append(
+            "OL_WARN: LLM_PROTOCOL_MARKER — target contains CRITICAL/IMPORTANT/NOTE "
+            "protocol marker (leaked system-prompt instruction)"
+        )
+    if _RE_LLM_OUTPUT_ONLY.search(target):
+        warnings.append(
+            "OL_WARN: LLM_PROTOCOL_MARKER — target contains 'Output ONLY' "
+            "protocol fragment (leaked system-prompt instruction)"
+        )
+    if _RE_LLM_DO_NOT.search(target):
+        warnings.append(
+            "OL_WARN: LLM_PROTOCOL_MARKER — target contains 'Do not ...' "
+            "instruction fragment (leaked system-prompt instruction)"
+        )
+    if _RE_LLM_TRANSLATION.search(target):
+        warnings.append(
+            "OL_WARN: LLM_PROTOCOL_MARKER — target contains 'Translation:' "
+            "or 'Translated text:' label (leaked system-prompt instruction)"
+        )
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# Gate: Full glossary term audit via verify_translation
+# ---------------------------------------------------------------------------
+
+
+def check_terms_audit(
+    source: str,
+    target: str,
+    glossary: dict[str, Any] | None = None,
+    confidence_threshold: float = 0.7,
+) -> list[str]:
+    """Gate — full glossary term audit using verify_translation.
+
+    Runs ``verify_translation()`` on the source-target pair with the
+    provided glossary and flattens the report into ``OL_WARN`` lines.
+    Four warning codes are produced depending on severity:
+
+    * ``TERM_AUDIT_MISMATCH`` — term translated using a non-glossary variant
+    * ``TERM_AUDIT_ABSENT`` — source term found but expected translation absent
+    * ``TERM_AUDIT_INCONSISTENCY`` — same source term → different translations
+    * ``TERM_AUDIT_LOW_CONFIDENCE`` — best guess fell below threshold
+
+    This gate is richer than Gate 2 (terminology consistency) because it
+    also reports mismatches, absent terms, and cross-segment inconsistencies.
+
+    Args:
+        source: Source text.
+        target: Translated text.
+        glossary: Glossary dict. When ``None`` the check is skipped.
+        confidence_threshold: Minimum confidence (0.0-1.0) for term matches.
+
+    Returns:
+        List of ``OL_WARN: TERM_AUDIT_<STATUS>`` strings (empty if clean).
+    """
+    if glossary is None:
+        return []
+
+    from ol_terminology.verifier import verify_translation
+
+    report = verify_translation(source, target, glossary, confidence_threshold)
+
+    warnings: list[str] = []
+
+    for m in report.mismatches:
+        warnings.append(
+            f"OL_WARN: TERM_AUDIT_MISMATCH — term '{m.term}' "
+            f"expected '{m.expected}' got '{m.found}'"
+        )
+    for a in report.absent:
+        warnings.append(
+            f"OL_WARN: TERM_AUDIT_ABSENT — term '{a.term}' "
+            f"expected '{a.expected}' not found"
+        )
+    for i in report.inconsistencies:
+        translations = ", ".join(i.translations)
+        warnings.append(
+            f"OL_WARN: TERM_AUDIT_INCONSISTENCY — term '{i.source_term}' "
+            f"has {len(i.translations)} translations: {translations}"
+        )
+    for lc in report.low_confidence:
+        warnings.append(
+            f"OL_WARN: TERM_AUDIT_LOW_CONFIDENCE — term '{lc.term}' "
+            f"confidence {lc.confidence} below threshold"
+        )
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -447,6 +672,11 @@ def run_quality_gates(
     locale_enabled: bool = True,
     target_locale: str | None = None,
     source_copy_enabled: bool = True,
+    cjk_residue_enabled: bool = True,
+    target_lang: str | None = None,
+    llm_markers_enabled: bool = True,
+    terms_audit_enabled: bool = True,
+    terms_audit_confidence: float = 0.7,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -468,6 +698,11 @@ def run_quality_gates(
         target_locale: Target locale override.  Falls back to
             ``OL_TARGET_LOCALE`` env var.
         source_copy_enabled: Run Gate 5 (source copy detection).
+        cjk_residue_enabled: Run Gate 6 (CJK residue in non-CJK target).
+        target_lang: Target language code for Gate 6 (e.g. ``en``).
+        llm_markers_enabled: Run Gate 7 (LLM protocol markers).
+    terms_audit_enabled: Run full glossary term audit via verify_translation.
+    terms_audit_confidence: Confidence threshold for term audit.
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -518,6 +753,36 @@ def run_quality_gates(
             all_warnings.extend(check_source_copy(source, target))
         except Exception as exc:
             _logger.exception("Gate 5 (source copy) failed: %s", exc)
+
+    # Gate 6: CJK residue (Issue #61)
+    if cjk_residue_enabled:
+        try:
+            all_warnings.extend(
+                check_cjk_residue(source, target, target_lang=target_lang)
+            )
+        except Exception as exc:
+            _logger.exception("Gate 6 (CJK residue) failed: %s", exc)
+
+    # Gate 7: LLM protocol markers (Issues #62 / #63)
+    if llm_markers_enabled:
+        try:
+            all_warnings.extend(check_llm_protocol_markers(source, target))
+        except Exception as exc:
+            _logger.exception("Gate 7 (LLM protocol markers) failed: %s", exc)
+
+    # Gate: Terms audit (full glossary term verification via verify_translation)
+    if terms_audit_enabled:
+        try:
+            all_warnings.extend(
+                check_terms_audit(
+                    source,
+                    target,
+                    glossary=glossary,
+                    confidence_threshold=terms_audit_confidence,
+                )
+            )
+        except Exception as exc:
+            _logger.exception("Gate (terms audit) failed: %s", exc)
 
     return all_warnings
 
@@ -636,6 +901,9 @@ async def retry_critical_failures(
                 locale_enabled=quality_gates_cfg.locale.enabled,
                 target_locale=quality_gates_cfg.locale.target_locale,
                 source_copy_enabled=quality_gates_cfg.source_copy,
+                cjk_residue_enabled=quality_gates_cfg.cjk_residue,
+                target_lang=tgt_lang,
+                llm_markers_enabled=quality_gates_cfg.llm_markers,
             )
 
             still_copy = any("SOURCE_COPY" in w for w in new_gate_warnings)
