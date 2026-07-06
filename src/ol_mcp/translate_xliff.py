@@ -45,6 +45,7 @@ async def _run_translate_xliff_async(
     config_path: str | None,
     styleguide_path: str | None = None,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> None:
     """Background coroutine for async translate_xliff. Updates task tracker."""
     try:
@@ -163,11 +164,26 @@ async def _run_translate_xliff_async(
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    cjk_residue_enabled=qg.cjk_residue,
+                    target_lang=target_lang,
+                    llm_markers_enabled=qg.llm_markers,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
+
+        if self_reflect and units:
+            from ol_xliff.self_reflect import self_reflect_translated_units
+            sr_warnings = await self_reflect_translated_units(
+                units, source_lang, target_lang, pool,
+                warnings_per_unit=warnings_per_unit,
+            )
+            for uid, warns in sr_warnings.items():
+                if uid in warnings_per_unit:
+                    warnings_per_unit[uid].extend(warns)
+                else:
+                    warnings_per_unit[uid] = warns
 
         if polish:
             from ol_xliff.polish import polish_translated_units
@@ -232,6 +248,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             config_path=params.config_path,
             styleguide_path=params.styleguide_path,
             polish=params.polish,
+            self_reflect=params.self_reflect,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -365,11 +382,26 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    cjk_residue_enabled=qg.cjk_residue,
+                    target_lang=params.target_lang,
+                    llm_markers_enabled=qg.llm_markers,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
+
+        if params.self_reflect and units:
+            from ol_xliff.self_reflect import self_reflect_translated_units
+            sr_warnings = await self_reflect_translated_units(
+                units, params.source_lang, params.target_lang, pool,
+                warnings_per_unit=warnings_per_unit,
+            )
+            for uid, warns in sr_warnings.items():
+                if uid in warnings_per_unit:
+                    warnings_per_unit[uid].extend(warns)
+                else:
+                    warnings_per_unit[uid] = warns
 
         if params.polish:
             from ol_xliff.polish import polish_translated_units

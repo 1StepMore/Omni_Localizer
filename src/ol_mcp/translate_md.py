@@ -79,6 +79,7 @@ async def _translate_single(
     styleguide_path: str | None = None,
     no_styleguide: bool = False,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> tuple[str, list[str]]:
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
@@ -134,6 +135,12 @@ async def _translate_single(
         # dropped to avoid polluting the output.
         repaired = _dedup_b64_image_refs(repaired)
 
+        if self_reflect:
+            from ol_xliff.self_reflect import self_reflect_md_text
+            repaired = await self_reflect_md_text(
+                repaired, source_lang, target_lang, pool,
+            )
+
         if polish:
             from ol_xliff.polish import polish_md_text
             repaired = await polish_md_text(repaired, source_lang, target_lang, pool)
@@ -158,6 +165,7 @@ async def _run_translate_md_async(
     styleguide_path: str | None = None,
     no_styleguide: bool = False,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> None:
     """Background coroutine for async translate_md_text. Updates task tracker."""
     try:
@@ -184,6 +192,7 @@ async def _run_translate_md_async(
             styleguide_path=styleguide_path,
             no_styleguide=no_styleguide,
             polish=polish,
+            self_reflect=self_reflect,
         )
 
         # Post-translation quality gates (Issue #56)
@@ -200,6 +209,9 @@ async def _run_translate_md_async(
                 length_ratio_max=qg.length_ratio.max,
                 locale_enabled=qg.locale.enabled,
                 target_locale=qg.locale.target_locale,
+                cjk_residue_enabled=qg.cjk_residue,
+                target_lang=target_lang,
+                llm_markers_enabled=qg.llm_markers,
             )
             warnings.extend(gate_warnings)
         except Exception as gate_err:
@@ -261,6 +273,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             styleguide_path=params.styleguide_path,
             no_styleguide=params.no_styleguide,
             polish=params.polish,
+            self_reflect=params.self_reflect,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -318,6 +331,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             styleguide_path=params.styleguide_path,
             no_styleguide=params.no_styleguide,
             polish=params.polish,
+            self_reflect=params.self_reflect,
         )
 
         # Post-translation quality gates (Issue #56)
@@ -334,6 +348,9 @@ async def translate_md_text(params: TranslateInput) -> str:
                 length_ratio_max=qg.length_ratio.max,
                 locale_enabled=qg.locale.enabled,
                 target_locale=qg.locale.target_locale,
+                cjk_residue_enabled=qg.cjk_residue,
+                target_lang=params.target_lang,
+                llm_markers_enabled=qg.llm_markers,
             )
             warnings.extend(gate_warnings)
         except Exception as gate_err:

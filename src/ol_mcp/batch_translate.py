@@ -30,6 +30,8 @@ from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
+from ol_lqa.quality_gates import run_quality_gates
+from ol_config.loader import load_config
 
 
 @_register_tool(
@@ -104,9 +106,37 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
                 if shield_map:
                     translated = unshield_markdown(translated, shield_map)
                 repaired = repair_pipeline.repair(translated, text, shield_map)
-                repair_warnings = []
 
-                return {"index": i, "success": True, "translated": repaired, "warnings": repair_warnings}
+                item_warnings: list[str] = []
+                try:
+                    cfg, _ = load_config(config_path)
+                    qg = cfg.quality_gates
+                    qg_result = run_quality_gates(
+                        source=text,
+                        target=repaired,
+                        glossary=glossary,
+                        inline_tags_enabled=qg.inline_tags,
+                        terminology_enabled=qg.terminology and glossary is not None,
+                        length_ratio_enabled=qg.length_ratio.enabled,
+                        length_ratio_min=qg.length_ratio.min,
+                        length_ratio_max=qg.length_ratio.max,
+                        locale_enabled=qg.locale.enabled,
+                        target_locale=qg.locale.target_locale,
+                        cjk_residue_enabled=qg.cjk_residue,
+                        target_lang=params.target_lang,
+                        llm_markers_enabled=qg.llm_markers,
+                    )
+                    item_warnings.extend(qg_result)
+                except Exception as qg_err:
+                    _logger.warning("Quality gates failed for item %d: %s", i, qg_err)
+
+                if params.self_reflect:
+                    from ol_xliff.self_reflect import self_reflect_md_text
+                    repaired = await self_reflect_md_text(
+                        repaired, params.source_lang, params.target_lang, pool,
+                    )
+
+                return {"index": i, "success": True, "translated": repaired, "warnings": item_warnings}
             except Exception as e:
                 _logger.warning("batch_translate_texts item %d failed: %s", i, e)
                 return {"index": i, "success": False, "translated": "", "warnings": [str(e)]}
