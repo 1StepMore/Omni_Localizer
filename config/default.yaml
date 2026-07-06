@@ -15,6 +15,9 @@ glossary_path: null
 # 2026-06-17 round 3: mirror OPT-12 from local.yaml (lower to 5).
 # 2026-06-17 round 8 (#24): all api_key use ${ENV_VAR} refs (no literals).
 max_xliff_concurrent: 5
+enable_lqa: true
+lqa_threshold: 7.0
+lqa_max_retries: 2
 llm_pool:
   translation:
     # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
@@ -122,6 +125,9 @@ llm_pool:
 quality_gates:
   inline_tags: true
   terminology: true
+  source_script_check: true
+  protocol_artifact_check: true
+  block_on_source_script_fragment: true
   length_ratio:
     enabled: true
     min: 0.5

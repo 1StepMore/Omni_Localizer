@@ -553,6 +553,7 @@ def run_quality_gates(
     source_copy_enabled: bool = True,
     source_script_check_enabled: bool = True,
     protocol_artifact_check_enabled: bool = True,
+    block_on_source_script_fragment: bool = False,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -632,11 +633,12 @@ def run_quality_gates(
     # Gate 6
     if source_script_check_enabled:
         try:
-            all_warnings.extend(
-                check_source_script_fragments(
-                    source, target, target_locale=target_locale,
-                )
+            gate6_warnings = check_source_script_fragments(
+                source, target, target_locale=target_locale,
             )
+            if gate6_warnings and block_on_source_script_fragment:
+                all_warnings.append("BLOCK: SOURCE_SCRIPT_FRAGMENT")
+            all_warnings.extend(gate6_warnings)
         except Exception as exc:
             _logger.exception("Gate 6 (source script check) failed: %s", exc)
 
