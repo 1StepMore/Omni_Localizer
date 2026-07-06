@@ -716,3 +716,78 @@ class TestCheckProtocolArtifacts:
         warnings = check_protocol_artifacts(text)
         # Two unique markers: USERTEXTSTART and USERTEXTEND
         assert len(warnings) == 2
+
+
+# =========================================================================
+# OL#67: block_on_source_script_fragment
+# =========================================================================
+
+
+class TestBlockOnSourceScriptFragment:
+    """OL#67 — blocking quality gate for source script fragments.
+
+    When block_on_source_script_fragment=True and Gate 6 detects CJK
+    characters in a non-CJK target locale, run_quality_gates() prepends
+    a ``BLOCK: SOURCE_SCRIPT_FRAGMENT`` warning before the standard
+    ``OL_WARN`` entries.  When False (the default), only ``OL_WARN``
+    entries are produced and no blocking occurs.
+    """
+
+    def test_blocking_enabled_cjk_detected(self) -> None:
+        """block=True + CJK residual → BLOCK prefix in warnings."""
+        warnings = run_quality_gates(
+            source="海尔 is a global brand",
+            target="Chapter 2 海尔 Global Brand Creation",
+            block_on_source_script_fragment=True,
+            target_locale="en-US",
+        )
+        assert any(
+            w.startswith("BLOCK:") for w in warnings
+        ), "Expected a BLOCK: prefix when blocking is enabled and CJK is detected"
+        assert any(
+            "OL_WARN: SOURCE_SCRIPT_FRAGMENT" in w for w in warnings
+        ), "Expected OL_WARN alongside BLOCK:"
+
+    def test_blocking_disabled_cjk_detected(self) -> None:
+        """block=False + CJK residual → no BLOCK prefix (only OL_WARN)."""
+        warnings = run_quality_gates(
+            source="海尔 is a global brand",
+            target="Chapter 2 海尔 Global Brand Creation",
+            block_on_source_script_fragment=False,
+            target_locale="en-US",
+        )
+        assert not any(
+            w.startswith("BLOCK:") for w in warnings
+        ), "No BLOCK: prefix when blocking is disabled"
+        assert any(
+            "OL_WARN: SOURCE_SCRIPT_FRAGMENT" in w for w in warnings
+        ), "Expected OL_WARN even with blocking disabled"
+
+    def test_blocking_enabled_no_cjk(self) -> None:
+        """block=True but no CJK in source → no BLOCK prefix."""
+        warnings = run_quality_gates(
+            source="Hello world",
+            target="Bonjour le monde",
+            block_on_source_script_fragment=True,
+            target_locale="en-US",
+        )
+        assert not any(
+            w.startswith("BLOCK:") for w in warnings
+        ), "No BLOCK: when there is no CJK in source"
+        assert warnings == [], (
+            f"Expected no warnings at all for clean translation, got: {warnings}"
+        )
+
+    def test_blocking_default_disabled(self) -> None:
+        """Default (not passing block_on_source_script_fragment) → no BLOCK."""
+        warnings = run_quality_gates(
+            source="海尔 is a global brand",
+            target="Chapter 2 海尔 Global Brand Creation",
+            target_locale="en-US",
+        )
+        assert not any(
+            w.startswith("BLOCK:") for w in warnings
+        ), "No BLOCK: prefix when using default (False)"
+        assert any(
+            "OL_WARN: SOURCE_SCRIPT_FRAGMENT" in w for w in warnings
+        ), "Expected OL_WARN with default blocking"
