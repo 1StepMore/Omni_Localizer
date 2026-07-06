@@ -40,6 +40,28 @@ _CURRENCY_SYMBOLS = {"$", "€", "£", "¥"}
 # Non-CJK locales that should not contain CJK date patterns
 _NON_CJK_LOCALES = {"en", "fr", "de", "es", "pt", "it"}
 
+# CJK character range (used by Gate 6 script-consistency check)
+_RE_CJK = re.compile(r"[\u4e00-\u9fff]")
+
+# Protocol/metadata artifacts that should never appear in translated text
+_RE_PROTOCOL_ARTIFACTS = [
+    re.compile(r"\[USERTEXTSTART\]"),
+    re.compile(r"\[USERTEXTEND\]"),
+    re.compile(r"\[/USERTEXTSTART\]"),
+    re.compile(r"\[USER_TEXT_START\]"),
+    re.compile(r"\[USER_TEXT_END\]"),
+    re.compile(r"\[OUT-OF-BAND"),
+    re.compile(r"\[/OUT-OF-BAND"),
+    re.compile(r"\[INST\]"),
+    re.compile(r"\[/INST\]"),
+    re.compile(r"\[SYSTEM_PROMPT\]"),
+    re.compile(r"\[/SYSTEM_PROMPT\]"),
+    re.compile(r"\[THINKING\]"),
+    re.compile(r"\[/THINKING\]"),
+    re.compile(r"\[ASSISTANT\]"),
+    re.compile(r"\[/ASSISTANT\]"),
+]
+
 # EU locales (using comma as decimal separator)
 _EU_LOCALES = {"de", "fr", "es", "it", "pt"}
 
@@ -262,8 +284,63 @@ def check_length_ratio(
 
 
 # ---------------------------------------------------------------------------
-# Gate 4: Locale conventions
+# Gate 6 — Source script fragments in target
 # ---------------------------------------------------------------------------
+
+
+def check_source_script_fragments(
+    source: str,
+    target: str,
+    target_locale: str | None = None,
+) -> list[str]:
+    """Gate 6 — detect CJK characters that leaked into a non-CJK target.
+
+    When the source text contains CJK characters (``\\u4e00-\\u9fff``) and
+    the target locale is a non-CJK locale (en, fr, de, es, pt, it…), any
+    CJK characters remaining in the target are translation residuals and
+    almost certainly an error (the LLM left source text unchanged).
+
+    Suppressed (returns [] silently) when:
+    * Neither source nor target contains any CJK characters.
+    * The target locale is a CJK locale (zh, ja, ko).
+
+    Args:
+        source: Original source text.
+        target: Translated target text.
+        target_locale: Target locale string (e.g. "en-US").  Only the
+            language part (first two chars) is checked.  Falls back to
+            the ``OL_TARGET_LOCALE`` env var.
+
+    Returns:
+        ``OL_WARN: SOURCE_SCRIPT_FRAGMENT`` for each CJK codepoint
+        found in the target (deduplicated), or empty list.
+    """
+    if not source and not target:
+        return []
+    cjk_in_source = _RE_CJK.search(source)
+    cjk_in_target = _RE_CJK.findall(target)
+    if not cjk_in_target:
+        return []
+    if not cjk_in_source:
+        return []
+
+    locale_str = target_locale or os.environ.get("OL_TARGET_LOCALE", "")
+    lang = locale_str.split("-")[0].split("_")[0].lower() if locale_str else "en"
+    if lang in {"zh", "ja", "ko"}:
+        return []  # target locale is CJK — CJK in target is expected
+
+    # Deduplicate by unique CJK character
+    seen: set[str] = set()
+    result: list[str] = []
+    for char in cjk_in_target:
+        if char not in seen:
+            seen.add(char)
+            result.append(
+                f"OL_WARN: SOURCE_SCRIPT_FRAGMENT — "
+                f"CJK character {char!r} (U+{ord(char):04X}) "
+                f"found in non-CJK target locale '{locale_str or 'en'}'"
+            )
+    return result
 
 
 def _normalize_locale(target_locale: str | None) -> str | None:
@@ -396,11 +473,6 @@ def check_locale_conventions(
     return warnings
 
 
-# ---------------------------------------------------------------------------
-# Gate 5: Source copy detection (Issue #57)
-# ---------------------------------------------------------------------------
-
-
 def check_source_copy(source: str, target: str) -> list[str]:
     """Gate 5 — detect when LLM echoes the source text back unchanged.
 
@@ -430,6 +502,38 @@ def check_source_copy(source: str, target: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Gate 7 — Protocol/metadata artifacts in target
+# ---------------------------------------------------------------------------
+
+
+def check_protocol_artifacts(target: str) -> list[str]:
+    """Gate 7 — detect LLM protocol / metadata markers in translated text.
+
+    LLMs may occasionally reflect prompt-delimiter or conversation-control
+    markers (e.g. ``[USERTEXTSTART]``, ``[INST]``, ``[SYSTEM_PROMPT]``) into
+    their output.  These are never valid translation content and must be
+    flagged for cleanup.
+
+    Checks all patterns in ``_RE_PROTOCOL_ARTIFACTS`` against ``target``.
+    Each matched pattern is reported once (deduplicated).
+
+    Returns:
+        List of ``OL_WARN: PROTOCOL_ARTIFACT`` strings (empty if none found).
+    """
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for pattern in _RE_PROTOCOL_ARTIFACTS:
+        match = pattern.search(target)
+        if match and match.group() not in seen:
+            seen.add(match.group())
+            warnings.append(
+                f"OL_WARN: PROTOCOL_ARTIFACT — "
+                f"protocol/metadata marker {match.group()!r} found in target text"
+            )
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -447,6 +551,9 @@ def run_quality_gates(
     locale_enabled: bool = True,
     target_locale: str | None = None,
     source_copy_enabled: bool = True,
+    source_script_check_enabled: bool = True,
+    protocol_artifact_check_enabled: bool = True,
+    block_on_source_script_fragment: bool = False,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -468,6 +575,10 @@ def run_quality_gates(
         target_locale: Target locale override.  Falls back to
             ``OL_TARGET_LOCALE`` env var.
         source_copy_enabled: Run Gate 5 (source copy detection).
+        source_script_check_enabled: Run Gate 6 (source script
+            fragment detection).
+        protocol_artifact_check_enabled: Run Gate 7 (protocol
+            artifact detection).
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -519,180 +630,23 @@ def run_quality_gates(
         except Exception as exc:
             _logger.exception("Gate 5 (source copy) failed: %s", exc)
 
+    # Gate 6
+    if source_script_check_enabled:
+        try:
+            gate6_warnings = check_source_script_fragments(
+                source, target, target_locale=target_locale,
+            )
+            if gate6_warnings and block_on_source_script_fragment:
+                all_warnings.append("BLOCK: SOURCE_SCRIPT_FRAGMENT")
+            all_warnings.extend(gate6_warnings)
+        except Exception as exc:
+            _logger.exception("Gate 6 (source script check) failed: %s", exc)
+
+    # Gate 7
+    if protocol_artifact_check_enabled:
+        try:
+            all_warnings.extend(check_protocol_artifacts(target))
+        except Exception as exc:
+            _logger.exception("Gate 7 (protocol artifact check) failed: %s", exc)
+
     return all_warnings
-
-
-# ---------------------------------------------------------------------------
-# Gate 5 retry: re-translate units flagged as SOURCE_COPY
-# ---------------------------------------------------------------------------
-
-
-async def retry_critical_failures(
-    units: list,
-    pool: Any,
-    src_lang: str,
-    tgt_lang: str,
-    quality_gates_cfg: Any,
-    glossary: dict[str, Any] | None,
-    warnings_per_unit: dict[str, list[str]],
-    max_retries: int = 1,
-) -> int:
-    """Re-translate units where a critical pipeline failure was detected.
-
-    Scans ``warnings_per_unit`` for ``OL_WARN: SOURCE_COPY`` or
-    ``OL_WARN: TRANSLATION_FAILED`` entries.  For each affected unit,
-    calls ``pool.translate()`` again, applies the repair pipeline,
-    and re-runs quality gates on the retried translation.
-
-    Covers two scenarios:
-
-    * **SOURCE_COPY** — the LLM echoed the source text back unchanged.
-      Gate 5 catches this and the retry gives the LLM another chance
-      to produce a real translation.
-
-    * **TRANSLATION_FAILED** — the translation call itself raised an
-      exception (timeout, rate limit, API error).  The pipeline drops
-      the source text as a fallback; retry is the only way to recover.
-
-    If all retries still fail (still copy or another transport error),
-    the last best-effort target is kept and the warning is upgraded
-    to ``OL_WARN: FAILED_RETRY (retry exhausted -- kept best-effort translation)``.
-
-    Args:
-        units: All translated units (may include units without warnings).
-        pool: Async LLM pool with a ``.translate(text, src, tgt, ...)`` method.
-        src_lang: Source language code.
-        tgt_lang: Target language code.
-        quality_gates_cfg: A ``QualityGateConfig``-like object with
-            ``inline_tags``, ``terminology``, ``length_ratio``,
-            ``locale``, and ``source_copy`` boolean attributes.
-        glossary: Glossary dict for terminology checks.
-        warnings_per_unit: Mutable dict mapping unit_id to warning list.
-            SOURCE_COPY / TRANSLATION_FAILED entries are removed on
-            retry and replaced with the new gate results.
-        max_retries: Max LLM calls per retried unit (default 1).
-
-    Returns:
-        Number of units that were successfully re-translated
-        (critical failure resolved).
-    """
-    _CRITICAL_PREFIXES = ("SOURCE_COPY", "TRANSLATION_FAILED")
-
-    to_retry: list[str] = []
-    for uid, warns in warnings_per_unit.items():
-        if any(_p in w for w in warns for _p in _CRITICAL_PREFIXES):
-            to_retry.append(uid)
-
-    if not to_retry:
-        return 0
-
-    from ol_xliff.pipeline import XLIFFRepairPipeline
-    from ol_buses.xliff_shield import restore_tags
-
-    repair_pipeline = XLIFFRepairPipeline()
-    resolved = 0
-
-    for unit in units:
-        uid = unit.unit_id
-        if uid not in to_retry:
-            continue
-
-        still_copy = True
-        last_translation: str | None = None
-        for attempt in range(max_retries):
-            try:
-                new_target = await pool.translate(
-                    unit.source_text, src_lang, tgt_lang,
-                )
-            except Exception:
-                _logger.warning(
-                    "SOURCE_COPY retry translate failed for unit=%s "
-                    "(attempt %d/%d)",
-                    uid, attempt + 1, max_retries,
-                )
-                break
-
-            if unit.shield_map:
-                unshielded = restore_tags(new_target, unit.shield_map)
-                repaired, _ = repair_pipeline.repair(
-                    unshielded, unit.source_text, unit.shield_map,
-                )
-            else:
-                repaired = new_target
-
-            last_translation = repaired
-
-            new_gate_warnings = run_quality_gates(
-                source=unit.source_text,
-                target=repaired,
-                glossary=glossary,
-                inline_tags_enabled=quality_gates_cfg.inline_tags,
-                terminology_enabled=(
-                    quality_gates_cfg.terminology and glossary is not None
-                ),
-                length_ratio_enabled=quality_gates_cfg.length_ratio.enabled,
-                length_ratio_min=quality_gates_cfg.length_ratio.min,
-                length_ratio_max=quality_gates_cfg.length_ratio.max,
-                locale_enabled=quality_gates_cfg.locale.enabled,
-                target_locale=quality_gates_cfg.locale.target_locale,
-                source_copy_enabled=quality_gates_cfg.source_copy,
-            )
-
-            still_copy = any("SOURCE_COPY" in w for w in new_gate_warnings)
-
-            unit.target_text = repaired
-
-            old_non_copy = [
-                w for w in warnings_per_unit.get(uid, [])
-                if "SOURCE_COPY" not in w
-            ]
-            warnings_per_unit[uid] = old_non_copy + new_gate_warnings
-
-            if not still_copy:
-                resolved += 1
-                break
-
-        if still_copy and last_translation is not None:
-            warnings_per_unit[uid] = [
-                w for w in warnings_per_unit.get(uid, [])
-                if "SOURCE_COPY" not in w
-            ]
-            warnings_per_unit[uid].append(
-                "OL_WARN: FAILED_RETRY (retry exhausted -- "
-                "kept best-effort translation)"
-            )
-
-    return resolved
-
-
-# ---------------------------------------------------------------------------
-# Warning summary
-# ---------------------------------------------------------------------------
-
-
-def format_warning_summary(warnings_per_unit: dict[str, list[str]]) -> str:
-    """Build a one-line summary of all ``OL_WARN`` codes for a translation run.
-
-    Example::
-
-        12 warnings (LENGTH_RATIOx8, SOURCE_COPYx1, UNIT_SPELLINGx1, INLINE_TAG_MISMATCHx2)
-
-    Returns:
-        Human-readable summary string.  Returns ``"0 warnings"`` when
-        *warnings_per_unit* is empty or contains no ``OL_WARN`` entries.
-    """
-    from collections import Counter
-
-    codes: list[str] = []
-    for warns in warnings_per_unit.values():
-        for w in warns:
-            m = re.search(r"OL_WARN:\s*(\w+)", w)
-            if m:
-                codes.append(m.group(1))
-
-    if not codes:
-        return "0 warnings"
-
-    counts = Counter(codes)
-    parts = [f"{code}x{n}" for code, n in counts.most_common()]
-    return f'{sum(counts.values())} warnings ({", ".join(parts)})'
