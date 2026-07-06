@@ -326,6 +326,7 @@ async def _translate_xliff_async(
     glossary: 'Glossary | None' = None,
     styleguide: str | None = None,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
@@ -465,6 +466,9 @@ async def _translate_xliff_async(
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
                     source_copy_enabled=cfg.quality_gates.source_copy,
+                    cjk_residue_enabled=cfg.quality_gates.cjk_residue,
+                    target_lang=cfg.target_lang,
+                    llm_markers_enabled=cfg.quality_gates.llm_markers,
                 )
                 if _xuw:
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
@@ -496,6 +500,18 @@ async def _translate_xliff_async(
         format_warning_summary(warnings_per_unit),
     )
     print(f"WARN_SUMMARY: {format_warning_summary(warnings_per_unit)}", file=sys.stderr)
+
+    if self_reflect and units:
+        from ol_xliff.self_reflect import self_reflect_translated_units
+        sr_warnings = await self_reflect_translated_units(
+            units, src_lang, tgt_lang, pool,
+            warnings_per_unit=warnings_per_unit,
+        )
+        for uid, warns in sr_warnings.items():
+            if uid in warnings_per_unit:
+                warnings_per_unit[uid].extend(warns)
+            else:
+                warnings_per_unit[uid] = warns
 
     if polish:
         from ol_xliff.polish import polish_translated_units
@@ -611,6 +627,11 @@ def translate_xliff(
         help="After translation, run a lightweight consistency pass: "
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
+    ),
+    self_reflect: bool = typer.Option(
+        False, "--self-reflect",
+        help="After translation and quality gates, run an LLM self-reflection "
+             "pass to let the model review and improve its own output (Gate 8).",
     ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
@@ -732,6 +753,7 @@ def translate_xliff(
             glossary=loaded_glossary,
             styleguide=styleguide_content,
             polish=polish,
+            self_reflect=self_reflect,
         ))
 
         # A12.4: post-translate restoration runs after asyncio.run so

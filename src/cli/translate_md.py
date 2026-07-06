@@ -465,6 +465,7 @@ async def _translate_md_async(
     glossary_max_terms: int = 5,
     styleguide: str | None = None,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
@@ -512,6 +513,7 @@ async def _translate_md_async(
             glossary=glossary,
             styleguide=styleguide,
             polish=polish,
+            self_reflect=self_reflect,
         )
     else:
         shielded, shield_map = shield_markdown(original_text)
@@ -569,6 +571,13 @@ async def _translate_md_async(
             repaired = unshield_markdown(repaired, shield_map)
         else:
             repaired = translated
+
+    # Gate 8: Self-reflection (after quality gates, before polish)
+    if self_reflect:
+        from ol_xliff.self_reflect import self_reflect_md_text
+        repaired = await self_reflect_md_text(
+            repaired, src_lang, tgt_lang, pool,
+        )
 
     if polish:
         from ol_xliff.polish import polish_md_text
@@ -660,6 +669,9 @@ async def _translate_md_async(
             length_ratio_max=cfg.quality_gates.length_ratio.max,
             locale_enabled=cfg.quality_gates.locale.enabled,
             target_locale=cfg.quality_gates.locale.target_locale,
+            cjk_residue_enabled=cfg.quality_gates.cjk_residue,
+            target_lang=cfg.target_lang,
+            llm_markers_enabled=cfg.quality_gates.llm_markers,
         )
         if _qg_warnings:
             _warn_block = "\n\n<!-- Quality gate warnings -->\n"
@@ -679,6 +691,7 @@ async def _translate_md_units_concurrent(
     cfg, glossary=None,
     styleguide: str | None = None,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> str:
     """Translate MD by extracting trans-units and translating them concurrently.
 
@@ -703,6 +716,21 @@ async def _translate_md_units_concurrent(
             )
         unshielded = unshield_markdown(result.translated, units[i].shield_map)
         units[i].target_text = unshielded
+
+    if self_reflect and units:
+        from ol_xliff.self_reflect import self_reflect_md_text
+        _sr_parts = [u.target_text for u in units if u.target_text]
+        _sr_full = "\n\n".join(_sr_parts)
+        _sr_reflected = await self_reflect_md_text(
+            _sr_full, src_lang, tgt_lang, pool,
+        )
+        _sr_parts_out = _sr_reflected.split("\n\n")
+        _sr_idx = 0
+        for _sr_u in units:
+            if _sr_u.target_text:
+                if _sr_idx < len(_sr_parts_out):
+                    _sr_u.target_text = _sr_parts_out[_sr_idx]
+                    _sr_idx += 1
 
     if polish and units:
         from ol_xliff.polish import polish_md_text
@@ -735,6 +763,7 @@ async def _translate_md_by_paragraph(
     quiet: bool = False,
     styleguide: str | None = None,
     polish: bool = False,
+    self_reflect: bool = False,
 ) -> str:
     # Issue #35: Bypass the MCP tool (translate_md_text) to avoid
     # import-lock deadlock when concurrent=5 — the MCP handler imports
@@ -814,6 +843,10 @@ async def _translate_md_by_paragraph(
 
     full = "\n\n".join(translated)
 
+    if self_reflect:
+        from ol_xliff.self_reflect import self_reflect_md_text
+        full = await self_reflect_md_text(full, src, tgt, pool)
+
     if polish:
         from ol_xliff.polish import polish_md_text
         full = await polish_md_text(full, src, tgt, pool)
@@ -879,6 +912,9 @@ async def _translate_md_by_paragraph(
             length_ratio_max=_cfg_by_para.quality_gates.length_ratio.max,
             locale_enabled=_cfg_by_para.quality_gates.locale.enabled,
             target_locale=_cfg_by_para.quality_gates.locale.target_locale,
+            cjk_residue_enabled=_cfg_by_para.quality_gates.cjk_residue,
+            target_lang=_cfg_by_para.target_lang,
+            llm_markers_enabled=_cfg_by_para.quality_gates.llm_markers,
         )
         if _qg_warnings_p:
             _warn_block_p = "\n\n<!-- Quality gate warnings -->\n"
@@ -966,6 +1002,11 @@ def translate_md(
         help="After translation, run a lightweight consistency pass: "
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
+    ),
+    self_reflect: bool = typer.Option(
+        False, "--self-reflect",
+        help="After translation and quality gates, run an LLM self-reflection "
+             "pass to let the model review and improve its own output (Gate 8).",
     ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
@@ -1103,6 +1144,7 @@ def translate_md(
                     quiet=json_output,
                     styleguide=styleguide_content,
                     polish=polish,
+                    self_reflect=self_reflect,
                 ),
             )
         else:
@@ -1113,6 +1155,7 @@ def translate_md(
                     restoration_enabled=not no_restoration,
                     styleguide=styleguide_content,
                     polish=polish,
+                    self_reflect=self_reflect,
                 ),
             )
 
