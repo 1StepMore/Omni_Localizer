@@ -129,3 +129,9 @@ quality_gates:
   locale:
     enabled: true
     target_locale: "en-US"
+  cjk_residue: true
+  llm_markers: true
+  self_reflection: true
+  self_reflection_rounds: 1
+  terms_audit: true
+  terms_audit_confidence: 0.7
