@@ -34,6 +34,12 @@ class ExitCode:
     PIPELINE_ERROR = 1
     CLI_USAGE_ERROR = 2
     INTERRUPTED = 3
+    QUALITY_GATE_BLOCKED = 4
+
+
+class OLQualityGateBlockedError(Exception):
+    """Raised when a quality gate blocks the pipeline from proceeding."""
+    pass
 
 
 def _setup_signal_handler():

@@ -39,6 +39,7 @@ from cli.translate_md import (
 )
 from cli._shared import (
     ExitCode,
+    OLQualityGateBlockedError,
     _enforce_file_size,
     ensure_output_dir,
     output_json,
@@ -458,8 +459,23 @@ async def _translate_xliff_async(
                     length_ratio_max=cfg.quality_gates.length_ratio.max,
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
+                    block_on_source_script_fragment=getattr(
+                        cfg.quality_gates, "block_on_source_script_fragment", False
+                    ),
                 )
                 if _xuw:
+                    # Check for blocking gates before recording warnings
+                    for _w in _xuw:
+                        if _w.startswith("BLOCK:"):
+                            logger.critical(
+                                "Quality gate blocked unit %s: %s — target contains "
+                                "source-language script fragments in non-CJK locale. "
+                                "Target text: %s",
+                                _xu.unit_id, _w, _xu.target_text[:200],
+                            )
+                            raise OLQualityGateBlockedError(
+                                f"Quality gate blocked unit {_xu.unit_id}: {_w}"
+                            )
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
 
     logger.info(f"Translation complete: {len(units)} units")
@@ -775,6 +791,13 @@ def translate_xliff(
 
     except typer.Exit:
         raise
+    except OLQualityGateBlockedError as e:
+        if json_output:
+            output_json(False, str(input_path), error=str(e))
+        else:
+            typer.echo(f"Quality gate blocked: {e}", err=True)
+        logger.critical(f"Quality gate blocked: translate_xliff {input} - {e}")
+        raise typer.Exit(code=ExitCode.QUALITY_GATE_BLOCKED)
     except Exception as e:
         if json_output:
             output_json(False, str(input_path), error=str(e))

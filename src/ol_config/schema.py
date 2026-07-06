@@ -141,6 +141,13 @@ class QualityGateConfig(BaseModel):
         "(e.g. [USERTEXTSTART], [INST], [SYSTEM_PROMPT]) that "
         "reflected into the translated text as literal content.",
     )
+    block_on_source_script_fragment: bool = Field(
+        False,
+        description="When True, Gate 6 (SOURCE_SCRIPT_FRAGMENT) "
+        "blocks the pipeline from proceeding when CJK characters "
+        "are detected in non-CJK target locales, instead of only "
+        "recording a warning note.",
+    )
 
 
 class ProjectConfig(BaseModel):
