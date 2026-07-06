@@ -192,6 +192,11 @@ class TranslateInput(BaseModel):
         description="After translation, run a lightweight consistency pass "
                     "to fix cross-unit inconsistencies.",
     )
+    self_reflect: bool = Field(
+        default=False,
+        description="After translation and quality gates, run an LLM "
+                    "self-reflection pass to improve translation quality (Gate 8).",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
     traceparent: str | None = Field(
         default=None,
@@ -250,6 +255,11 @@ class BatchTranslateInput(BaseModel):
     target_lang: str = Field(description="Target language code")
     glossary_path: str | None = Field(default=None, description="Path to JSON glossary")
     concurrency: int = Field(default=5, description="Max parallel translations")
+    self_reflect: bool = Field(
+        default=False,
+        description="After translation, run an LLM self-reflection pass "
+                    "to improve translation quality (Gate 8).",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
 
 
@@ -270,6 +280,11 @@ class TranslateXliffInput(BaseModel):
         default=False,
         description="After translation, run a lightweight consistency pass "
                     "to fix cross-unit inconsistencies.",
+    )
+    self_reflect: bool = Field(
+        default=False,
+        description="After translation and quality gates, run an LLM "
+                    "self-reflection pass to improve translation quality (Gate 8).",
     )
     config_path: str | None = Field(default=None, description="Path to LLM config")
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
