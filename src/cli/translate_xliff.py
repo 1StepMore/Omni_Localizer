@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import sys
 import typer
 
 if TYPE_CHECKING:
@@ -421,6 +422,7 @@ async def _translate_xliff_async(
         or cfg.quality_gates.terminology
         or cfg.quality_gates.length_ratio.enabled
         or cfg.quality_gates.locale.enabled
+
     ):
         _glossary_dict_x: dict[str, Any] | None = None
         if glossary is not None:
@@ -477,8 +479,12 @@ async def _translate_xliff_async(
                                 f"Quality gate blocked unit {_xu.unit_id}: {_w}"
                             )
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
-
     logger.info(f"Translation complete: {len(units)} units")
+    logger.info(
+        "WARN_SUMMARY: %s",
+        format_warning_summary(warnings_per_unit),
+    )
+    print(f"WARN_SUMMARY: {format_warning_summary(warnings_per_unit)}", file=sys.stderr)
 
     if polish:
         from ol_xliff.polish import polish_translated_units
