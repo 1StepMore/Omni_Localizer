@@ -42,6 +42,7 @@ src/ol/
 │   ├── schema.py            # LLMPoolConfig, ProjectConfig
 │   └── loader.py            # load_config() with ${ENV_VAR} resolution
 ├── pool/                    # ModelPool (litellm Router wrapper)
+│   ├── __init__.py          # exports has_source_language_residual()
 │   └── router.py            # E2E-83: pre-call check removed
 ├── md/                      # MD translation channel
 │   ├── shield.py            # E2E-77/78: math regex + [OL:...] markers
@@ -61,7 +62,8 @@ src/ol/
 │   └── disambiguator.py     # LLM-based polysemy resolution
 ├── lqa/                     # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
-│   └── scoring.py           # LQA rules
+│   ├── scoring.py           # LQA rules
+│   └── quality_gates.py     # OL#56: 4-gate quality checks (inline tags, terminology, length ratio, locale conventions)
 ├── restoration/             # Post-translate placeholder restoration
 ├── concurrency/             # ConcurrencyLimiter (semaphores)
 ├── retry/                   # RetryManager
@@ -97,8 +99,8 @@ src/ol/
 
 | Tool | Purpose |
 |------|---------|
-| `translate_md_text` | Translate markdown text directly (text-in/text-out). The primary Agent tool. |
-| `translate_xliff` | Translate an XLIFF file (text-in/text-out) |
+| `translate_md_text` | Translate markdown text (text-in/text-out). Returns optional `warnings` field with post-translation quality gate results. The primary Agent tool. |
+| `translate_xliff` | Translate an XLIFF file (text-in/text-out). Per-unit quality gate notes written to `<note>` elements in output. |
 | `judge_text` | Evaluate translation quality (returns adequacy/fluency/terminology/format scores) |
 | `load_glossary` | Load a JSON glossary file |
 | `get_relevant_terms` | Extract top-k relevant glossary terms for a source text |
@@ -146,13 +148,24 @@ OL's MD translation is a 4-stage pipeline:
   └─────────────┘
      │  output.md
      ▼
-  ┌─────────────┐
-  │ 5. POSTPROC  │  zh↔en punctuation normalization (ol_post.punctuation)
-  │             │  + YAML frontmatter injection (source/target lang, ...)
-  └─────────────┘
-     │
-     ▼
-  output.md (final)
+   ┌─────────────┐
+   │ 5. POSTPROC  │  zh↔en punctuation normalization (ol_post.punctuation)
+   │             │  + YAML frontmatter injection (source/target lang, ...)
+   └─────────────┘
+      │
+      ▼
+   ┌──────────────┐
+    │ 6. QUALITY   │  4 gates run after translation/repair, warnings
+    │    GATES     │  appended during final output generation:
+    │             │  • inline_tags — verify <bx>/<ex>/<x> tag parity
+    │             │  • terminology — detect mixed source/glossary term usage
+    │             │  • length_ratio — fail if OL_LENGTH_RATIO_MIN..MAX exceeded
+    │             │  • locale — currency mixing, date leakage, digit grouping,
+    │             │            unit spelling (en-US vs en-GB)
+   └──────────────┘
+      │
+      ▼
+   output.md (final)
 ```
 
 ### E2E-65: Prompt injection strip
@@ -224,6 +237,9 @@ exponential backoff handles it.
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
+| `OL_LENGTH_RATIO_MIN` | 0.5 | Minimum acceptable translated/source length ratio (quality gates). |
+| `OL_LENGTH_RATIO_MAX` | 3.0 | Maximum acceptable translated/source length ratio (quality gates). |
+| `OL_TARGET_LOCALE` | (unset) | Target locale override for locale-specific quality gates (e.g. `en-US`, `en-GB`, `fr-FR`). Falls back to `locale.target_locale` in config. |
 | `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset; (2) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. |
 
 The MCP server is configured separately in `src/ol_mcp/config.py` —
@@ -270,6 +286,46 @@ Key test files:
   need deterministic model selection, set `priority: 1` on only one
   model per role.
 - **Circuit breaker**: 5 consecutive failures → open for 60s.
+
+### OL#53: Polish language guard
+
+`polish_translated_units()` and `polish_md_text()` now skip corrections
+that would revert translated text back to the source language (zh→en
+direction). The `has_source_language_residual()` helper is exported
+from `ol.pool` for reuse.
+
+### OL#54: Truncation detection
+
+`ModelPool.translate()` now applies a secondary truncation heuristic
+when the API reports `finish_reason="stop"` but the output looks
+incomplete (trailing ellipsis, non-terminal punctuation on long inputs,
+or `completion_tokens >= 90%` of `max_tokens`). `judge()` and
+`profile()` fail-closed on `finish_reason="length"`.
+
+### OL#55: XLIFF raw XML tag normalization
+
+XLIFF Level 1 repair normalizes raw LLM-emitted inline tags
+(`<x/>`, `<bx/>`, `<ex/>`) back to placeholders when a `shield_map` is
+available. Level 4 safe fallback is now bx/ex-pair-aware and avoids
+duplicating tag halves already restored by Level 3.
+
+### OL#56: Quality gates
+
+Four config-driven checks run after translation/repair and append
+non-blocking warnings to the output:
+
+| Gate | Description | Warning codes |
+|------|-------------|---------------|
+| `inline_tags` | Verify `<bx>`, `<ex>`, `<x>` tag parity between source and target | `INLINE_TAG_MISMATCH` |
+| `terminology` | Detect mixed source/glossary term usage in target | `TERMINOLOGY_INCONSISTENCY` |
+| `length_ratio` | Check translated/source length ratio is within bounds | `LENGTH_RATIO` |
+| `locale` | Currency mixing, CJK date leakage, digit grouping (EU vs US), GB/US spelling | `CURRENCY_MIXING`, `DATE_LEAKAGE`, `DIGIT_GROUPING`, `UNIT_SPELLING` |
+
+Warnings are collected and returned in the `warnings` output field
+(MCP) or appended to the output file as HTML comments / `<note>`
+elements (CLI). Configure via `quality_gates:` in `config/default.yaml`
+or override with `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, and
+`OL_TARGET_LOCALE` env vars.
 
 ### FAKE_LLM decision matrix
 

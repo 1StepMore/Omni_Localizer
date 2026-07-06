@@ -7,6 +7,7 @@ AI-native localization pipeline that translates documents through intelligent LL
 - **Translate documents** (Markdown, XLIFF) using LLM APIs
 - **Automatic failover** — switches to backup model if primary fails
 - **Quality preservation** — shields code blocks, links, images during translation
+- **Configurable post-translation quality gates** — inline tags, terminology, length ratio, locale conventions
 - **LLM-based judging** — evaluates translation accuracy and fluency
 - **Restoration layer** — uses LLM to restore placeholders after translation
 
@@ -135,6 +136,22 @@ llm_pool:
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
+
+Post-translation quality gates are configured under `quality_gates:` — all enabled by default,
+each independently toggleable. Gate warnings are non-blocking (`OL_WARN`), collected from the
+translate pipeline and surfaced in output metadata.
+
+```yaml
+quality_gates:
+  inline_tags: true      # Gate 1: verify inline tags preserved
+  terminology: true      # Gate 2: check glossary term consistency
+  length_ratio:
+    enabled: true        # Gate 3: source/target length ratio bounds
+    min: 0.5
+    max: 2.0
+  locale:
+    enabled: true        # Gate 4: locale conventions (dates, digits, units)
+    target_locale: "en-US"
 ```
 
 ## CLI Commands
@@ -169,7 +186,8 @@ ol-mcp
 
 | Tool | Description |
 |------|-------------|
-| `translate_md_text` | Translate markdown text directly |
+| `translate_md_text` | Translate markdown text directly. Returns JSON with `translated`, `source_lang`, `target_lang`, and optional `warnings` list when quality gates fire. |
+| `translate_xliff` | Translate an XLIFF file. Injects quality gate warnings as `<note from="OL">` elements in the output. |
 | `judge_text` | Evaluate translation quality |
 | `load_glossary` | Load a JSON glossary file |
 | `get_relevant_terms` | Extract relevant terms from text |
@@ -265,6 +283,7 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --json
 | **TM Integration** | hypomnema for translation memory lookups |
 | **TM/TB/SG Automation** | Pre-injection of TM matches + glossary terms for context-aware translation |
 | **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
+| **Quality Gates** | Non-blocking post-translation checks: inline tag parity, terminology consistency, length ratio (min/max bounds), locale conventions (date format, digit grouping, unit spelling). Failures produce `OL_WARN` output. |
 | **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
 ## Quality Assurance & Robustness
@@ -462,7 +481,20 @@ For detailed usage, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
 ### Environment Variables
 
-Configure your LLM provider API keys in your shell environment.
+Configure your LLM provider API keys and quality gate overrides in your shell environment.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ZHIPU_API_KEY` | (required) | API key for Zhipu AI (GLM models) |
+| `AGNES_API_KEY` | (required) | API key for Agnes AI |
+| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM |
+| `OPENCODE_GO_KEY` | (required) | API key for OPENCODE_GO provider |
+| `OPENCODE_GO_BASE_URL` | (required) | Base URL for OPENCODE_GO provider |
+| `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
+| `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |
+| `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |
+| `OL_LENGTH_RATIO_MAX` | `3.0` | Maximum length ratio for Gate 3 (source/target) |
+| `OL_TARGET_LOCALE` | `en-US` | Expected target locale for Gate 4 locale checks |
 
 ### Testing the Agent Integration
 

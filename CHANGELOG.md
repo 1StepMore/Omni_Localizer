@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OL#56 — Configurable post-translation quality gates** (`src/ol_post/quality_gates.py`): 4 gates (inline tag counts, terminology consistency, length ratio, locale conventions), `QualityGateConfig` schema, wired into CLI `translate-md`/`translate-xliff`/`batch` and MCP `translate_md_text`/`translate_xliff`; warnings emitted as HTML comments (MD) or `<note from="OL">` elements (XLIFF); env vars `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, `OL_TARGET_LOCALE`.
+
 - **Issue #44 §1 Glossary coverage report** (`src/ol_terminology/coverage.py`): new `format_coverage_report()` and `compute_coverage_stats()` (returns `CoverageStats` dataclass) post-translation statistics. Wraps the existing `verify_translation()` to produce a human-readable report: total terms, matched in source, unmatched, and match-type breakdown (Exact / Fuzzy >80% / Case-normalized). When `--coverage-threshold` is set and matched% falls below it, a `⚠ WARNING:` prefix is added. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. CLI: `--report-coverage` and `--coverage-threshold <0-100>` on both `ol translate-md` and `ol translate-xliff`. Non-blocking; informational only. No LLM, no network.
 
 - **Issue #44 §2 Polish grammar instructions** (`src/ol_xliff/polish.py:_build_polish_prompt`): extended the polish consistency-check prompt with 4 new rule categories — SPELLING (e.g. 'Carrierr' → 'Carrier'), GRAMMAR (subject-verb agreement, articles, prepositions, tense), NON-STANDARD EXPRESSION (calques like 'revenue balance' → 'break-even'), and REDUNDANCY (e.g. 'always been continuously' → 'been continuously'). Also added an explicit "preserve original style and terminology" instruction to prevent over-rewriting. Backward-compatible: existing `--polish` callers see the new rules in addition to the previous 4 (term inconsistency, missing conjunction, format, quote).
@@ -44,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Issue #29 — YAKE is the primary term extractor**: KeyBERT removed entirely from `ol_terminology.extractor`. YAKE is now the sole extractor (was the fallback). Removes `keybert` and `transformers` from `[ml]` optional dependencies. The `sentence-transformers` dep stays (used by `ol_tm/service.py` for TM semantic search). Also fixes a previously-undetected bug: CLI/MCP `extract-terms` were sorting with `reverse=True`, which selected LEAST relevant terms under YAKE (lower = more relevant). Now sorts with `reverse=False`.
 
 ### Fixed
+
+- **OL#53 — Polish pass guards against source-language residual revert** (`src/ol_xliff/polish.py`): In zh→en direction, skips corrections that would restore source-language text, preventing the polish pass from reverting translated content back to the source.
+
+- **OL#54 — Truncation detection extended to `finish_reason=stop`** (`src/ol_pool/router.py`, `src/ol_lqa/judge.py`): Three heuristics (trailing ellipsis, non-terminal punctuation on long inputs, `completion_tokens >= 90%` of `max_tokens`). `judge()` and `profile()` now fail-closed on `finish_reason=length`.
+
+- **OL#55 — XLIFF Level 1 repair normalizes raw XML tags back to placeholders** (`src/ol_xliff/repair/level1.py`): Raw LLM-emitted `<x/>`, `<bx/>`, `<ex/>` tags are normalized to placeholders; Level 4 safe fallback avoids duplicating bx/ex halves already restored by Level 3.
 
 - **Issue #31 — `extract-terms` produced noise on Chinese/Japanese docs**: Added a CJK-based post-processing filter in `ol_terminology.extractor.extract_terms()` that drops non-CJK terms when the input text contains CJK (Chinese `\u4e00-\u9fff` or Japanese kana `\u3040-\u309f\u30a0-\u30ff`). Pure English input is unaffected (regression guard). Also rejects single-character noise regardless of CJK content. Filtered out ~50% English noise on mixed-language docs (e.g., "API", "Gateway", "Service Mesh" in Chinese docs).
 
