@@ -52,6 +52,7 @@ class BatchProcessor:
         lqa_threshold: float = 7.0,
         lqa_max_retries: int = 2,
         quality_gates: QualityGateConfig | None = None,
+        self_reflect: bool = False,
     ) -> None:
         self._config = config
         self._pool = model_pool
@@ -66,6 +67,7 @@ class BatchProcessor:
         self._lqa_threshold = lqa_threshold
         self._lqa_max_retries = lqa_max_retries
         self._quality_gates = quality_gates
+        self._self_reflect = self_reflect
         self._logger = get_logger("batch.processor")
 
     async def process_batch(
@@ -266,6 +268,12 @@ class BatchProcessor:
                 input_path, original_text, repaired,
             )
 
+        if self._self_reflect and repaired:
+            from ol_xliff.self_reflect import self_reflect_md_text
+            repaired = await self_reflect_md_text(
+                repaired, self.src_lang, self.tgt_lang, self._pool,
+            )
+
         if (
             self.add_frontmatter
             and input_path.suffix == ".md"
@@ -321,6 +329,8 @@ class BatchProcessor:
             or qg.terminology
             or qg.length_ratio.enabled
             or qg.locale.enabled
+            or qg.cjk_residue
+            or qg.llm_markers
         )
         if not any_enabled:
             return []
@@ -337,6 +347,9 @@ class BatchProcessor:
                 length_ratio_max=qg.length_ratio.max,
                 locale_enabled=qg.locale.enabled,
                 target_locale=qg.locale.target_locale,
+                cjk_residue_enabled=qg.cjk_residue,
+                target_lang=self.tgt_lang,
+                llm_markers_enabled=qg.llm_markers,
             )
         except Exception as exc:
             self._logger.warning(
