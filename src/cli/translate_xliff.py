@@ -43,8 +43,11 @@ from ._shared import (
     OLQualityGateBlockedError,
     _enforce_file_size,
     ensure_output_dir,
+    had_translation_failures,
+    mark_translation_failure,
     output_json,
     precheck_api_keys,
+    reset_translation_failures,
     validate_input_file,
     warn_fake_llm_mode,
 )
@@ -257,6 +260,7 @@ async def _translate_xliff_pipelined(
                 f"({type(exc).__name__}: {str(exc)[:200]})"
             )
             translated = unit.source_text
+            mark_translation_failure()
             status = "transport_error"
             attempts = 1
             error_msg = f"{type(exc).__name__}: {str(exc)[:200]}"
@@ -650,6 +654,7 @@ def translate_xliff(
              "Ignored when --report-coverage is not set.",
     ),
 ) -> int:
+    reset_translation_failures()
     try:
         if log_format:
             os.environ["OMNI_LOG_FORMAT"] = log_format
@@ -821,6 +826,25 @@ def translate_xliff(
                     "Glossary Coverage Report: no glossary provided "
                     "(use --glossary <path> to enable coverage reporting)."
                 )
+
+        if had_translation_failures():
+            logger.warning(
+                "Some translation units failed — fell back to source text. "
+                "Exit code set to PIPELINE_ERROR."
+            )
+            if json_output:
+                output_json(
+                    False, str(input_path),
+                    error="Some translation units fell back to source text "
+                          "(all LLM providers failed for those units).",
+                )
+            else:
+                typer.echo(
+                    f"Translated with failures: {input_path.name} -> {output_file} "
+                    f"({src_lang} -> {tgt_lang}) — some units fell back to source text.",
+                    err=True,
+                )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
         output_file = output_path / Path(input).name
         if json_output:

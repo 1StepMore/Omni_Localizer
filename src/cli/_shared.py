@@ -23,6 +23,47 @@ logger = get_logger("cli")
 _interrupted = False
 
 
+def read_with_encoding(path: Path) -> str:
+    """Read a text file with automatic encoding detection.
+
+    Detection order:
+    1. BOM signature (UTF-16-LE, UTF-16-BE, UTF-8-SIG)
+    2. ``chardet`` if available and confidence >= 0.8
+    3. UTF-8 fallback
+
+    Args:
+        path: Path to the file to read.
+
+    Returns:
+        File contents as a decoded string.
+    """
+    raw = path.read_bytes()
+
+    # 1. BOM detection
+    if raw.startswith(b"\xff\xfe"):
+        return raw.decode("utf-16-le")
+    if raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16-be")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig")
+
+    # 2. Optional chardet detection
+    try:
+        import chardet  # noqa: PLC0415 — optional dependency
+
+        result = chardet.detect(raw)
+        if result.get("confidence", 0) >= 0.8 and result.get("encoding"):
+            try:
+                return raw.decode(result["encoding"])
+            except (LookupError, UnicodeDecodeError):
+                pass
+    except ImportError:
+        pass
+
+    # 3. UTF-8 fallback
+    return raw.decode("utf-8")
+
+
 def _sigint_handler(signum, frame):
     global _interrupted
     _interrupted = True
@@ -194,6 +235,31 @@ def precheck_api_keys(config_path: str | None) -> None:
         err=True,
     )
     raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
+
+# Translation failure tracking — set when a unit falls back to source text
+_had_translation_failures: bool = False
+
+
+def mark_translation_failure() -> None:
+    """Record that at least one translation unit fell back to source text.
+
+    Used by CLI handlers to exit with a non-zero code when all LLM providers
+    fail for any unit.
+    """
+    global _had_translation_failures
+    _had_translation_failures = True
+
+
+def had_translation_failures() -> bool:
+    """Return whether any translation unit fell back to source text."""
+    return _had_translation_failures
+
+
+def reset_translation_failures() -> None:
+    """Reset the failure flag (for test isolation between runs)."""
+    global _had_translation_failures
+    _had_translation_failures = False
 
 
 # Module-level guard to prevent duplicate warnings within a process

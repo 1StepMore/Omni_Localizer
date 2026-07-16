@@ -37,8 +37,12 @@ from ._shared import (
     _apply_fake_llm_seam,
     _enforce_file_size,
     ensure_output_dir,
+    had_translation_failures,
+    mark_translation_failure,
     output_json,
     precheck_api_keys,
+    read_with_encoding,
+    reset_translation_failures,
     validate_input_file,
     warn_fake_llm_mode,
 )
@@ -204,7 +208,7 @@ def _load_env_for_cli() -> None:
 def _load_dotenv(env_path: Path) -> None:
     """Parse and export .env file without blocking on missing keys."""
     try:
-        content = env_path.read_text()
+        content = read_with_encoding(env_path)
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -321,6 +325,7 @@ async def _translate_one_unit(
             f"{str(translate_err)[:100]})"
         )
         translated = unit.source_text
+        mark_translation_failure()
         status = "exception"
         error_msg = f"{type(translate_err).__name__}: {str(translate_err)[:200]}"
         logger.warning(
@@ -335,6 +340,7 @@ async def _translate_one_unit(
             f"({translated!r}); falling back to OPP source for this unit."
         )
         translated = unit.source_text
+        mark_translation_failure()
 
     latency_ms = (time.monotonic() - start) * 1000.0
     # Structured per-unit log so concurrent output stays correlatable
@@ -438,6 +444,7 @@ async def _translate_units_concurrent(
                 f"OL_WARN: TRANSLATION_FAILED ({type(result).__name__}: "
                 f"{str(result)[:100]})"
             )
+            mark_translation_failure()
             final.append(_UnitTranslationResult(
                 unit_id=unit.unit_id,
                 translated=unit.source_text,
@@ -553,6 +560,7 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
+                mark_translation_failure()
         else:
             try:
                 translated = await pool.translate(
@@ -565,6 +573,7 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
+                mark_translation_failure()
 
         if shield_map:
             repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
@@ -832,6 +841,7 @@ async def _translate_md_by_paragraph(
                 return idx, repaired
             except Exception as e:
                 logger.warning(f"Para {idx} translation failed: {str(e)[:80]}")
+                mark_translation_failure()
                 if _show_progress:
                     async with _para_lock:
                         _para_count[0] += 1
@@ -1034,6 +1044,7 @@ def translate_md(
              "timestamp, level, module fields.",
     ),
 ) -> int:
+    reset_translation_failures()
     try:
         if log_format:
             os.environ["OMNI_LOG_FORMAT"] = log_format
@@ -1228,6 +1239,25 @@ def translate_md(
                     "Glossary Coverage Report: no glossary provided "
                     "(use --glossary <path> to enable coverage reporting)."
                 )
+
+        if had_translation_failures():
+            logger.warning(
+                "Some translation units failed — fell back to source text. "
+                "Exit code set to PIPELINE_ERROR."
+            )
+            if json_output:
+                output_json(
+                    False, str(input_path),
+                    error="Some translation units fell back to source text "
+                          "(all LLM providers failed for those units).",
+                )
+            else:
+                typer.echo(
+                    f"Translated with failures: {input_path.name} -> {output_file} "
+                    f"({src} -> {tgt}) — some units fell back to source text.",
+                    err=True,
+                )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
         if json_output:
             actual_output = output_path / input_path.name

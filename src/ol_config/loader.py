@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 
+from cli._shared import read_with_encoding
 from ol_config.schema import ProjectConfig
 from ol_logging.core import get_logger
 from ol_terminology.glossary import load_glossary_from_path
@@ -63,7 +64,7 @@ def _load_env_file() -> None:
     """Load environment variables from .env file if it exists."""
     env_file = Path(__file__).parent.parent.parent / ".env"
     if env_file.exists():
-        for line in env_file.read_text().splitlines():
+        for line in read_with_encoding(env_file).splitlines():
             if "=" in line and not line.startswith("#"):
                 k, _, v = line.partition("=")
                 os.environ.setdefault(k.strip(), v.strip())
