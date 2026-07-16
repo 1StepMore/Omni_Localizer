@@ -18,18 +18,18 @@ if TYPE_CHECKING:
     from ol_retry.retry import RetryManager
     from ol_terminology import Glossary
 
-from cli.cache import (
+from .cache import (
     _cache_root,
     _check_cache,
     _clear_ol_cache,
     _write_cache,
 )
-from cli.frontmatter import (
+from .frontmatter import (
     _build_xliff_header_note,
     _extract_request_id,
     _inject_xliff_header,
 )
-from cli.translate_md import (
+from .translate_md import (
     _UnitTranslationResult,
     _apply_glossary_max_terms,
     _apply_post_translate_restoration,
@@ -38,7 +38,7 @@ from cli.translate_md import (
     _load_glossary_or_none,
     _translate_units_concurrent,
 )
-from cli._shared import (
+from ._shared import (
     ExitCode,
     OLQualityGateBlockedError,
     _enforce_file_size,
@@ -49,7 +49,7 @@ from cli._shared import (
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
-from ol_lqa.quality_gates import run_quality_gates
+from ol_lqa.quality_gates import format_warning_summary, run_quality_gates
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")

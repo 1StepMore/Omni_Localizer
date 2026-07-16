@@ -1,9 +1,20 @@
 """YAML frontmatter generation and related helpers for OL CLI."""
 from __future__ import annotations
 
+import os as _os
 import re as _re
 from datetime import UTC, datetime
 from pathlib import Path
+
+
+_FAKE_TIMESTAMP = "2026-01-01T00:00:00Z"
+
+
+def _get_timestamp() -> str:
+    """Return a deterministic timestamp under FAKE_LLM for reproducible tests."""
+    if _os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        return _FAKE_TIMESTAMP
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _escape_yaml_value(value: str) -> str:
@@ -45,7 +56,7 @@ def _escape_xml(value: str) -> str:
 
 def _get_ol_version() -> str:
     """Get OL version from module-level __version__."""
-    from ol_cli import __version__
+    from ._shared import __version__
     return __version__
 
 
@@ -82,7 +93,7 @@ def _generate_frontmatter(
     target_lang = _validate_lang_code(target_lang)
     escaped_filename = _escape_yaml_value(original_filename)
 
-    timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    timestamp = _get_timestamp()
 
     frontmatter_lines = [
         "---",
@@ -126,7 +137,7 @@ def _generate_skip_frontmatter(
     target_lang = _validate_lang_code(target_lang)
     escaped_filename = _escape_yaml_value(original_filename)
 
-    timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    timestamp = _get_timestamp()
 
     frontmatter_lines = [
         "---",

@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from cli._shared import ExitCode, validate_input_file, warn_fake_llm_mode
+from ._shared import ExitCode, validate_input_file, warn_fake_llm_mode
 from ol_style.cache import ProfileCache
 from ol_style.doc_profiler import profile_document
 

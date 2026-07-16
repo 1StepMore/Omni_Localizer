@@ -8,7 +8,7 @@ import json
 
 import typer
 
-from cli._shared import ExitCode
+from ._shared import ExitCode
 
 
 def ping() -> None:

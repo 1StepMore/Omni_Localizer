@@ -222,3 +222,14 @@ def warn_fake_llm_mode() -> None:
             err=True,
         )
         _fake_llm_warned = True
+
+
+# ---------------------------------------------------------------------------
+# __version__ — moved here from ol_cli.py to break circular import
+# (ol_cli → cli → frontmatter → ol_cli)
+# ---------------------------------------------------------------------------
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("omni-localizer")
+except Exception:
+    __version__ = "0.0.0+unknown"

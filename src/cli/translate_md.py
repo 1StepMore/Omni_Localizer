@@ -19,20 +19,20 @@ if TYPE_CHECKING:
     from ol_retry.retry import RetryManager
     from ol_terminology import Glossary
 
-from cli.cache import (
+from .cache import (
     _cache_root,
     _check_cache,
     _clear_ol_cache,
     _write_cache,
     _glossary_logger,
 )
-from cli.frontmatter import (
+from .frontmatter import (
     _extract_opp_metadata,
     _generate_frontmatter,
     _get_ol_version,
     _validate_lang_code,
 )
-from cli._shared import (
+from ._shared import (
     ExitCode,
     _apply_fake_llm_seam,
     _enforce_file_size,
@@ -852,12 +852,17 @@ async def _translate_md_by_paragraph(
         full = await polish_md_text(full, src, tgt, pool)
 
     if add_frontmatter:
-        rid = hashlib.md5(f"{input_path}{datetime.now(UTC)}".encode()).hexdigest()[:12]
+        from .frontmatter import _FAKE_TIMESTAMP, _get_timestamp
+
+        ts = _get_timestamp()
+        fake = os.environ.get("OMNI_TEST_FAKE_LLM") == "1"
+        ts_for_hash = _FAKE_TIMESTAMP if fake else datetime.now(UTC)
+        rid = hashlib.md5(f"{input_path}{ts_for_hash}".encode()).hexdigest()[:12]
         header = (
             f"---\nsource_lang: {src}\ntarget_lang: {tgt}\n"
             f"original_file: {input_path.name}\nprocessor: \"OL\"\n"
             f"version: \"0.2.6\"\n"
-            f"translated_at: {datetime.now(UTC).isoformat()}\n"
+            f"translated_at: {ts}\n"
             f"request_id: {rid}\n---\n"
         )
         full = header + full

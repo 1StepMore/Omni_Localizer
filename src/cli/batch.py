@@ -11,7 +11,7 @@ import typer
 if TYPE_CHECKING:
     pass
 
-from cli._shared import (
+from ._shared import (
     ExitCode,
     ensure_output_dir,
     output_json,

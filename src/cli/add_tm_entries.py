@@ -16,7 +16,7 @@ from typing import Optional
 
 import typer
 
-from cli._shared import ExitCode
+from ._shared import ExitCode
 
 
 def add_tm_entries(
