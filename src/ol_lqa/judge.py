@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import asyncio
 from typing import Any
 
 from ol_core.dataclass import EvaluationResult, RUBRIC_WEIGHTS
 
+from ol_lqa.comet import COMETService
+
 
 class JudgeService:
-    def __init__(self, pass_threshold: float = 7.0, model_pool=None) -> None:
+    def __init__(self, pass_threshold: float = 7.0, model_pool=None, scorer: COMETService | None = None) -> None:
         self._pass_threshold = pass_threshold
         self._model_pool = model_pool
+        self._scorer = scorer
 
     @staticmethod
     def _rescale(raw: float) -> float:
@@ -46,7 +51,7 @@ class JudgeService:
                     temperature=self._JUDGE_TEMPERATURE,
                 )
             except Exception as pool_err:  # expected — return safe fallback result
-                return EvaluationResult(
+                result = EvaluationResult(
                     unit_id=unit_id,
                     scorer_scores={},
                     judge_scores={
@@ -59,6 +64,12 @@ class JudgeService:
                     format_errors=[],
                     warnings=[f"LQA judge error ({type(pool_err).__name__}: {pool_err})"],
                 )
+                if self._scorer is not None:
+                    scorer_result = await self._scorer.score_and_evaluate(source, target, unit_id, source_lang, target_lang)
+                    result.scorer_scores.update(scorer_result.scorer_scores)
+                    result.mqm_spans = scorer_result.mqm_spans
+                return result
+
             judge_scores = self._remap_llm_fields(result)
             format_errors = result.get("format_errors", [])
             warnings: list[str] = []
@@ -67,7 +78,7 @@ class JudgeService:
                 warnings.append(
                     f"Judge score {overall:.1f} below threshold {self._pass_threshold}"
                 )
-            return EvaluationResult(
+            result = EvaluationResult(
                 unit_id=unit_id,
                 scorer_scores={},
                 judge_scores=judge_scores,
@@ -75,6 +86,11 @@ class JudgeService:
                 format_errors=format_errors,
                 warnings=warnings,
             )
+            if self._scorer is not None:
+                scorer_result = await self._scorer.score_and_evaluate(source, target, unit_id, source_lang, target_lang)
+                result.scorer_scores.update(scorer_result.scorer_scores)
+                result.mqm_spans = scorer_result.mqm_spans
+            return result
 
         loop = asyncio.get_event_loop()
         try:
@@ -85,7 +101,7 @@ class JudgeService:
                 target,
             )
         except Exception as sync_err:  # expected — return safe fallback result
-            return EvaluationResult(
+            result = EvaluationResult(
                 unit_id=unit_id,
                 scorer_scores={},
                 judge_scores={
@@ -98,13 +114,18 @@ class JudgeService:
                 format_errors=[],
                 warnings=[f"LQA sync judge error ({type(sync_err).__name__}: {sync_err})"],
             )
+            if self._scorer is not None:
+                scorer_result = await self._scorer.score_and_evaluate(source, target, unit_id, source_lang, target_lang)
+                result.scorer_scores.update(scorer_result.scorer_scores)
+                result.mqm_spans = scorer_result.mqm_spans
+            return result
 
         warnings = []
         overall = self._compute_overall_score(scores)
         if overall < self._pass_threshold:
             warnings.append(f"Judge score {overall:.1f} below threshold {self._pass_threshold}")
 
-        return EvaluationResult(
+        result = EvaluationResult(
             unit_id=unit_id,
             scorer_scores={},
             judge_scores=scores,
@@ -112,6 +133,11 @@ class JudgeService:
             format_errors=[],
             warnings=warnings,
         )
+        if self._scorer is not None:
+            scorer_result = await self._scorer.score_and_evaluate(source, target, unit_id, source_lang, target_lang)
+            result.scorer_scores.update(scorer_result.scorer_scores)
+            result.mqm_spans = scorer_result.mqm_spans
+        return result
 
     # WAVE 4 (L-C7): replaced the naive mock scorer (length-only heuristic)
     # with a character n-gram overlap heuristic that actually considers
