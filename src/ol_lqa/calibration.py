@@ -84,8 +84,37 @@ def average_inter_judge_agreement(results: Sequence[MultiJudgeResult]) -> float:
 
 
 @dataclass
+class CalibrationThresholdResult:
+    """Result for a single threshold in a grid search."""
+
+    threshold_1_5: float  # threshold on 1-5 scale
+    threshold_0_10: float  # mapped to 0-10 scale for runtime
+    spearman: float
+    agreement: float
+    passed: bool
+
+
+@dataclass
+class CalibrationGridResult:
+    """Result of a grid search across multiple thresholds."""
+
+    results: list[CalibrationThresholdResult] = field(default_factory=list)
+    recommended_threshold_0_10: float = 7.0  # default fallback
+    recommended_threshold_1_5: float = 3.5  # default fallback
+    best_result: CalibrationThresholdResult | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "grid_results": [r.__dict__ for r in self.results],
+            "recommended_threshold_0_10": self.recommended_threshold_0_10,
+            "recommended_threshold_1_5": self.recommended_threshold_1_5,
+            "best_result": self.best_result.__dict__ if self.best_result else None,
+        }
+
+
+@dataclass
 class CalibrationReport:
-    """Result of a calibration run."""
+    """Result of a calibration run with configurable thresholds."""
 
     spearman_per_dimension: dict[str, float] = field(default_factory=dict)
     average_spearman: float = 0.0
@@ -94,8 +123,25 @@ class CalibrationReport:
     passed: bool = False
     failures: list[str] = field(default_factory=list)
 
-    SPEARMAN_THRESHOLD = 0.7
-    AGREEMENT_THRESHOLD = 0.6
+    def __init__(
+        self,
+        spearman_threshold: float = 0.7,
+        agreement_threshold: float = 0.6,
+        num_docs: int = 0,
+        spearman_per_dimension: dict[str, float] | None = None,
+        average_spearman: float = 0.0,
+        average_inter_judge_agreement: float = 0.0,
+        passed: bool = False,
+        failures: list[str] | None = None,
+    ):
+        self.spearman_per_dimension = spearman_per_dimension or {}
+        self.average_spearman = average_spearman
+        self.average_inter_judge_agreement = average_inter_judge_agreement
+        self.num_docs = num_docs
+        self.passed = passed
+        self.failures = failures or []
+        self.SPEARMAN_THRESHOLD = spearman_threshold
+        self.AGREEMENT_THRESHOLD = agreement_threshold
 
     def evaluate(self) -> None:
         self.passed = (
@@ -130,6 +176,8 @@ class CalibrationReport:
 def calibrate(
     judge_results: Sequence[MultiJudgeResult],
     reference_scores: Sequence[dict[str, int]],
+    spearman_threshold: float = 0.7,
+    agreement_threshold: float = 0.6,
 ) -> CalibrationReport:
     """Run calibration against reference LLM scores.
 
@@ -137,6 +185,8 @@ def calibrate(
         judge_results: multi-judge results, one per document
         reference_scores: reference LLM scores, one dict per document
             with keys: adequacy, fluency, terminology, format (1-5 each)
+        spearman_threshold: minimum acceptable Spearman correlation (default 0.7)
+        agreement_threshold: minimum acceptable inter-judge agreement (default 0.6)
 
     Returns:
         CalibrationReport with pass/fail and metrics.
@@ -147,7 +197,11 @@ def calibrate(
     if n == 0:
         raise ValueError("Need at least 1 document to calibrate")
 
-    report = CalibrationReport(num_docs=n)
+    report = CalibrationReport(
+        num_docs=n,
+        spearman_threshold=spearman_threshold,
+        agreement_threshold=agreement_threshold,
+    )
 
     for dim in DIMENSIONS:
         judge_dim_scores = []
@@ -162,3 +216,56 @@ def calibrate(
     report.average_inter_judge_agreement = average_inter_judge_agreement(judge_results)
     report.evaluate()
     return report
+
+
+def grid_search_calibrate(
+    judge_results: Sequence[MultiJudgeResult],
+    reference_scores: Sequence[dict[str, int]],
+    thresholds_1_5: Sequence[float] | None = None,
+) -> CalibrationGridResult:
+    """Run grid search across multiple thresholds to find optimal value.
+
+    Args:
+        judge_results: multi-judge results, one per document
+        reference_scores: reference LLM scores, one dict per document (1-5)
+        thresholds_1_5: thresholds to sweep on 1-5 scale.
+            Default: [2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
+
+    Returns:
+        CalibrationGridResult with per-threshold metrics and recommendation.
+    """
+    if thresholds_1_5 is None:
+        thresholds_1_5 = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
+
+    grid = CalibrationGridResult()
+
+    for thresh_1_5 in thresholds_1_5:
+        # Map 1-5 to 0-10: threshold_0_10 = threshold_1_5 * 2.0
+        thresh_0_10 = round(thresh_1_5 * 2.0, 1)
+
+        report = calibrate(
+            judge_results,
+            reference_scores,
+            spearman_threshold=thresh_1_5,
+            agreement_threshold=thresh_1_5,
+        )
+        tr = CalibrationThresholdResult(
+            threshold_1_5=thresh_1_5,
+            threshold_0_10=thresh_0_10,
+            spearman=report.average_spearman,
+            agreement=report.average_inter_judge_agreement,
+            passed=report.passed,
+        )
+        grid.results.append(tr)
+
+    # Find best: highest threshold that still passes (balanced precision/recall)
+    passing = [r for r in grid.results if r.passed]
+    if passing:
+        # Recommend median of passing thresholds
+        mid = len(passing) // 2
+        best = passing[mid]
+        grid.best_result = best
+        grid.recommended_threshold_0_10 = best.threshold_0_10
+        grid.recommended_threshold_1_5 = best.threshold_1_5
+
+    return grid
