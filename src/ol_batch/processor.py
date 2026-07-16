@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cli._shared import is_interrupted
 from ol_batch.config import BatchConfig, BatchResult
 from ol_cli import (
     _generate_frontmatter,
@@ -100,11 +101,16 @@ class BatchProcessor:
         failed: list[tuple[Path, str]] = []
 
         try:
-            tasks = [self._process_single_file(file, output_dir) for file in files]
+            tasks = []
+            for file in files:
+                if is_interrupted():
+                    self._logger.warning("Ctrl+C received — stopping batch enqueue")
+                    break
+                tasks.append(self._process_single_file(file, output_dir))
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for file, result in zip(files, results):
+            for file, result in zip(files[:len(tasks)], results):
                 if isinstance(result, Exception):
                     error_msg = str(result)
                     # Unwrap ExceptionGroup if present

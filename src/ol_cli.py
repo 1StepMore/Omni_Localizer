@@ -26,14 +26,7 @@ def _get_ol_version() -> str:
     return __version__
 
 
-# Global interrupt flag for graceful shutdown
-_interrupted = False
 
-
-def _sigint_handler(signum, frame):
-    global _interrupted
-    _interrupted = True
-    typer.echo("\nReceived Ctrl+C - finishing in-flight files, no new starts...")
 
 
 app = typer.Typer(
@@ -56,6 +49,7 @@ from cli import *  # noqa: E402, F401, F403
 from cli._shared import (  # noqa: E402,F401
     ExitCode,
     _apply_fake_llm_seam,
+    _setup_signal_handler,
     ensure_output_dir,
     output_json,
     validate_input_file,
@@ -136,12 +130,14 @@ app.command()(profile_doc)
 def main(
     version: bool | None = typer.Option(None, "--version", is_eager=True, help="Show version"),
 ) -> None:
+    _setup_signal_handler()
     if version:
         typer.echo(f"ol version {__version__}")
         raise typer.Exit()
 
 
 def main_entry() -> int:
+    _setup_signal_handler()
     app()
     return ExitCode.SUCCESS
 
