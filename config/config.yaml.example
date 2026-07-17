@@ -1,0 +1,87 @@
+# =============================================================================
+# OL 配置文件模板 — 将此文件复制为 local.yaml 并填写您的 API 密钥
+#
+# 使用方式：
+#   cp config/config.yaml.example config/local.yaml
+#   然后编辑 config/local.yaml，填入您的 API 密钥
+#
+# 完整配置参考：config/default.yaml
+# 环境变量参考：../.env.example
+# =============================================================================
+
+project_id: "my-project"
+source_lang: "zh"           # 源语言
+target_lang: "en"           # 目标语言
+glossary_path: null          # 术语表 JSON 文件路径（可选）
+max_xliff_concurrent: 5      # XLIFF 最大并发翻译数
+
+# =============================================================================
+# LLM 模型池
+#
+# 每个角色（translation / judging / restoration）至少配置一个模型。
+# priority: 1 = 最高优先级（首选模型）
+# api_key 支持 ${ENV_VAR} 语法或直接填写密钥字符串
+# 如需切换模型，修改对应角色的 model 和 api_key 即可
+# =============================================================================
+llm_pool:
+  # ---- 翻译模型 ----
+  # 用于实际的文档翻译。建议使用速度快、质量稳定的模型。
+  translation:
+    - provider: "openai"
+      model: "glm-4-flash"
+      priority: 1
+      role: "translation"
+      api_key: "<your-zhipu-api-key>"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
+
+  # ---- 评判模型 ----
+  # 用于翻译质量评分（LQA）。建议使用与翻译模型不同的提供商，避免系统性偏差。
+  judging:
+    - provider: "openai"
+      model: "agnes-2.0-flash"
+      priority: 1
+      role: "judging"
+      api_key: "<your-agnes-api-key>"
+      base_url: "https://apihub.agnes-ai.com/v1"
+      timeout: 120.0
+
+  # ---- 修复模型 ----
+  # 用于翻译后的占位符修复（Level 3 LLM restoration）。
+  restoration:
+    - provider: "openai"
+      model: "glm-4-flash"
+      priority: 1
+      role: "restoration"
+      api_key: "<your-zhipu-api-key>"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
+
+  # ---- 风格分析模型（可选） ----
+  # 用于文档风格分析（StyleGuide profiling）。如果不需要 profile-doc 功能可省略。
+  profiling:
+    - provider: "openai"
+      model: "glm-4-flash"
+      priority: 1
+      role: "profiling"
+      api_key: "<your-zhipu-api-key>"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
+
+# =============================================================================
+# 质量门（Quality Gates）
+#
+# 翻译完成后自动运行的检查项。默认全部开启，可单独关闭。
+# 完整列表参见 config/default.yaml 的 quality_gates 段。
+# =============================================================================
+# quality_gates:
+#   inline_tags: true
+#   terminology: true
+#   source_script_check: true
+#   length_ratio:
+#     enabled: true
+#     min: 0.5
+#     max: 2.0
+#   locale:
+#     enabled: true
+#     target_locale: "en-US"
