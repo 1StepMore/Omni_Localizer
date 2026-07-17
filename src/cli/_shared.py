@@ -67,7 +67,7 @@ def read_with_encoding(path: Path) -> str:
 def _sigint_handler(signum, frame):
     global _interrupted
     _interrupted = True
-    typer.echo("\nReceived Ctrl+C - finishing in-flight files, no new starts...")
+    os._exit(ExitCode.INTERRUPTED)
 
 
 class ExitCode:
