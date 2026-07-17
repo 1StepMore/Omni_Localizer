@@ -328,19 +328,22 @@ async def _translate_xliff_async(
     styleguide: str | None = None,
     polish: bool = False,
     self_reflect: bool = False,
+    scorer_type: str = "none",
+    pool: 'ModelPool | None' = None,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
     warn_fake_llm_mode()
 
-    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
-        # triggering litellm's heavy import chain.
-        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
-        pool = cast(object, _FakeModelPool())
-    else:
-        from ol_pool.router import ModelPool
-        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+    if pool is None:
+        if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+            # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+            # triggering litellm's heavy import chain.
+            from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
+            pool = cast(object, _FakeModelPool())
+        else:
+            from ol_pool.router import ModelPool
+            pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     from ol_config.loader import load_config
     from ol_xliff.parser import XliffParser
@@ -354,9 +357,30 @@ async def _translate_xliff_async(
     judge = None
     retry_mgr = None
     if cfg.enable_lqa:
+        _scorer_instance = None
+        if scorer_type and scorer_type != "none":
+            if scorer_type == "bleu":
+                from ol_lqa.scorer import ScorerService
+                _scorer_instance = ScorerService()
+            elif scorer_type == "comet":
+                try:
+                    from ol_lqa.comet import COMETService
+                    _scorer_instance = COMETService()
+                except Exception:
+                    import logging
+                    logging.getLogger("cli").warning(
+                        "COMETService not available (unbabel-comet not installed). "
+                        "Falling back to no scorer."
+                    )
+                    _scorer_instance = None
+
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
+        judge = JudgeService(
+            pass_threshold=cfg.lqa_threshold,
+            model_pool=pool,
+            scorer=_scorer_instance,
+        )
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
@@ -639,6 +663,15 @@ def translate_xliff(
         help="After translation and quality gates, run an LLM self-reflection "
              "pass to let the model review and improve its own output (Gate 8).",
     ),
+    scorer: str = typer.Option(
+        "none", "--scorer",
+        help="Scorer to use: 'bleu' (sacrebleu BLEU), 'comet' (XCOMET-XL, "
+             "requires unbabel-comet), 'none' (default)",
+    ),
+    no_scorer: bool = typer.Option(
+        False, "--no-scorer",
+        help="Disable scorer (overrides --scorer)",
+    ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
         help="After translation, print a glossary coverage report "
@@ -755,12 +788,16 @@ def translate_xliff(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
+        # OL#72: resolve scorer — --no-scorer overrides --scorer.
+        scorer_type = "none" if no_scorer else scorer
+
         asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
             glossary=loaded_glossary,
             styleguide=styleguide_content,
             polish=polish,
             self_reflect=self_reflect,
+            scorer_type=scorer_type,
         ))
 
         # A12.4: post-translate restoration runs after asyncio.run so
@@ -827,6 +864,8 @@ def translate_xliff(
                     "(use --glossary <path> to enable coverage reporting)."
                 )
 
+        output_file = output_path / Path(input).name
+
         if had_translation_failures():
             logger.warning(
                 "Some translation units failed — fell back to source text. "
@@ -845,8 +884,6 @@ def translate_xliff(
                     err=True,
                 )
             raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
-
-        output_file = output_path / Path(input).name
         if json_output:
             output_json(True, str(input_path), str(output_file), src_lang, tgt_lang)
         else:

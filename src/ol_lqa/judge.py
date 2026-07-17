@@ -5,11 +5,9 @@ from typing import Any
 
 from ol_core.dataclass import EvaluationResult, RUBRIC_WEIGHTS
 
-from ol_lqa.comet import COMETService
-
 
 class JudgeService:
-    def __init__(self, pass_threshold: float = 7.0, model_pool=None, scorer: COMETService | None = None) -> None:
+    def __init__(self, pass_threshold: float = 7.0, model_pool=None, scorer: Any = None) -> None:
         self._pass_threshold = pass_threshold
         self._model_pool = model_pool
         self._scorer = scorer

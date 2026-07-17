@@ -10,7 +10,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ol_pool.router import ModelPool
 
 _logger = logging.getLogger(__name__)
 
@@ -39,7 +42,7 @@ from ol_config.loader import load_config
     "Translate multiple texts in parallel.",
 )
 @mcp_error_boundary
-async def batch_translate_texts(params: BatchTranslateInput) -> str:
+async def batch_translate_texts(params: BatchTranslateInput, pool: 'ModelPool | None' = None) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
@@ -71,8 +74,9 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
             except Exception as e:  # expected — glossary load is best-effort
                 warnings.append(f"Glossary load failed: {e}")
 
-    from ol_pool.router import ModelPool  # noqa: PLC0415
-    pool = ModelPool.get_instance(config_path)
+    if pool is None:
+        from ol_pool.router import ModelPool  # noqa: PLC0415
+        pool = ModelPool.get_instance(config_path)
     repair_pipeline = MDRepairPipeline()
 
     concurrency = max(1, min(getattr(params, "concurrency", 5), 20))

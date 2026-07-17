@@ -6,7 +6,10 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ol_pool.router import ModelPool
 
 _logger = logging.getLogger(__name__)
 
@@ -45,6 +48,7 @@ async def _run_translate_xliff_async(
     styleguide_path: str | None = None,
     polish: bool = False,
     self_reflect: bool = False,
+    pool: 'ModelPool | None' = None,
 ) -> None:
     """Background coroutine for async translate_xliff. Updates task tracker."""
     try:
@@ -115,8 +119,9 @@ async def _run_translate_xliff_async(
             )
             return
 
-        from ol_pool.router import ModelPool  # noqa: PLC0415
-        pool = ModelPool.get_instance(resolved_config)
+        if pool is None:
+            from ol_pool.router import ModelPool  # noqa: PLC0415
+            pool = ModelPool.get_instance(resolved_config)
         repair_pipeline = XLIFFRepairPipeline()
         warnings_per_unit: dict[str, list[str]] = {}
 
@@ -226,7 +231,7 @@ async def _run_translate_xliff_async(
     "Translate an XLIFF file (writes <target> elements to the output file).",
 )
 @mcp_error_boundary
-async def translate_xliff(params: TranslateXliffInput) -> str:
+async def translate_xliff(params: TranslateXliffInput, pool: 'ModelPool | None' = None) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
@@ -249,6 +254,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
             styleguide_path=params.styleguide_path,
             polish=params.polish,
             self_reflect=params.self_reflect,
+            pool=pool,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -323,8 +329,9 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 ensure_ascii=False,
             )
 
-        from ol_pool.router import ModelPool  # noqa: PLC0415
-        pool = ModelPool.get_instance(config_path)
+        if pool is None:
+            from ol_pool.router import ModelPool  # noqa: PLC0415
+            pool = ModelPool.get_instance(config_path)
         repair_pipeline = XLIFFRepairPipeline()
 
         warnings_per_unit: dict[str, list[str]] = {}

@@ -8,7 +8,10 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ol_pool.router import ModelPool
 
 _logger = logging.getLogger(__name__)
 
@@ -79,6 +82,7 @@ async def _translate_single(
     no_styleguide: bool = False,
     polish: bool = False,
     self_reflect: bool = False,
+    pool: 'ModelPool | None' = None,
 ) -> tuple[str, list[str]]:
     """Translate a single text through shield → translate → repair → unshield."""
     warnings: list[str] = []
@@ -118,8 +122,9 @@ async def _translate_single(
                 style_guide=styleguide_section,
             )
 
-        from ol_pool.router import ModelPool  # noqa: PLC0415
-        pool = ModelPool.get_instance(config_path)
+        if pool is None:
+            from ol_pool.router import ModelPool  # noqa: PLC0415
+            pool = ModelPool.get_instance(config_path)
         translated = await pool.translate(shielded, source_lang, target_lang, context)
 
         if shield_map:
@@ -166,6 +171,7 @@ async def _run_translate_md_async(
     no_styleguide: bool = False,
     polish: bool = False,
     self_reflect: bool = False,
+    pool: 'ModelPool | None' = None,
 ) -> None:
     """Background coroutine for async translate_md_text. Updates task tracker."""
     try:
@@ -193,6 +199,7 @@ async def _run_translate_md_async(
             no_styleguide=no_styleguide,
             polish=polish,
             self_reflect=self_reflect,
+            pool=pool,
         )
 
         # Post-translation quality gates (Issue #56)
@@ -247,7 +254,7 @@ async def _run_translate_md_async(
     "Translate markdown text directly without file I/O.",
 )
 @mcp_error_boundary
-async def translate_md_text(params: TranslateInput) -> str:
+async def translate_md_text(params: TranslateInput, pool: 'ModelPool | None' = None) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
@@ -274,6 +281,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             no_styleguide=params.no_styleguide,
             polish=params.polish,
             self_reflect=params.self_reflect,
+            pool=pool,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -332,6 +340,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             no_styleguide=params.no_styleguide,
             polish=params.polish,
             self_reflect=params.self_reflect,
+            pool=pool,
         )
 
         # Post-translation quality gates (Issue #56)

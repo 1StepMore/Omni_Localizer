@@ -473,21 +473,24 @@ async def _translate_md_async(
     styleguide: str | None = None,
     polish: bool = False,
     self_reflect: bool = False,
+    scorer_type: str = "none",
+    pool: 'ModelPool | None' = None,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
     # The glossary param may be None (no glossary configured).
     warn_fake_llm_mode()
 
-    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
-        # triggering litellm's heavy import chain.
-        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
-        pool = cast(object, _FakeModelPool())
-        _apply_fake_llm_seam()
-    else:
-        from ol_pool.router import ModelPool
-        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+    if pool is None:
+        if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+            # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+            # triggering litellm's heavy import chain.
+            from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
+            pool = cast(object, _FakeModelPool())
+            _apply_fake_llm_seam()
+        else:
+            from ol_pool.router import ModelPool
+            pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     from ol_config.loader import load_config
     cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
@@ -503,9 +506,30 @@ async def _translate_md_async(
     judge = None
     retry_mgr = None
     if cfg.enable_lqa:
+        _scorer_instance = None
+        if scorer_type and scorer_type != "none":
+            if scorer_type == "bleu":
+                from ol_lqa.scorer import ScorerService
+                _scorer_instance = ScorerService()
+            elif scorer_type == "comet":
+                try:
+                    from ol_lqa.comet import COMETService
+                    _scorer_instance = COMETService()
+                except Exception:
+                    import logging
+                    logging.getLogger("cli").warning(
+                        "COMETService not available (unbabel-comet not installed). "
+                        "Falling back to no scorer."
+                    )
+                    _scorer_instance = None
+
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
+        judge = JudgeService(
+            pass_threshold=cfg.lqa_threshold,
+            model_pool=pool,
+            scorer=_scorer_instance,
+        )
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
@@ -1023,6 +1047,15 @@ def translate_md(
         help="After translation and quality gates, run an LLM self-reflection "
              "pass to let the model review and improve its own output (Gate 8).",
     ),
+    scorer: str = typer.Option(
+        "none", "--scorer",
+        help="Scorer to use: 'bleu' (sacrebleu BLEU), 'comet' (XCOMET-XL, "
+             "requires unbabel-comet), 'none' (default)",
+    ),
+    no_scorer: bool = typer.Option(
+        False, "--no-scorer",
+        help="Disable scorer (overrides --scorer)",
+    ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
         help="After translation, print a glossary coverage report "
@@ -1042,6 +1075,11 @@ def translate_md(
         help="Log output format: 'console' (default) or 'json'. "
              "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
              "timestamp, level, module fields.",
+    ),
+    images_json: str | None = typer.Option(
+        None, "--images-json",
+        help="Path to images.json file (e.g., from OPP extraction). "
+             "Copied to output directory alongside translated .md.",
     ),
 ) -> int:
     reset_translation_failures()
@@ -1128,6 +1166,9 @@ def translate_md(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
+        # OL#72: resolve scorer — --no-scorer overrides --scorer.
+        scorer_type = "none" if no_scorer else scorer
+
         # A6: cache check before any expensive LLM work.
         if _check_cache(
             input_path, output_path, config, no_cache=no_cache,
@@ -1143,6 +1184,25 @@ def translate_md(
             polish=polish,
         ):
             cached_output = output_path / input_path.name
+
+            # Forward images.json to output directory (OL#73) — cache hit path
+            _v_images_json_src: Path | None = None
+            if images_json:
+                _v_images_json_src = Path(images_json)
+            else:
+                _v_auto = input_path.with_stem(input_path.stem + "_images").with_suffix(".json")
+                if _v_auto.exists():
+                    _v_images_json_src = _v_auto
+                if _v_images_json_src is None:
+                    _v_auto2 = input_path.with_suffix(".images.json")
+                    if _v_auto2.exists():
+                        _v_images_json_src = _v_auto2
+            if _v_images_json_src is not None and _v_images_json_src.exists():
+                import shutil as _v_shutil
+                _v_out = output_path / _v_images_json_src.name
+                _v_shutil.copy2(str(_v_images_json_src), str(_v_out))
+                logger.info("Copied images.json: %s -> %s", _v_images_json_src, _v_out)
+
             if json_output:
                 output_json(True, str(input_path), str(cached_output), src, tgt)
             else:
@@ -1172,6 +1232,7 @@ def translate_md(
                     styleguide=styleguide_content,
                     polish=polish,
                     self_reflect=self_reflect,
+                    scorer_type=scorer_type,
                 ),
             )
 
@@ -1202,6 +1263,24 @@ def translate_md(
             no_styleguide=no_styleguide,
             polish=polish,
         )
+
+        # Forward images.json to output directory (OL#73)
+        _w_images_json_src: Path | None = None
+        if images_json:
+            _w_images_json_src = Path(images_json)
+        else:
+            _w_auto = input_path.with_stem(input_path.stem + "_images").with_suffix(".json")
+            if _w_auto.exists():
+                _w_images_json_src = _w_auto
+            if _w_images_json_src is None:
+                _w_auto2 = input_path.with_suffix(".images.json")
+                if _w_auto2.exists():
+                    _w_images_json_src = _w_auto2
+        if _w_images_json_src is not None and _w_images_json_src.exists():
+            import shutil as _w_shutil
+            _w_out = output_path / _w_images_json_src.name
+            _w_shutil.copy2(str(_w_images_json_src), str(_w_out))
+            logger.info("Copied images.json: %s -> %s", _w_images_json_src, _w_out)
 
         # OL#44 §1: glossary coverage report. Non-blocking; informational.
         if report_coverage and not no_glossary and loaded_glossary is not None:
