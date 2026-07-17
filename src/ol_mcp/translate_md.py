@@ -27,7 +27,6 @@ from ol_mcp.security import get_default_validator
 from ol_mcp.task_tracker import TaskStatus
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
-from ol_pool.router import ModelPool
 from ol_config.loader import load_config
 from ol_lqa.quality_gates import run_quality_gates
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
@@ -119,6 +118,7 @@ async def _translate_single(
                 style_guide=styleguide_section,
             )
 
+        from ol_pool.router import ModelPool  # noqa: PLC0415
         pool = ModelPool.get_instance(config_path)
         translated = await pool.translate(shielded, source_lang, target_lang, context)
 

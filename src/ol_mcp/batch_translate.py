@@ -27,7 +27,6 @@ from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
-from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_lqa.quality_gates import run_quality_gates
@@ -72,6 +71,7 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
             except Exception as e:  # expected — glossary load is best-effort
                 warnings.append(f"Glossary load failed: {e}")
 
+    from ol_pool.router import ModelPool  # noqa: PLC0415
     pool = ModelPool.get_instance(config_path)
     repair_pipeline = MDRepairPipeline()
 

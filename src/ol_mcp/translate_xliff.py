@@ -25,7 +25,6 @@ from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.status import get_translation_status as _get_translation_status_impl
 from ol_mcp.task_tracker import TaskStatus
-from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_xliff.parser import XliffParser
@@ -116,6 +115,7 @@ async def _run_translate_xliff_async(
             )
             return
 
+        from ol_pool.router import ModelPool  # noqa: PLC0415
         pool = ModelPool.get_instance(resolved_config)
         repair_pipeline = XLIFFRepairPipeline()
         warnings_per_unit: dict[str, list[str]] = {}
@@ -323,6 +323,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 ensure_ascii=False,
             )
 
+        from ol_pool.router import ModelPool  # noqa: PLC0415
         pool = ModelPool.get_instance(config_path)
         repair_pipeline = XLIFFRepairPipeline()
 
