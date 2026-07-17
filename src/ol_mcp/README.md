@@ -202,6 +202,10 @@ Both `translate_md_text` and `translate_xliff` run a set of **post-translation q
 | 2 — Terminology | Both source term and translation appear in target (inconsistency) | `OL_WARN: TERMINOLOGY_INCONSISTENCY` |
 | 3 — Length ratio | `len(target) / len(source)` within configured bounds | `OL_WARN: LENGTH_RATIO` |
 | 4 — Locale conventions | Currency mixing, CJK date leakage, digit grouping, GB/US spelling | `OL_WARN: {CURRENCY_MIXING,DATE_LEAKAGE,DIGIT_GROUPING,UNIT_SPELLING}` |
+| 5 — Source copy | Detect unchanged source text echoed back by LLM | `OL_WARN: SOURCE_COPY` |
+| 6 — Script fragments | Detect CJK characters in non-CJK target locale | `OL_WARN: SOURCE_SCRIPT_FRAGMENT` |
+| 7 — Protocol artifacts | Detect LLM protocol/metadata markers in translated text | `OL_WARN: PROTOCOL_ARTIFACT` |
+| 8 — Terms audit | Full glossary term audit (mismatches, absent, inconsistencies, low confidence) | `OL_WARN: {TERM_AUDIT_MISMATCH,TERM_AUDIT_ABSENT,TERM_AUDIT_INCONSISTENCY,TERM_AUDIT_LOW_CONFIDENCE}` |
 
 **`translate_md_text`** returns gate warnings in an optional `warnings` array in the JSON response:
 
@@ -243,6 +247,10 @@ quality_gates:
   locale:
     enabled: true
     target_locale: "en-US"
+  source_copy: true
+  source_script_check: true
+  protocol_artifact_check: true
+  terms_audit: true
 ```
 
 ## Architecture

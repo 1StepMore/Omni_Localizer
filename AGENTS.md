@@ -63,7 +63,7 @@ src/ol/
 ├── lqa/                     # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
 │   ├── scoring.py           # LQA rules
-│   └── quality_gates.py     # OL#56: 4-gate quality checks (inline tags, terminology, length ratio, locale conventions)
+│   └── quality_gates.py     # OL#56: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, terms_audit)
 ├── restoration/             # Post-translate placeholder restoration
 ├── concurrency/             # ConcurrencyLimiter (semaphores)
 ├── retry/                   # RetryManager
@@ -155,13 +155,17 @@ OL's MD translation is a 4-stage pipeline:
       │
       ▼
    ┌──────────────┐
-    │ 6. QUALITY   │  4 gates run after translation/repair, warnings
+    │ 6. QUALITY   │  8 gates run after translation/repair, warnings
     │    GATES     │  appended during final output generation:
     │             │  • inline_tags — verify <bx>/<ex>/<x> tag parity
     │             │  • terminology — detect mixed source/glossary term usage
     │             │  • length_ratio — fail if OL_LENGTH_RATIO_MIN..MAX exceeded
     │             │  • locale — currency mixing, date leakage, digit grouping,
     │             │            unit spelling (en-US vs en-GB)
+    │             │  • source_copy — detect unchanged source echo in target
+    │             │  • source_script_fragments — detect CJK residue in non-CJK target locale
+    │             │  • protocol_artifacts — detect LLM protocol markers leaked to output
+    │             │  • terms_audit — full glossary term audit via verify_translation
    └──────────────┘
       │
       ▼
@@ -311,7 +315,7 @@ duplicating tag halves already restored by Level 3.
 
 ### OL#56: Quality gates
 
-Four config-driven checks run after translation/repair and append
+Eight config-driven checks run after translation/repair and append
 non-blocking warnings to the output:
 
 | Gate | Description | Warning codes |
@@ -320,6 +324,10 @@ non-blocking warnings to the output:
 | `terminology` | Detect mixed source/glossary term usage in target | `TERMINOLOGY_INCONSISTENCY` |
 | `length_ratio` | Check translated/source length ratio is within bounds | `LENGTH_RATIO` |
 | `locale` | Currency mixing, CJK date leakage, digit grouping (EU vs US), GB/US spelling | `CURRENCY_MIXING`, `DATE_LEAKAGE`, `DIGIT_GROUPING`, `UNIT_SPELLING` |
+| `source_copy` | Detect when LLM echoes source text back unchanged | `SOURCE_COPY` |
+| `source_script_check` | Detect CJK characters that leaked into a non-CJK target locale | `SOURCE_SCRIPT_FRAGMENT` |
+| `protocol_artifact_check` | Detect LLM protocol/metadata markers in translated text | `PROTOCOL_ARTIFACT` |
+| `terms_audit` | Full glossary term audit via verify_translation (mismatches, absent, inconsistencies, low confidence) | `TERM_AUDIT_MISMATCH`, `TERM_AUDIT_ABSENT`, `TERM_AUDIT_INCONSISTENCY`, `TERM_AUDIT_LOW_CONFIDENCE` |
 
 Warnings are collected and returned in the `warnings` output field
 (MCP) or appended to the output file as HTML comments / `<note>`

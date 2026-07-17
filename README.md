@@ -7,7 +7,7 @@ AI-native localization pipeline that translates documents through intelligent LL
 - **Translate documents** (Markdown, XLIFF) using LLM APIs
 - **Automatic failover** — switches to backup model if primary fails
 - **Quality preservation** — shields code blocks, links, images during translation
-- **Configurable post-translation quality gates** — inline tags, terminology, length ratio, locale conventions
+- **Configurable post-translation quality gates** — 8 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts, terms audit
 - **LLM-based judging** — evaluates translation accuracy and fluency
 - **Restoration layer** — uses LLM to restore placeholders after translation
 
@@ -143,15 +143,19 @@ translate pipeline and surfaced in output metadata.
 
 ```yaml
 quality_gates:
-  inline_tags: true      # Gate 1: verify inline tags preserved
-  terminology: true      # Gate 2: check glossary term consistency
+  inline_tags: true                # Gate 1: verify inline tags preserved
+  terminology: true                # Gate 2: check glossary term consistency
   length_ratio:
-    enabled: true        # Gate 3: source/target length ratio bounds
+    enabled: true                  # Gate 3: source/target length ratio bounds
     min: 0.5
     max: 2.0
   locale:
-    enabled: true        # Gate 4: locale conventions (dates, digits, units)
+    enabled: true                  # Gate 4: locale conventions (dates, digits, units)
     target_locale: "en-US"
+  source_copy: true                # Gate 5: detect unchanged source echo
+  source_script_check: true        # Gate 6: detect CJK residue in non-CJK locale
+  protocol_artifact_check: true    # Gate 7: detect LLM protocol markers
+  terms_audit: true                # Gate 8: full glossary term audit
 ```
 
 ## CLI Commands
@@ -283,7 +287,7 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --json
 | **TM Integration** | hypomnema for translation memory lookups |
 | **TM/TB/SG Automation** | Pre-injection of TM matches + glossary terms for context-aware translation |
 | **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
-| **Quality Gates** | Non-blocking post-translation checks: inline tag parity, terminology consistency, length ratio (min/max bounds), locale conventions (date format, digit grouping, unit spelling). Failures produce `OL_WARN` output. |
+| **Quality Gates** | Non-blocking post-translation checks (8 total): inline tag parity, terminology consistency, length ratio bounds, locale conventions, source copy detection, CJK script fragment detection, protocol artifact detection, full glossary term audit. Failures produce `OL_WARN` output. |
 | **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
 ## Quality Assurance & Robustness
