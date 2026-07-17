@@ -173,68 +173,94 @@ def _apply_fake_llm_seam() -> None:
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
+# Well-known API key env vars — used as fallback when no config file is found.
+_KNOWN_API_KEY_VARS: tuple[str, ...] = (
+    "ZHIPU_API_KEY",
+    "AGNES_API_KEY",
+    "NVIDIA_NIM_API_KEY",
+    "OPENCODE_GO_KEY",
+    "OPENAI_API_KEY",
+)
+
 
 def precheck_api_keys(config_path: str | None) -> None:
     """Fail fast if a required API key env var is missing.
 
-    Scans the config YAML for ``${VAR}`` placeholders. If any are
-    referenced but not present in the current process environment
-    AND the FAKE_LLM seam is not enabled, this function prints a
-    clear, actionable error to stderr and raises ``typer.Exit``.
+    Two-stage check:
+    1. If a config file is found, scan it for ``${VAR}`` placeholders
+       and verify each is set in the environment.
+    2. If no config file can be resolved, check well-known API key env
+       vars directly as a fallback guard.
 
-    The pre-check is intentionally a lightweight regex scan on the
-    raw YAML text — it must NOT import ``ol_pool.router`` (which
-    takes ~30s on cold start via ``import litellm``) and must not
-    import ``ol_config.schema`` (which would load pydantic). The
-    whole point is to give the user a fast, clear error instead
-    of a multi-minute hang followed by silent garbage output.
+    Both stages are intentionally lightweight — they must NOT import
+    ``ol_pool.router`` (which takes ~30s on cold start via
+    ``import litellm``) and must NOT import ``ol_config.schema``
+    (which would load pydantic).
 
     Skipped when:
       - ``OMNI_TEST_FAKE_LLM=1`` (test seam — no real keys needed)
       - ``OMNI_RUN_REAL_LLM=1`` (explicit opt-in to network calls)
-      - The config file cannot be located or read (in that case we
-        let the existing code path emit a clearer error later)
     """
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         return
     if os.environ.get("OMNI_RUN_REAL_LLM") == "1":
         return
 
-    resolved = config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
-    cfg_file = Path(resolved)
-    if not cfg_file.is_file():
-        return
-
-    try:
-        text = cfg_file.read_text(encoding="utf-8")
-    except OSError:
-        return
-
-    required: set[str] = set()
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("#"):
-            continue
-        required.update(_ENV_VAR_RE.findall(line))
-    if not required:
-        return
-
-    missing = sorted(v for v in required if v not in os.environ)
-    if not missing:
-        return
-
-    typer.echo(
-        "Error: required API key(s) not set in environment: "
-        + ", ".join(missing)
-        + f"  (referenced as ${{...}} in {cfg_file})",
-        err=True,
+    resolved = config_path or os.environ.get(
+        "OL_CONFIG_PATH", "config/default.yaml"
     )
+    cfg_file = Path(resolved)
+
+    # Stage 1: config-file-based check
+    if cfg_file.is_file():
+        try:
+            text = cfg_file.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+
+        required: set[str] = set()
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            required.update(_ENV_VAR_RE.findall(line))
+
+        if required:
+            missing = sorted(v for v in required if v not in os.environ)
+            if missing:
+                typer.echo(
+                    "Error: required API key(s) not set in environment: "
+                    + ", ".join(missing)
+                    + f"  (referenced as ${{...}} in {cfg_file})",
+                    err=True,
+                )
+                _hint_fake_llm()
+                raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+            return
+
+    # Stage 2: fallback — check known API key vars directly.
+    # Catches the case where the default config path is CWD-relative
+    # and the user runs from a different directory. Without this
+    # fallback, precheck_api_keys would silently return, then
+    # import litellm (~30s) would hang before the real error.
+    missing_known = sorted(v for v in _KNOWN_API_KEY_VARS if v not in os.environ)
+    if len(missing_known) == len(_KNOWN_API_KEY_VARS):
+        typer.echo(
+            "Error: no LLM API keys configured. "
+            "Set at least one of: "
+            + ", ".join(_KNOWN_API_KEY_VARS),
+            err=True,
+        )
+        _hint_fake_llm()
+        raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
+
+def _hint_fake_llm() -> None:
     typer.echo(
         "Hint: set OMNI_TEST_FAKE_LLM=1 to skip real LLM calls, "
         "or export the missing variables (e.g. `export ZHIPU_API_KEY=...`).",
         err=True,
     )
-    raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 
 # Translation failure tracking — set when a unit falls back to source text
