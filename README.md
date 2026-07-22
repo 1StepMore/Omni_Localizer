@@ -537,6 +537,37 @@ pytest tests/test_opencode_skill.py tests/test_hermes_skill.py -v
 python -m ol_cli translate-md --help | grep json
 ```
 
+---
+
+## Validation Master Plan
+
+A comprehensive validation master plan for OL is available in the Omni Suite docs at `../docs/OL_VALIDATION_MASTER_PLAN.md`. It covers **17 user questions** across **79 executable scenarios** in AutoInfo-style format (user question → executable scenarios → binary verdict):
+
+| Part | Focus | Questions |
+|------|-------|-----------|
+| 1 | Core Translation Pipeline (MD + XLIFF) | Q1-OL — Q4-OL |
+| 2 | Quality Gates & LQA | Q5-OL — Q6-OL |
+| 3 | MCP Surface Mastery (21 MCP tools) | Q7-OL |
+| 4 | Agent-as-User Workflows | Q8-OL — Q9-OL |
+| 5 | CLI Surface Mastery | Q10-OL |
+| 6 | Error & Boundary Matrix | Q11-OL — Q12-OL |
+| 7 | Production Validation | Q13-OL |
+| 8 | **Real LLM API Configuration & E2E Tests** | Q14-OL — Q17-OL |
+
+**Part 8 (Q14-OL — Q17-OL)** tests the full pipeline with **real LLM APIs** (no FAKE_LLM):
+- **Q14-OL**: Configure real API keys and verify connectivity
+- **Q15-OL**: Translate and verify quality with real LLM (judge + quality gates)
+- **Q16-OL**: Full E2E pipeline with real APIs (MD + XLIFF paths)
+- **Q17-OL**: Diagnose and self-heal API configuration issues
+
+**How to use:**
+1. Open `../docs/OL_VALIDATION_MASTER_PLAN.md` (from the Suite root)
+2. Pick a user question from the table of contents
+3. Execute each scenario as a CLI command or Python snippet
+4. Record the actual result and derive a binary verdict
+
+For Part 8 scenarios, unset `OMNI_TEST_FAKE_LLM` and configure real API keys first. Each scenario includes expected output and cost warnings.
+
 ## License
 
 MIT
