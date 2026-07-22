@@ -95,7 +95,7 @@ src/ol/
 - `--no-restoration` — skip post-translate placeholder restoration (Level 3 LLM)
 - `--log-format console|json` — log output format
 
-## MCP tools (8 total)
+## MCP tools (21 total)
 
 | Tool | Purpose |
 |------|---------|

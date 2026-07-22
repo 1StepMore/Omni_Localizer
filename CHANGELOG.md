@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-07-22
+
+### Added
+
+- **OL#79 — Cross-module MCP connection template** (`docs/MCP-CONNECTION-TEMPLATE.md`): comprehensive 22KB document with 7 sections — unified MCP server config for all 3 editors, pipeline decision tree (ASCII flowchart + decision table), full pipeline JSON templates with `${VARIABLE}` placeholders, per-stage error handling with retry strategies, W3C trace context propagation (`traceparent`), per-module path security checklist with env var reference, and common pitfalls table (10 items) + quick reference card covering all 34 tools across OPP/OL/ORF.
+
+### Changed
+
+- **OL#56 — `ol-mcp-server` console-scripts alias** (`pyproject.toml`): added `ol-mcp-server = "ol_mcp.server:main"` alongside the existing `ol-mcp` entry, matching the naming convention of OPP (`opp-mcp-server`) and ORF (`orf-mcp-server`) for uniform MCP server discovery.
+
+### Fixed
+
+- **OL#78 — Suite AGENTS.md tool count stale** (`AGENTS.md`): updated from 8→21 in the OL AGENTS.md header, suite AGENTS.md version table, per-module cheat sheet, and MCP server description.
+
 ## [Unreleased]
 
 ### Added

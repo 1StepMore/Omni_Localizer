@@ -1,6 +1,6 @@
 [project]
 name = "omni-localizer"
-version = "0.7.0"
+version = "0.7.1"
 description = "AI-native localization pipeline with automated quality control"
 readme = "README.md"
 license = {text = "MIT"}
@@ -70,6 +70,7 @@ Issues = "https://github.com/1StepMore/Omni_Localizer/issues"
 [project.scripts]
 ol = "ol_cli:main_entry"
 ol-mcp = "ol_mcp.server:main"
+ol-mcp-server = "ol_mcp.server:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
