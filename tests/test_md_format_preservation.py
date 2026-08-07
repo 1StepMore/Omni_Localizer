@@ -3,15 +3,15 @@ from ol_md.shield import get_placeholders_in_text, shield_markdown, unshield_mar
 
 class TestMDFormatPreservation:
     def test_placeholder_format_x00_byte(self):
-        """Placeholders use \x00-byte format, NOT {{...}}"""
+        """Placeholders use ASCII bracket format, NOT {{...}}"""
         text = 'Use `code` here'
         result, shield_map = shield_markdown(text)
-        assert '\x00OL_' in result
+        assert '[OL:' in result
         assert '{{' not in result  # Confirms NOT using Jinja-style
 
     def test_placeholder_id_consistency(self):
         """Same placeholder ID in text matches shield_map"""
-        text = 'Text \x00OL_CODE_0000\x00 more'
+        text = 'Text [OL:CODE:0000] more'
         placeholders = get_placeholders_in_text(text)
         assert 'CODE' in str(placeholders)
 
@@ -36,8 +36,8 @@ class TestMDFormatPreservation:
 
     def test_placeholder_not_modified_by_translation(self):
         """Placeholder format remains intact after LLM translation simulation"""
-        text = 'Use \x00OL_CODE_0000\x00 in sentence'
-        translated = 'Utilisez le \x00OL_CODE_0000\x00 dans la phrase'
+        text = 'Use [OL:CODE:0000] in sentence'
+        translated = 'Utilisez le [OL:CODE:0000] dans la phrase'
         placeholders = get_placeholders_in_text(translated)
         assert 'CODE' in str(placeholders)
 
@@ -71,7 +71,7 @@ class TestMDFormatPreservation:
 
     def test_reversed_restore_order(self):
         """Restore in reverse order handles overlapping correctly"""
-        text = 'A \x00OL_CODE_0000\x00 B \x00OL_CODE_0001\x00 C'
+        text = 'A [OL:CODE:0000] B [OL:CODE:0001] C'
         shield_map = {'code_0000': '`code1`', 'code_0001': '`code2`'}
         restored = unshield_markdown(text, shield_map)
         assert '`code1`' in restored

@@ -80,6 +80,8 @@ class TestGlossaryCLIFlagLoadsFile:
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
             add_frontmatter=True, glossary=None, restoration_enabled=True,
+            glossary_max_terms=5, styleguide=None, polish=False,
+            self_reflect=False, scorer_type="none", pool=None,
         ):
             # Wave 4 (L-C1): glossary is now passed as a direct function argument.
             captured["glossary"] = glossary
@@ -142,7 +144,8 @@ class TestGlossaryCLIFlagLoadsFile:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            glossary=None,
+            glossary=None, styleguide=None, polish=False, self_reflect=False,
+            scorer_type="none", pool=None,
         ):
             # Wave 4 (L-C1): glossary is now passed as a direct function argument.
             captured["glossary"] = glossary
@@ -191,6 +194,8 @@ class TestGlossaryCLIFlagLoadsFile:
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
             add_frontmatter=True, glossary=None, restoration_enabled=True,
+            glossary_max_terms=5, styleguide=None, polish=False,
+            self_reflect=False, scorer_type="none", pool=None,
         ):
             called["n"] += 1
             called["glossary"] = glossary
@@ -230,6 +235,8 @@ class TestGlossaryCLINewFlags:
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
             add_frontmatter=True, glossary=None, restoration_enabled=True,
+            glossary_max_terms=5, styleguide=None, polish=False,
+            self_reflect=False, scorer_type="none", pool=None,
         ):
             called["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
@@ -268,7 +275,8 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            glossary=None,
+            glossary=None, styleguide=None, polish=False, self_reflect=False,
+            scorer_type="none", pool=None,
         ):
             called["glossary"] = glossary
             output_path.mkdir(parents=True, exist_ok=True)
@@ -321,6 +329,8 @@ class TestGlossaryCLINewFlags:
         async def fake_translate_md_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
             add_frontmatter=True, glossary=None, restoration_enabled=True,
+            glossary_max_terms=5, styleguide=None, polish=False,
+            self_reflect=False, scorer_type="none", pool=None,
         ):
             output_path.mkdir(parents=True, exist_ok=True)
             output_file = output_path / input_path.name
@@ -372,7 +382,8 @@ class TestGlossaryCLINewFlags:
 
         async def fake_translate_xliff_async(
             input_path, output_path, config_path, src_lang, tgt_lang,
-            glossary=None,
+            glossary=None, styleguide=None, polish=False, self_reflect=False,
+            scorer_type="none", pool=None,
         ):
             called["n"] = called.get("n", 0) + 1
             output_path.mkdir(parents=True, exist_ok=True)

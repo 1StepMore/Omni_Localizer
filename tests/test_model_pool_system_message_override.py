@@ -105,6 +105,7 @@ class TestSystemMessageOverrideIsApplied:
         class _MockChoice:
             def __init__(self, content: str) -> None:
                 self.message = _MockMessage(content)
+                self.finish_reason = "stop"
 
         class _MockResponse:
             def __init__(self, content: str) -> None:
@@ -157,6 +158,7 @@ class TestSystemMessageOverrideIsApplied:
         class _MockChoice:
             def __init__(self, content: str) -> None:
                 self.message = _MockMessage(content)
+                self.finish_reason = "stop"
 
         class _MockResponse:
             def __init__(self, content: str) -> None:
