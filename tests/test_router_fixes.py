@@ -11,8 +11,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-# Import litellm exceptions at module level to avoid import-time issues
-from litellm.exceptions import RateLimitError as _RateLimitError
+# Import the exception from the router module itself so it is the same
+# class the router's `except RateLimitError` branch catches. Importing
+# from litellm.exceptions instead yields conftest's stub class (a different
+# object under OMNI_TEST_FAKE_LLM), which never matches.
+from ol_pool.router import RateLimitError as _RateLimitError
 
 
 # ============================================================================

@@ -84,6 +84,14 @@ def _make_fake_translate_md(call_counter, output_content="translated md v1"):
     async def fake_translate_md_async(
         input_path, output_path, config_path, src_lang, tgt_lang,
         add_frontmatter=True,
+        glossary=None,
+        restoration_enabled=True,
+        glossary_max_terms=5,
+        styleguide=None,
+        polish=False,
+        self_reflect=False,
+        scorer_type="none",
+        pool=None,
     ):
         call_counter["n"] += 1
         output_path.mkdir(parents=True, exist_ok=True)
@@ -123,7 +131,7 @@ def test_ol_cache_hit_returns_cached_output(
 
     # First run: cache miss → _translate_md_async is called
     out1 = tmp_path / "out1"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         rc1 = runner.invoke(
             app,
             ["translate-md", str(sample_md), "-o", str(out1)],
@@ -140,7 +148,7 @@ def test_ol_cache_hit_returns_cached_output(
     # Second run: cache hit → _translate_md_async MUST NOT be called again
     counter["n"] = 0
     out2 = tmp_path / "out2"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         rc2 = runner.invoke(
             app,
             ["translate-md", str(sample_md), "-o", str(out2)],
@@ -168,7 +176,7 @@ def test_ol_cache_miss_on_input_change(fake_cache_dir, tmp_path):
     input1 = tmp_path / "in1.md"
     input1.write_text("# Original\n\ncontent one.\n", encoding="utf-8")
     out1 = tmp_path / "out1"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         runner.invoke(app, ["translate-md", str(input1), "-o", str(out1)])
     assert counter["n"] == 1, f"first run expected 1 call, got {counter['n']}"
 
@@ -176,7 +184,7 @@ def test_ol_cache_miss_on_input_change(fake_cache_dir, tmp_path):
     input2 = tmp_path / "in2.md"
     input2.write_text("# Modified\n\ndifferent content.\n", encoding="utf-8")
     out2 = tmp_path / "out2"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         runner.invoke(app, ["translate-md", str(input2), "-o", str(out2)])
     assert counter["n"] == 2, (
         f"cache miss expected on input change: expected 2 total calls, "
@@ -230,7 +238,7 @@ def test_ol_cache_invalidation_on_config_change(
     config1 = tmp_path / "config1.yaml"
     config1.write_text(_MINIMAL_OL_CONFIG, encoding="utf-8")
     out1 = tmp_path / "out1"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         rc1 = runner.invoke(
             app,
             ["translate-md", str(sample_md), "-o", str(out1),
@@ -249,7 +257,7 @@ def test_ol_cache_invalidation_on_config_change(
         encoding="utf-8",
     )
     out2 = tmp_path / "out2"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         rc2 = runner.invoke(
             app,
             ["translate-md", str(sample_md), "-o", str(out2),
@@ -272,7 +280,7 @@ def test_ol_cache_directory_created_with_correct_permissions(
     counter = {"n": 0}
     fake_async = _make_fake_translate_md(counter, "translated v1")
     out1 = tmp_path / "out1"
-    with patch.object(ol_cli, "_translate_md_async", side_effect=fake_async):
+    with patch("cli.translate_md._translate_md_async", side_effect=fake_async):
         rc = runner.invoke(
             app,
             ["translate-md", str(sample_md), "-o", str(out1)],

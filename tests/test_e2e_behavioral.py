@@ -151,7 +151,9 @@ class TestOLTranslateXLIFFWithOPPStyle:
 
         # Verify success
         assert result_data["success"], f"translate_xliff failed: {result_data.get('warnings', [])}"
-        assert result_data["units_processed"] == 2, f"Expected 2 units, got {result_data['units_processed']}"
+        assert result_data["content"]["units_processed"] == 2, (
+            f"Expected 2 units, got {result_data['content']['units_processed']}"
+        )
 
         # KEY TEST: Verify output XLIFF has <target> elements
         output_content = Path(output_path).read_text(encoding="utf-8")
@@ -301,16 +303,18 @@ class TestOLAssembledDocumentSeparator:
                 source_lang="en",
                 target_lang="zh",
             )
-            result = batch_translate_texts(params)
+            import asyncio
+            result = asyncio.run(batch_translate_texts(params))
 
         import json
         result_data = json.loads(result)
 
         assert result_data["success"]
-        assert "assembled_document" in result_data
+        content = result_data["content"]
+        assert "assembled_document" in content
 
         # Verify separator is ---
-        assembled = result_data["assembled_document"]
+        assembled = content["assembled_document"]
         assert "---" in assembled, f"assembled_document should use --- separator, got: {assembled[:100]}"
 
         # Verify all chunks are present

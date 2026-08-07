@@ -92,7 +92,8 @@ class TestTranslateXliffEndToEnd:
         ))
         result = json.loads(result_str)
         assert result.get("success") is True, f"call failed: {result!r}"
-        assert result.get("units_processed") == 1, f"wrong count: {result!r}"
+        assert result["content"]["units_processed"] == 1, \
+            f"wrong count: {result!r}"
 
         targets = _read_targets(str(output_path))
         assert len(targets) == 1, f"expected 1 target, got {len(targets)}"

@@ -11,15 +11,36 @@ so the cold start drops from ~27s to ~5.8s (Python startup only).
 Real-LLM mode is unchanged at ~27s.
 """
 import os
+import sys
 import time
 
 import pytest
 
 
+@pytest.fixture
+def _restore_router_modules():
+    """Pop ol_pool.router (and any of its submodules) from sys.modules so a
+    fresh import can be exercised, then restore the original module objects
+    afterwards. Without restoration, later test files that bound
+    ``from ol_pool.router import ModelPool`` at collection time keep a
+    reference to the OLD module object, while ``patch("ol_pool.router.X")``
+    patches the NEW one — silently breaking every subsequent mock.
+    """
+    saved = {}
+    for mod_name in list(sys.modules.keys()):
+        if mod_name == "ol_pool.router" or mod_name.startswith("ol_pool.router."):
+            saved[mod_name] = sys.modules.pop(mod_name)
+        if mod_name == "litellm":
+            saved[mod_name] = sys.modules.pop(mod_name)
+    yield
+    for mod_name, mod in saved.items():
+        sys.modules[mod_name] = mod
+
+
 class TestModelPoolColdStart:
     """ModelPool should not import litellm when OMNI_TEST_FAKE_LLM=1."""
 
-    def test_model_pool_router_import_is_fast_in_fake_mode(self, monkeypatch):
+    def test_model_pool_router_import_is_fast_in_fake_mode(self, monkeypatch, _restore_router_modules):
         """Importing ol_pool.router in FAKE_LLM mode should take < 5s.
 
         Before fix: ~27s due to litellm at module level.
@@ -80,7 +101,7 @@ class TestModelPoolColdStart:
         # The module must be importable; if it is, `@patch` will work
         # because the test sets the attribute on the module.
 
-    def test_litellm_not_imported_in_fake_mode(self, monkeypatch):
+    def test_litellm_not_imported_in_fake_mode(self, monkeypatch, _restore_router_modules):
         """In FAKE_LLM mode, litellm must NOT be imported as a side effect
         of importing ol_pool.router. This is the core performance fix.
         """

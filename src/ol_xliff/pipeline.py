@@ -38,6 +38,11 @@ class XLIFFRepairPipeline:
                 # placeholder consumed — verify actual tag replaced it
                 original_tag = shield_map[placeholder_id]
                 if original_tag not in text:
+                    # Non-strict (default) treats a plain key match as
+                    # complete for backward compatibility with pre-XTAG
+                    # shield markers.
+                    if not strict and placeholder_id in text:
+                        continue
                     return False
             elif placeholder_id not in text:
                 # placeholder present but id consumed by wrong content

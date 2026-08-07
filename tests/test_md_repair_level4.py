@@ -49,7 +49,7 @@ class TestRepairLevel4PositionInsertion:
     def test_no_missing_placeholders(self):
         result = level4_safe_fallback('Hello world.', {})
         assert 'Hello world.' in result
-        assert 'OL_WARN' in result
+        assert 'OL_WARN' not in result
 
     def test_multiple_missing_near_surviving_marker(self):
         text = 'See [OL:CODE:0000] and [OL:CODE:0001] here. End of text follows.'

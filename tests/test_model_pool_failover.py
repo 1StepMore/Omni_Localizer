@@ -177,10 +177,17 @@ class TestModelPool:
 
     @patch("src.ol_pool.router.load_config")
     @patch("src.ol_pool.router.Router")
-    def test_router_init_enables_enforce_model_rate_limits(
+    def test_router_init_omits_enforce_model_rate_limits(
         self, mock_router_class, mock_load_config,
     ):
-        """OPT-13: Router init must pass enforce_model_rate_limits so per-model rpm is hard-enforced."""
+        """E2E-83: Router init must NOT pass enforce_model_rate_limits.
+
+        The previous pre-call check maintained an in-process per-model RPM
+        token bucket that raised litellm.RouterRateLimitError synchronously,
+        fast-failing large requests and cascading into 10/20/40s backoffs.
+        Per-model RPM is still enforced via litellm_params['rpm'] entries;
+        rejection now comes from the provider's HTTP 429 instead.
+        """
         import os
         original = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
         try:
@@ -208,8 +215,13 @@ class TestModelPool:
             mock_load_config.return_value = cfg
             ModelPool()
             call_kwargs = mock_router_class.call_args.kwargs
-            assert "optional_pre_call_checks" in call_kwargs
-            assert "enforce_model_rate_limits" in call_kwargs["optional_pre_call_checks"]
+            opcc = call_kwargs.get("optional_pre_call_checks")
+            assert "optional_pre_call_checks" not in call_kwargs or (
+                "enforce_model_rate_limits" not in opcc
+            ), (
+                "pre-call 'enforce_model_rate_limits' must not be set "
+                "(E2E-83 root cause)"
+            )
         finally:
             if original is not None:
                 os.environ["OMNI_TEST_FAKE_LLM"] = original

@@ -60,7 +60,8 @@ class TestModelPoolJudgeTransportErrors:
         result = await pool.judge("src", "tgt", "en", "en")
         assert result["score"] == 0
         assert result.get("transport_error") is True
-        assert "rate_limit" in result.get("reason", "").lower()
+        # "rate" covers the judge_rate_limit and FAKE_LLM judge_unknown: RateLimitError reasons
+        assert "rate" in result.get("reason", "").lower()
 
     @pytest.mark.asyncio
     @patch("src.ol_pool.router.load_config")

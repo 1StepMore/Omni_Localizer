@@ -47,7 +47,10 @@ class TestRouterNotConfiguredWithEnforceModelRateLimits:
             router_mod._pool_cache.clear()
             # Force a fresh ModelPool construction under the patched Router.
             from ol_pool.router import ModelPool
-            ModelPool(_CONFIG_PATH)
+            with patch.dict(os.environ, {"OMNI_TEST_FAKE_LLM": "0"}):
+                # Bypass the FAKE_LLM short-circuit so the (mocked) Router
+                # construction path actually runs.
+                ModelPool(_CONFIG_PATH)
 
         # Find the call that constructed Router.
         router_call = None
@@ -101,6 +104,13 @@ class TestLargeContentWarning:
                 return mr
 
         pool._router = FakeRouter()
+
+        # Circuit breaker required since _test_mode=False plus FAKE_LLM early-return
+        import pybreaker
+        pool._breakers = {
+            role: pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name=role)
+            for role in ("translation", "judging", "restoration", "profiling")
+        }
         return pool
 
     def test_large_request_logs_warning(self, caplog):
