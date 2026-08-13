@@ -10,7 +10,7 @@ import json
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 from ol_mcp.get_capabilities import get_capabilities
 
 

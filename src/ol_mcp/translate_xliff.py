@@ -6,10 +6,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from ol_pool.router import ModelPool
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
@@ -28,6 +25,7 @@ from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.status import get_translation_status as _get_translation_status_impl
 from ol_mcp.task_tracker import TaskStatus
+from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
 from ol_xliff.parser import XliffParser
@@ -47,8 +45,6 @@ async def _run_translate_xliff_async(
     config_path: str | None,
     styleguide_path: str | None = None,
     polish: bool = False,
-    self_reflect: bool = False,
-    pool: 'ModelPool | None' = None,
 ) -> None:
     """Background coroutine for async translate_xliff. Updates task tracker."""
     try:
@@ -119,9 +115,7 @@ async def _run_translate_xliff_async(
             )
             return
 
-        if pool is None:
-            from ol_pool.router import ModelPool  # noqa: PLC0415
-            pool = ModelPool.get_instance(resolved_config)
+        pool = ModelPool.get_instance(resolved_config)
         repair_pipeline = XLIFFRepairPipeline()
         warnings_per_unit: dict[str, list[str]] = {}
 
@@ -169,26 +163,11 @@ async def _run_translate_xliff_async(
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
-                    cjk_residue_enabled=qg.cjk_residue,
-                    target_lang=target_lang,
-                    llm_markers_enabled=qg.llm_markers,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
-
-        if self_reflect and units:
-            from ol_xliff.self_reflect import self_reflect_translated_units
-            sr_warnings = await self_reflect_translated_units(
-                units, source_lang, target_lang, pool,
-                warnings_per_unit=warnings_per_unit,
-            )
-            for uid, warns in sr_warnings.items():
-                if uid in warnings_per_unit:
-                    warnings_per_unit[uid].extend(warns)
-                else:
-                    warnings_per_unit[uid] = warns
 
         if polish:
             from ol_xliff.polish import polish_translated_units
@@ -231,7 +210,7 @@ async def _run_translate_xliff_async(
     "Translate an XLIFF file (writes <target> elements to the output file).",
 )
 @mcp_error_boundary
-async def translate_xliff(params: TranslateXliffInput, pool: 'ModelPool | None' = None) -> str:
+async def translate_xliff(params: TranslateXliffInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
@@ -253,8 +232,6 @@ async def translate_xliff(params: TranslateXliffInput, pool: 'ModelPool | None' 
             config_path=params.config_path,
             styleguide_path=params.styleguide_path,
             polish=params.polish,
-            self_reflect=params.self_reflect,
-            pool=pool,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -329,9 +306,7 @@ async def translate_xliff(params: TranslateXliffInput, pool: 'ModelPool | None' 
                 ensure_ascii=False,
             )
 
-        if pool is None:
-            from ol_pool.router import ModelPool  # noqa: PLC0415
-            pool = ModelPool.get_instance(config_path)
+        pool = ModelPool.get_instance(config_path)
         repair_pipeline = XLIFFRepairPipeline()
 
         warnings_per_unit: dict[str, list[str]] = {}
@@ -390,26 +365,11 @@ async def translate_xliff(params: TranslateXliffInput, pool: 'ModelPool | None' 
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
-                    cjk_residue_enabled=qg.cjk_residue,
-                    target_lang=params.target_lang,
-                    llm_markers_enabled=qg.llm_markers,
                 )
                 if gate_warnings:
                     warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
         except Exception as gate_err:
             _logger.warning("Quality gates failed: %s", gate_err)
-
-        if params.self_reflect and units:
-            from ol_xliff.self_reflect import self_reflect_translated_units
-            sr_warnings = await self_reflect_translated_units(
-                units, params.source_lang, params.target_lang, pool,
-                warnings_per_unit=warnings_per_unit,
-            )
-            for uid, warns in sr_warnings.items():
-                if uid in warnings_per_unit:
-                    warnings_per_unit[uid].extend(warns)
-                else:
-                    warnings_per_unit[uid] = warns
 
         if params.polish:
             from ol_xliff.polish import polish_translated_units

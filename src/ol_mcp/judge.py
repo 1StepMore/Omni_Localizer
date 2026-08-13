@@ -17,6 +17,7 @@ from ol_mcp.tools import (
 )
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_pool.router import ModelPool
 
 
 @_register_tool(
@@ -53,7 +54,6 @@ async def judge_text(params: JudgeInput) -> str:
 
     try:
         config_path = _get_config_path(None)
-        from ol_pool.router import ModelPool  # noqa: PLC0415
         pool = ModelPool.get_instance(config_path)
         result = await pool.judge(
             params.source,

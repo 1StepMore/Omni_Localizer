@@ -61,15 +61,15 @@ llm_pool:
       timeout: 120.0
 
   judging:
-    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
+    # Primary judge: DeepSeek V4 Flash (via OpenCode Go) — stronger judgment
     - provider: "openai"
-      model: "agnes-2.0-flash"
+      model: "deepseek-v4-flash"
       priority: 1
       role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
+    # Backup 1: GLM-4-Flash (Zhipu) — fast fallback
     - provider: "openai"
       model: "glm-4-flash"
       priority: 2
@@ -77,12 +77,13 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
+    # Backup 2: AGNES 2.0 Flash — lowest priority (historical, over-strict)
     - provider: "openai"
-      model: "deepseek-v4-flash"
+      model: "agnes-2.0-flash"
       priority: 3
       role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
+      api_key: "${AGNES_API_KEY}"
+      base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
 
   restoration:
@@ -135,9 +136,3 @@ quality_gates:
   locale:
     enabled: true
     target_locale: "en-US"
-  cjk_residue: true
-  llm_markers: true
-  self_reflection: true
-  self_reflection_rounds: 1
-  terms_audit: true
-  terms_audit_confidence: 0.7

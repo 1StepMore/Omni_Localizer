@@ -23,8 +23,6 @@ _DUMMY_API_KEYS = {
     "ANTHROPIC_API_KEY": "sk-dummy",
     "MINIMAX_API_KEY": "sk-dummy",
     "MINIMAX_BASE_URL": "http://localhost:8080/v1",
-    "OPENCODE_GO_KEY": "sk-dummy",
-    "OPENCODE_GO_BASE_URL": "http://localhost:8080/v1",
 }
 for _k, _v in _DUMMY_API_KEYS.items():
     os.environ.setdefault(_k, _v)

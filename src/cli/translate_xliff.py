@@ -8,7 +8,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-import sys
 import typer
 
 if TYPE_CHECKING:
@@ -18,18 +17,18 @@ if TYPE_CHECKING:
     from ol_retry.retry import RetryManager
     from ol_terminology import Glossary
 
-from .cache import (
+from cli.cache import (
     _cache_root,
     _check_cache,
     _clear_ol_cache,
     _write_cache,
 )
-from .frontmatter import (
+from cli.frontmatter import (
     _build_xliff_header_note,
     _extract_request_id,
     _inject_xliff_header,
 )
-from .translate_md import (
+from cli.translate_md import (
     _UnitTranslationResult,
     _apply_glossary_max_terms,
     _apply_post_translate_restoration,
@@ -38,21 +37,18 @@ from .translate_md import (
     _load_glossary_or_none,
     _translate_units_concurrent,
 )
-from ._shared import (
+from cli._shared import (
     ExitCode,
     OLQualityGateBlockedError,
     _enforce_file_size,
     ensure_output_dir,
-    had_translation_failures,
-    mark_translation_failure,
     output_json,
     precheck_api_keys,
-    reset_translation_failures,
     validate_input_file,
     warn_fake_llm_mode,
 )
 from ol_logging.core import get_logger
-from ol_lqa.quality_gates import format_warning_summary, run_quality_gates
+from ol_lqa.quality_gates import run_quality_gates
 from ol_xliff.pipeline import XLIFFRepairPipeline
 
 logger = get_logger("cli")
@@ -260,7 +256,6 @@ async def _translate_xliff_pipelined(
                 f"({type(exc).__name__}: {str(exc)[:200]})"
             )
             translated = unit.source_text
-            mark_translation_failure()
             status = "transport_error"
             attempts = 1
             error_msg = f"{type(exc).__name__}: {str(exc)[:200]}"
@@ -327,23 +322,19 @@ async def _translate_xliff_async(
     glossary: 'Glossary | None' = None,
     styleguide: str | None = None,
     polish: bool = False,
-    self_reflect: bool = False,
-    scorer_type: str = "none",
-    pool: 'ModelPool | None' = None,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
     warn_fake_llm_mode()
 
-    if pool is None:
-        if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-            # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
-            # triggering litellm's heavy import chain.
-            from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
-            pool = cast(object, _FakeModelPool())
-        else:
-            from ol_pool.router import ModelPool
-            pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+        # triggering litellm's heavy import chain.
+        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
+        pool = cast(object, _FakeModelPool())
+    else:
+        from ol_pool.router import ModelPool
+        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     from ol_config.loader import load_config
     from ol_xliff.parser import XliffParser
@@ -357,30 +348,9 @@ async def _translate_xliff_async(
     judge = None
     retry_mgr = None
     if cfg.enable_lqa:
-        _scorer_instance = None
-        if scorer_type and scorer_type != "none":
-            if scorer_type == "bleu":
-                from ol_lqa.scorer import ScorerService
-                _scorer_instance = ScorerService()
-            elif scorer_type == "comet":
-                try:
-                    from ol_lqa.comet import COMETService
-                    _scorer_instance = COMETService()
-                except Exception:
-                    import logging
-                    logging.getLogger("cli").warning(
-                        "COMETService not available (unbabel-comet not installed). "
-                        "Falling back to no scorer."
-                    )
-                    _scorer_instance = None
-
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(
-            pass_threshold=cfg.lqa_threshold,
-            model_pool=pool,
-            scorer=_scorer_instance,
-        )
+        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
@@ -451,7 +421,6 @@ async def _translate_xliff_async(
         or cfg.quality_gates.terminology
         or cfg.quality_gates.length_ratio.enabled
         or cfg.quality_gates.locale.enabled
-
     ):
         _glossary_dict_x: dict[str, Any] | None = None
         if glossary is not None:
@@ -490,24 +459,8 @@ async def _translate_xliff_async(
                     length_ratio_max=cfg.quality_gates.length_ratio.max,
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
-                    source_copy_enabled=getattr(
-                        cfg.quality_gates, "source_copy", True
-                    ),
-                    source_script_check_enabled=getattr(
-                        cfg.quality_gates, "source_script_check", True
-                    ),
-                    protocol_artifact_check_enabled=getattr(
-                        cfg.quality_gates, "protocol_artifact_check", True
-                    ),
                     block_on_source_script_fragment=getattr(
                         cfg.quality_gates, "block_on_source_script_fragment", False
-                    ),
-                    cjk_residue_enabled=getattr(
-                        cfg.quality_gates, "cjk_residue", True
-                    ),
-                    target_lang=cfg.target_lang,
-                    llm_markers_enabled=getattr(
-                        cfg.quality_gates, "llm_markers", True
                     ),
                 )
                 if _xuw:
@@ -524,24 +477,8 @@ async def _translate_xliff_async(
                                 f"Quality gate blocked unit {_xu.unit_id}: {_w}"
                             )
                     warnings_per_unit.setdefault(_xu.unit_id, []).extend(_xuw)
-    logger.info(f"Translation complete: {len(units)} units")
-    logger.info(
-        "WARN_SUMMARY: %s",
-        format_warning_summary(warnings_per_unit),
-    )
-    print(f"WARN_SUMMARY: {format_warning_summary(warnings_per_unit)}", file=sys.stderr)
 
-    if self_reflect and units:
-        from ol_xliff.self_reflect import self_reflect_translated_units
-        sr_warnings = await self_reflect_translated_units(
-            units, src_lang, tgt_lang, pool,
-            warnings_per_unit=warnings_per_unit,
-        )
-        for uid, warns in sr_warnings.items():
-            if uid in warnings_per_unit:
-                warnings_per_unit[uid].extend(warns)
-            else:
-                warnings_per_unit[uid] = warns
+    logger.info(f"Translation complete: {len(units)} units")
 
     if polish:
         from ol_xliff.polish import polish_translated_units
@@ -658,20 +595,6 @@ def translate_xliff(
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
     ),
-    self_reflect: bool = typer.Option(
-        False, "--self-reflect",
-        help="After translation and quality gates, run an LLM self-reflection "
-             "pass to let the model review and improve its own output (Gate 8).",
-    ),
-    scorer: str = typer.Option(
-        "none", "--scorer",
-        help="Scorer to use: 'bleu' (sacrebleu BLEU), 'comet' (XCOMET-XL, "
-             "requires unbabel-comet), 'none' (default)",
-    ),
-    no_scorer: bool = typer.Option(
-        False, "--no-scorer",
-        help="Disable scorer (overrides --scorer)",
-    ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
         help="After translation, print a glossary coverage report "
@@ -687,7 +610,6 @@ def translate_xliff(
              "Ignored when --report-coverage is not set.",
     ),
 ) -> int:
-    reset_translation_failures()
     try:
         if log_format:
             os.environ["OMNI_LOG_FORMAT"] = log_format
@@ -788,16 +710,11 @@ def translate_xliff(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
-        # OL#72: resolve scorer — --no-scorer overrides --scorer.
-        scorer_type = "none" if no_scorer else scorer
-
         asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
             glossary=loaded_glossary,
             styleguide=styleguide_content,
             polish=polish,
-            self_reflect=self_reflect,
-            scorer_type=scorer_type,
         ))
 
         # A12.4: post-translate restoration runs after asyncio.run so
@@ -865,25 +782,6 @@ def translate_xliff(
                 )
 
         output_file = output_path / Path(input).name
-
-        if had_translation_failures():
-            logger.warning(
-                "Some translation units failed — fell back to source text. "
-                "Exit code set to PIPELINE_ERROR."
-            )
-            if json_output:
-                output_json(
-                    False, str(input_path),
-                    error="Some translation units fell back to source text "
-                          "(all LLM providers failed for those units).",
-                )
-            else:
-                typer.echo(
-                    f"Translated with failures: {input_path.name} -> {output_file} "
-                    f"({src_lang} -> {tgt_lang}) — some units fell back to source text.",
-                    err=True,
-                )
-            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         if json_output:
             output_json(True, str(input_path), str(output_file), src_lang, tgt_lang)
         else:

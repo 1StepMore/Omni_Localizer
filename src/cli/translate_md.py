@@ -19,30 +19,26 @@ if TYPE_CHECKING:
     from ol_retry.retry import RetryManager
     from ol_terminology import Glossary
 
-from .cache import (
+from cli.cache import (
     _cache_root,
     _check_cache,
     _clear_ol_cache,
     _write_cache,
     _glossary_logger,
 )
-from .frontmatter import (
+from cli.frontmatter import (
     _extract_opp_metadata,
     _generate_frontmatter,
     _get_ol_version,
     _validate_lang_code,
 )
-from ._shared import (
+from cli._shared import (
     ExitCode,
     _apply_fake_llm_seam,
     _enforce_file_size,
     ensure_output_dir,
-    had_translation_failures,
-    mark_translation_failure,
     output_json,
     precheck_api_keys,
-    read_with_encoding,
-    reset_translation_failures,
     validate_input_file,
     warn_fake_llm_mode,
 )
@@ -208,7 +204,7 @@ def _load_env_for_cli() -> None:
 def _load_dotenv(env_path: Path) -> None:
     """Parse and export .env file without blocking on missing keys."""
     try:
-        content = read_with_encoding(env_path)
+        content = env_path.read_text()
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -325,7 +321,6 @@ async def _translate_one_unit(
             f"{str(translate_err)[:100]})"
         )
         translated = unit.source_text
-        mark_translation_failure()
         status = "exception"
         error_msg = f"{type(translate_err).__name__}: {str(translate_err)[:200]}"
         logger.warning(
@@ -340,7 +335,6 @@ async def _translate_one_unit(
             f"({translated!r}); falling back to OPP source for this unit."
         )
         translated = unit.source_text
-        mark_translation_failure()
 
     latency_ms = (time.monotonic() - start) * 1000.0
     # Structured per-unit log so concurrent output stays correlatable
@@ -444,7 +438,6 @@ async def _translate_units_concurrent(
                 f"OL_WARN: TRANSLATION_FAILED ({type(result).__name__}: "
                 f"{str(result)[:100]})"
             )
-            mark_translation_failure()
             final.append(_UnitTranslationResult(
                 unit_id=unit.unit_id,
                 translated=unit.source_text,
@@ -472,25 +465,21 @@ async def _translate_md_async(
     glossary_max_terms: int = 5,
     styleguide: str | None = None,
     polish: bool = False,
-    self_reflect: bool = False,
-    scorer_type: str = "none",
-    pool: 'ModelPool | None' = None,
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
     # The glossary param may be None (no glossary configured).
     warn_fake_llm_mode()
 
-    if pool is None:
-        if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-            # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
-            # triggering litellm's heavy import chain.
-            from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
-            pool = cast(object, _FakeModelPool())
-            _apply_fake_llm_seam()
-        else:
-            from ol_pool.router import ModelPool
-            pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
+        # triggering litellm's heavy import chain.
+        from ol_pool.fake import _FakeModelPool  # noqa: PLC0415
+        pool = cast(object, _FakeModelPool())
+        _apply_fake_llm_seam()
+    else:
+        from ol_pool.router import ModelPool
+        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
 
     from ol_config.loader import load_config
     cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
@@ -506,30 +495,9 @@ async def _translate_md_async(
     judge = None
     retry_mgr = None
     if cfg.enable_lqa:
-        _scorer_instance = None
-        if scorer_type and scorer_type != "none":
-            if scorer_type == "bleu":
-                from ol_lqa.scorer import ScorerService
-                _scorer_instance = ScorerService()
-            elif scorer_type == "comet":
-                try:
-                    from ol_lqa.comet import COMETService
-                    _scorer_instance = COMETService()
-                except Exception:
-                    import logging
-                    logging.getLogger("cli").warning(
-                        "COMETService not available (unbabel-comet not installed). "
-                        "Falling back to no scorer."
-                    )
-                    _scorer_instance = None
-
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(
-            pass_threshold=cfg.lqa_threshold,
-            model_pool=pool,
-            scorer=_scorer_instance,
-        )
+        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
@@ -544,7 +512,6 @@ async def _translate_md_async(
             glossary=glossary,
             styleguide=styleguide,
             polish=polish,
-            self_reflect=self_reflect,
         )
     else:
         shielded, shield_map = shield_markdown(original_text)
@@ -584,7 +551,6 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
-                mark_translation_failure()
         else:
             try:
                 translated = await pool.translate(
@@ -597,20 +563,12 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
-                mark_translation_failure()
 
         if shield_map:
             repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
             repaired = unshield_markdown(repaired, shield_map)
         else:
             repaired = translated
-
-    # Gate 8: Self-reflection (after quality gates, before polish)
-    if self_reflect:
-        from ol_xliff.self_reflect import self_reflect_md_text
-        repaired = await self_reflect_md_text(
-            repaired, src_lang, tgt_lang, pool,
-        )
 
     if polish:
         from ol_xliff.polish import polish_md_text
@@ -702,9 +660,6 @@ async def _translate_md_async(
             length_ratio_max=cfg.quality_gates.length_ratio.max,
             locale_enabled=cfg.quality_gates.locale.enabled,
             target_locale=cfg.quality_gates.locale.target_locale,
-            cjk_residue_enabled=cfg.quality_gates.cjk_residue,
-            target_lang=cfg.target_lang,
-            llm_markers_enabled=cfg.quality_gates.llm_markers,
         )
         if _qg_warnings:
             _warn_block = "\n\n<!-- Quality gate warnings -->\n"
@@ -724,7 +679,6 @@ async def _translate_md_units_concurrent(
     cfg, glossary=None,
     styleguide: str | None = None,
     polish: bool = False,
-    self_reflect: bool = False,
 ) -> str:
     """Translate MD by extracting trans-units and translating them concurrently.
 
@@ -749,21 +703,6 @@ async def _translate_md_units_concurrent(
             )
         unshielded = unshield_markdown(result.translated, units[i].shield_map)
         units[i].target_text = unshielded
-
-    if self_reflect and units:
-        from ol_xliff.self_reflect import self_reflect_md_text
-        _sr_parts = [u.target_text for u in units if u.target_text]
-        _sr_full = "\n\n".join(_sr_parts)
-        _sr_reflected = await self_reflect_md_text(
-            _sr_full, src_lang, tgt_lang, pool,
-        )
-        _sr_parts_out = _sr_reflected.split("\n\n")
-        _sr_idx = 0
-        for _sr_u in units:
-            if _sr_u.target_text:
-                if _sr_idx < len(_sr_parts_out):
-                    _sr_u.target_text = _sr_parts_out[_sr_idx]
-                    _sr_idx += 1
 
     if polish and units:
         from ol_xliff.polish import polish_md_text
@@ -796,7 +735,6 @@ async def _translate_md_by_paragraph(
     quiet: bool = False,
     styleguide: str | None = None,
     polish: bool = False,
-    self_reflect: bool = False,
 ) -> str:
     # Issue #35: Bypass the MCP tool (translate_md_text) to avoid
     # import-lock deadlock when concurrent=5 — the MCP handler imports
@@ -865,7 +803,6 @@ async def _translate_md_by_paragraph(
                 return idx, repaired
             except Exception as e:
                 logger.warning(f"Para {idx} translation failed: {str(e)[:80]}")
-                mark_translation_failure()
                 if _show_progress:
                     async with _para_lock:
                         _para_count[0] += 1
@@ -877,26 +814,17 @@ async def _translate_md_by_paragraph(
 
     full = "\n\n".join(translated)
 
-    if self_reflect:
-        from ol_xliff.self_reflect import self_reflect_md_text
-        full = await self_reflect_md_text(full, src, tgt, pool)
-
     if polish:
         from ol_xliff.polish import polish_md_text
         full = await polish_md_text(full, src, tgt, pool)
 
     if add_frontmatter:
-        from .frontmatter import _FAKE_TIMESTAMP, _get_timestamp
-
-        ts = _get_timestamp()
-        fake = os.environ.get("OMNI_TEST_FAKE_LLM") == "1"
-        ts_for_hash = _FAKE_TIMESTAMP if fake else datetime.now(UTC)
-        rid = hashlib.md5(f"{input_path}{ts_for_hash}".encode()).hexdigest()[:12]
+        rid = hashlib.md5(f"{input_path}{datetime.now(UTC)}".encode()).hexdigest()[:12]
         header = (
             f"---\nsource_lang: {src}\ntarget_lang: {tgt}\n"
             f"original_file: {input_path.name}\nprocessor: \"OL\"\n"
             f"version: \"0.2.6\"\n"
-            f"translated_at: {ts}\n"
+            f"translated_at: {datetime.now(UTC).isoformat()}\n"
             f"request_id: {rid}\n---\n"
         )
         full = header + full
@@ -951,9 +879,6 @@ async def _translate_md_by_paragraph(
             length_ratio_max=_cfg_by_para.quality_gates.length_ratio.max,
             locale_enabled=_cfg_by_para.quality_gates.locale.enabled,
             target_locale=_cfg_by_para.quality_gates.locale.target_locale,
-            cjk_residue_enabled=_cfg_by_para.quality_gates.cjk_residue,
-            target_lang=_cfg_by_para.target_lang,
-            llm_markers_enabled=_cfg_by_para.quality_gates.llm_markers,
         )
         if _qg_warnings_p:
             _warn_block_p = "\n\n<!-- Quality gate warnings -->\n"
@@ -1042,20 +967,6 @@ def translate_md(
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
     ),
-    self_reflect: bool = typer.Option(
-        False, "--self-reflect",
-        help="After translation and quality gates, run an LLM self-reflection "
-             "pass to let the model review and improve its own output (Gate 8).",
-    ),
-    scorer: str = typer.Option(
-        "none", "--scorer",
-        help="Scorer to use: 'bleu' (sacrebleu BLEU), 'comet' (XCOMET-XL, "
-             "requires unbabel-comet), 'none' (default)",
-    ),
-    no_scorer: bool = typer.Option(
-        False, "--no-scorer",
-        help="Disable scorer (overrides --scorer)",
-    ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
         help="After translation, print a glossary coverage report "
@@ -1076,13 +987,7 @@ def translate_md(
              "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
              "timestamp, level, module fields.",
     ),
-    images_json: str | None = typer.Option(
-        None, "--images-json",
-        help="Path to images.json file (e.g., from OPP extraction). "
-             "Copied to output directory alongside translated .md.",
-    ),
 ) -> int:
-    reset_translation_failures()
     try:
         if log_format:
             os.environ["OMNI_LOG_FORMAT"] = log_format
@@ -1166,9 +1071,6 @@ def translate_md(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
-        # OL#72: resolve scorer — --no-scorer overrides --scorer.
-        scorer_type = "none" if no_scorer else scorer
-
         # A6: cache check before any expensive LLM work.
         if _check_cache(
             input_path, output_path, config, no_cache=no_cache,
@@ -1184,25 +1086,6 @@ def translate_md(
             polish=polish,
         ):
             cached_output = output_path / input_path.name
-
-            # Forward images.json to output directory (OL#73) — cache hit path
-            _v_images_json_src: Path | None = None
-            if images_json:
-                _v_images_json_src = Path(images_json)
-            else:
-                _v_auto = input_path.with_stem(input_path.stem + "_images").with_suffix(".json")
-                if _v_auto.exists():
-                    _v_images_json_src = _v_auto
-                if _v_images_json_src is None:
-                    _v_auto2 = input_path.with_suffix(".images.json")
-                    if _v_auto2.exists():
-                        _v_images_json_src = _v_auto2
-            if _v_images_json_src is not None and _v_images_json_src.exists():
-                import shutil as _v_shutil
-                _v_out = output_path / _v_images_json_src.name
-                _v_shutil.copy2(str(_v_images_json_src), str(_v_out))
-                logger.info("Copied images.json: %s -> %s", _v_images_json_src, _v_out)
-
             if json_output:
                 output_json(True, str(input_path), str(cached_output), src, tgt)
             else:
@@ -1220,7 +1103,6 @@ def translate_md(
                     quiet=json_output,
                     styleguide=styleguide_content,
                     polish=polish,
-                    self_reflect=self_reflect,
                 ),
             )
         else:
@@ -1231,8 +1113,6 @@ def translate_md(
                     restoration_enabled=not no_restoration,
                     styleguide=styleguide_content,
                     polish=polish,
-                    self_reflect=self_reflect,
-                    scorer_type=scorer_type,
                 ),
             )
 
@@ -1263,24 +1143,6 @@ def translate_md(
             no_styleguide=no_styleguide,
             polish=polish,
         )
-
-        # Forward images.json to output directory (OL#73)
-        _w_images_json_src: Path | None = None
-        if images_json:
-            _w_images_json_src = Path(images_json)
-        else:
-            _w_auto = input_path.with_stem(input_path.stem + "_images").with_suffix(".json")
-            if _w_auto.exists():
-                _w_images_json_src = _w_auto
-            if _w_images_json_src is None:
-                _w_auto2 = input_path.with_suffix(".images.json")
-                if _w_auto2.exists():
-                    _w_images_json_src = _w_auto2
-        if _w_images_json_src is not None and _w_images_json_src.exists():
-            import shutil as _w_shutil
-            _w_out = output_path / _w_images_json_src.name
-            _w_shutil.copy2(str(_w_images_json_src), str(_w_out))
-            logger.info("Copied images.json: %s -> %s", _w_images_json_src, _w_out)
 
         # OL#44 §1: glossary coverage report. Non-blocking; informational.
         if report_coverage and not no_glossary and loaded_glossary is not None:
@@ -1318,25 +1180,6 @@ def translate_md(
                     "Glossary Coverage Report: no glossary provided "
                     "(use --glossary <path> to enable coverage reporting)."
                 )
-
-        if had_translation_failures():
-            logger.warning(
-                "Some translation units failed — fell back to source text. "
-                "Exit code set to PIPELINE_ERROR."
-            )
-            if json_output:
-                output_json(
-                    False, str(input_path),
-                    error="Some translation units fell back to source text "
-                          "(all LLM providers failed for those units).",
-                )
-            else:
-                typer.echo(
-                    f"Translated with failures: {input_path.name} -> {output_file} "
-                    f"({src} -> {tgt}) — some units fell back to source text.",
-                    err=True,
-                )
-            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
         if json_output:
             actual_output = output_path / input_path.name

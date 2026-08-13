@@ -135,20 +135,11 @@ class QualityGateConfig(BaseModel):
         "Automatically suppressed when source text contains no "
         "CJK characters or the target locale is a CJK locale.",
     )
-    cjk_residue: bool = Field(
-        True, description="Alias for source_script_check (legacy name)"
-    )
     protocol_artifact_check: bool = Field(
         True,
         description="Gate 7: detect LLM protocol/metadata markers "
         "(e.g. [USERTEXTSTART], [INST], [SYSTEM_PROMPT]) that "
         "reflected into the translated text as literal content.",
-    )
-    llm_markers: bool = Field(
-        True, description="Alias for protocol_artifact_check (legacy name)"
-    )
-    source_copy: bool = Field(
-        True, description="Warn when target text is identical to source (LLM echoed input back)"
     )
     block_on_source_script_fragment: bool = Field(
         False,
@@ -156,18 +147,6 @@ class QualityGateConfig(BaseModel):
         "blocks the pipeline from proceeding when CJK characters "
         "are detected in non-CJK target locales, instead of only "
         "recording a warning note.",
-    )
-    self_reflection: bool = Field(
-        True, description="Gate 8 — LLM self-reflection pass to improve own translation output"
-    )
-    self_reflection_rounds: int = Field(
-        1, ge=1, description="Number of self-reflection passes (default 1, max recommended 2)"
-    )
-    terms_audit: bool = Field(
-        True, description="Gate — full glossary term audit via verify_translation (mismatches, absent, inconsistencies)"
-    )
-    terms_audit_confidence: float = Field(
-        0.7, ge=0.0, le=1.0, description="Minimum confidence threshold for term audit (0.0-1.0)"
     )
 
 
