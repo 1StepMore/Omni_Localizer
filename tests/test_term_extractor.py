@@ -248,7 +248,10 @@ class TestChineseQualityAfterFix:
         # not terms that merely CONTAIN a particle character (e.g. '创始人'
         # contains '始' but is a valid keyword, not a fragment).
         FRAGMENT_MARKERS = frozenset('的了在于是包括成为等始于')
-        is_fragment = lambda t: len(t) <= 2 and all(c in FRAGMENT_MARKERS for c in t)
+
+        def is_fragment(t):
+            return len(t) <= 2 and all(c in FRAGMENT_MARKERS for c in t)
+
         has_actual_fragment = any(is_fragment(t) for t in terms)
         # After fix: no ACTUAL fragment terms should be present
         assert not has_actual_fragment, (

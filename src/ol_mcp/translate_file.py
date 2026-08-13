@@ -26,9 +26,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
 
-from pydantic import BaseModel, Field
 
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response

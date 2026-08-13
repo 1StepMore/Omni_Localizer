@@ -86,7 +86,6 @@ _GB_TO_US_SPELLINGS: dict[str, str] = {
     "cancelled": "canceled",
     "modelled": "modeled",
     "fuelled": "fueled",
-    "centre": "center",
     "litre": "liter",
     "fibre": "fiber",
     "calibre": "caliber",

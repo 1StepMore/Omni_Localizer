@@ -56,7 +56,6 @@ class TestModelPoolProfile:
         """In test_mode (FAKE_LLM=1), ModelPool.profile() must delegate to
         _FakeModelPool.profile() so the existing doc_profiler tests still pass."""
         from ol_pool.router import ModelPool
-        from ol_style.schema import StyleGuide
 
         # FAKE_LLM is set by conftest.py — we just need the pool to short-circuit
         pool = ModelPool.get_instance()

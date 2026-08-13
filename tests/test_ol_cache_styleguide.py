@@ -4,8 +4,6 @@ Tests the ``_cache_key`` function in ``cli.cache`` to verify that
 adding a StyleGuide path or the --no-styleguide flag changes the
 cache key, so cached outputs from prior runs don't pollute new runs.
 """
-import os
-from pathlib import Path
 
 import pytest
 

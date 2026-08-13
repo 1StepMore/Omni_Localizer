@@ -6,8 +6,8 @@ def test_ol_mcp_version_is_not_hardcoded_zero_one():
     """OL MCP __version__ must NOT be hardcoded '0.1.0' (the package is at 0.7.0)."""
     from ol_mcp import __version__
     assert __version__ != "0.1.0", (
-        f"ol_mcp.__version__ is hardcoded '0.1.0' but OL is at a different version. "
-        f"Use importlib.metadata to derive from the installed package."
+        "ol_mcp.__version__ is hardcoded '0.1.0' but OL is at a different version. "
+        "Use importlib.metadata to derive from the installed package."
     )
 
 

@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from ol_mcp.tools import (
     TOOL_REGISTRY,

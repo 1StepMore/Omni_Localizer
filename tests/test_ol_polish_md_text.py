@@ -1,6 +1,5 @@
 """Tests for polish_md_text() wrapper."""
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from ol_xliff.polish import polish_md_text

@@ -113,7 +113,7 @@ class TestPolishBudgetGuard:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock, MagicMock
 
-        from ol_xliff.polish import polish_translated_units, _MAX_POLISH_CHARS
+        from ol_xliff.polish import polish_translated_units
 
         pool = MagicMock()
         pool.translate = AsyncMock()

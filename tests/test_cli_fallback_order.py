@@ -15,10 +15,7 @@ fallback before config.
 After fix: same pattern as translate_xliff — config defaults take
 effect when no -s/-t is passed.
 """
-import os
-from pathlib import Path
 
-import pytest
 import yaml
 
 
