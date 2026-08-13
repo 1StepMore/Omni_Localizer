@@ -147,11 +147,17 @@ class TestTranslateFileTimeoutPropagation:
             timeout=120,
         )
 
-        with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
-            try:
-                _run(translate_file(params))
-            except Exception:
-                pass
+        def mock_which(name, *args, **kwargs):
+            if name in ("opp", "ol", "orf"):
+                return f"/usr/bin/{name}"
+            return None
+
+        with patch.object(tf_module.shutil, "which", side_effect=mock_which):
+            with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
+                try:
+                    _run(translate_file(params))
+                except Exception:
+                    pass
 
         assert len(captured_timeouts) == 3, (
             f"Expected 3 subprocess calls, got {len(captured_timeouts)}: {captured_timeouts}"
@@ -214,11 +220,17 @@ class TestTranslateFileTimeoutPropagation:
             output_dir=str(out_dir),
         )
 
-        with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
-            try:
-                _run(translate_file(params))
-            except Exception:
-                pass
+        def mock_which(name, *args, **kwargs):
+            if name in ("opp", "ol", "orf"):
+                return f"/usr/bin/{name}"
+            return None
+
+        with patch.object(tf_module.shutil, "which", side_effect=mock_which):
+            with patch.object(tf_module.subprocess, "run", side_effect=mock_run):
+                try:
+                    _run(translate_file(params))
+                except Exception:
+                    pass
 
         assert len(captured_timeouts) == 3, (
             f"Expected 3 calls, got {len(captured_timeouts)}: {captured_timeouts}"
@@ -337,28 +349,34 @@ class TestTranslateFileTool:
                     pass
             return mock
 
-        with patch.object(tf_module.subprocess, "run", side_effect=mock_run) as mock_subprocess:
-            result = _run(translate_file(TranslateFileInput(
-                file_path=str(test_file),
-                source_lang="en",
-                target_lang="zh",
-                output_format="docx",
-                output_dir=str(out_dir),
-            )))
-            parsed = json.loads(result)
-            assert parsed.get("success") is True, (
-                f"translate_file should succeed with FAKE_LLM. Got: {parsed}"
-            )
-            # _success_response wraps the data under "content"
-            content = parsed.get("content", {})
-            assert content.get("output_path"), (
-                f"Missing output_path in success response. content={content!r}"
-            )
-            assert mock_subprocess.called, "Should have called subprocess"
-            # Verify at least 3 subprocess calls (opp, ol, orf)
-            assert mock_subprocess.call_count >= 3, (
-                f"Expected 3+ subprocess calls (opp/ol/orf), got {mock_subprocess.call_count}"
-            )
+        def mock_which(name, *args, **kwargs):
+            if name in ("opp", "ol", "orf"):
+                return f"/usr/bin/{name}"
+            return None
+
+        with patch.object(tf_module.shutil, "which", side_effect=mock_which):
+            with patch.object(tf_module.subprocess, "run", side_effect=mock_run) as mock_subprocess:
+                result = _run(translate_file(TranslateFileInput(
+                    file_path=str(test_file),
+                    source_lang="en",
+                    target_lang="zh",
+                    output_format="docx",
+                    output_dir=str(out_dir),
+                )))
+                parsed = json.loads(result)
+                assert parsed.get("success") is True, (
+                    f"translate_file should succeed with FAKE_LLM. Got: {parsed}"
+                )
+                # _success_response wraps the data under "content"
+                content = parsed.get("content", {})
+                assert content.get("output_path"), (
+                    f"Missing output_path in success response. content={content!r}"
+                )
+                assert mock_subprocess.called, "Should have called subprocess"
+                # Verify at least 3 subprocess calls (opp, ol, orf)
+                assert mock_subprocess.call_count >= 3, (
+                    f"Expected 3+ subprocess calls (opp/ol/orf), got {mock_subprocess.call_count}"
+                )
 
     def test_translate_file_preserves_tempdir_on_failure(self, tmp_path):
         """Issue #37 R11: failure preserves tempdir (for debugging)."""
@@ -379,20 +397,26 @@ class TestTranslateFileTool:
                 mock.returncode = 0
             return mock
 
-        with patch.object(tf_module.subprocess, "run", side_effect=mock_run_fail_opp):
-            result = _run(translate_file(TranslateFileInput(
-                file_path=str(test_file),
-                source_lang="en",
-                target_lang="zh",
-                output_dir=str(out_dir),
-            )))
-            parsed = json.loads(result)
-            assert parsed.get("success") is False
-            # On failure, error response should reference the failure source
-            error_msg = str(parsed.get("error", {}).get("message", ""))
-            assert "OPP" in error_msg or "failed" in error_msg.lower(), (
-                f"Failure should reference error source. Got: {parsed}"
-            )
+        def mock_which(name, *args, **kwargs):
+            if name in ("opp", "ol", "orf"):
+                return f"/usr/bin/{name}"
+            return None
+
+        with patch.object(tf_module.shutil, "which", side_effect=mock_which):
+            with patch.object(tf_module.subprocess, "run", side_effect=mock_run_fail_opp):
+                result = _run(translate_file(TranslateFileInput(
+                    file_path=str(test_file),
+                    source_lang="en",
+                    target_lang="zh",
+                    output_dir=str(out_dir),
+                )))
+                parsed = json.loads(result)
+                assert parsed.get("success") is False
+                # On failure, error response should reference the failure source
+                error_msg = str(parsed.get("error", {}).get("message", ""))
+                assert "OPP" in error_msg or "failed" in error_msg.lower(), (
+                    f"Failure should reference error source. Got: {parsed}"
+                )
 
     def test_translate_file_resolves_opp_via_venv_fallback(self, tmp_path):
         """Issue #37: opp may not be on PATH — tool uses venv fallback."""

@@ -20,6 +20,13 @@ from ol_config.loader import load_config
 from ol_pool.router import ModelPool
 
 
+_LOCAL_YAML_PATH = Path(__file__).resolve().parents[1] / "config" / "local.yaml"
+
+
+@pytest.mark.skipif(
+    not _LOCAL_YAML_PATH.exists(),
+    reason="config/local.yaml is a gitignored local-only config; not present in CI",
+)
 class TestMaxXliffConcurrentE2E:
     """FIX-#13: max_xliff_concurrent flows from YAML to ConcurrencyLimiter."""
 
