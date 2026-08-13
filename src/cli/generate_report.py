@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 
 
 def generate_report(
@@ -62,7 +62,7 @@ def generate_report(
     extracted_entries: list[WarningEntry] = []
     if extract_from:
         try:
-            from ._warning_extractor import extract_warnings_from_file
+            from cli._warning_extractor import extract_warnings_from_file
             extracted_entries = extract_warnings_from_file(extract_from)
         except FileNotFoundError:
             typer.echo(f"Error: --extract-from file not found: {extract_from}", err=True)

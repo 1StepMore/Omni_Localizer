@@ -152,7 +152,7 @@ class TestTranslateXliffMcpStyleGuide:
     def test_mcp_styleguide_loaded_into_prompt(self, tmp_path, monkeypatch):
         """When styleguide_path is valid, the LLM prompt receives the styleguide section."""
         from pathlib import Path
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import patch
         from ol_mcp.translate_xliff import translate_xliff as mcp_translate_xliff
 
         env_file = Path(__file__).resolve().parents[2] / ".env"

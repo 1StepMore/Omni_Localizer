@@ -86,7 +86,6 @@ _GB_TO_US_SPELLINGS: dict[str, str] = {
     "cancelled": "canceled",
     "modelled": "modeled",
     "fuelled": "fueled",
-    "centre": "center",
     "litre": "liter",
     "fibre": "fiber",
     "calibre": "caliber",
@@ -534,74 +533,6 @@ def check_protocol_artifacts(target: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Gate: Full glossary term audit via verify_translation
-# ---------------------------------------------------------------------------
-
-
-def check_terms_audit(
-    source: str,
-    target: str,
-    glossary: dict[str, Any] | None = None,
-    confidence_threshold: float = 0.7,
-) -> list[str]:
-    """Gate — full glossary term audit using verify_translation.
-
-    Runs ``verify_translation()`` on the source-target pair with the
-    provided glossary and flattens the report into ``OL_WARN`` lines.
-    Four warning codes are produced depending on severity:
-
-    * ``TERM_AUDIT_MISMATCH`` — term translated using a non-glossary variant
-    * ``TERM_AUDIT_ABSENT`` — source term found but expected translation absent
-    * ``TERM_AUDIT_INCONSISTENCY`` — same source term → different translations
-    * ``TERM_AUDIT_LOW_CONFIDENCE`` — best guess fell below threshold
-
-    This gate is richer than Gate 2 (terminology consistency) because it
-    also reports mismatches, absent terms, and cross-segment inconsistencies.
-
-    Args:
-        source: Source text.
-        target: Translated text.
-        glossary: Glossary dict. When ``None`` the check is skipped.
-        confidence_threshold: Minimum confidence (0.0-1.0) for term matches.
-
-    Returns:
-        List of ``OL_WARN: TERM_AUDIT_<STATUS>`` strings (empty if clean).
-    """
-    if glossary is None:
-        return []
-
-    from ol_terminology.verifier import verify_translation
-
-    report = verify_translation(source, target, glossary, confidence_threshold)
-
-    warnings: list[str] = []
-
-    for m in report.mismatches:
-        warnings.append(
-            f"OL_WARN: TERM_AUDIT_MISMATCH — term '{m.term}' "
-            f"expected '{m.expected}' got '{m.found}'"
-        )
-    for a in report.absent:
-        warnings.append(
-            f"OL_WARN: TERM_AUDIT_ABSENT — term '{a.term}' "
-            f"expected '{a.expected}' not found"
-        )
-    for i in report.inconsistencies:
-        translations = ", ".join(i.translations)
-        warnings.append(
-            f"OL_WARN: TERM_AUDIT_INCONSISTENCY — term '{i.source_term}' "
-            f"has {len(i.translations)} translations: {translations}"
-        )
-    for lc in report.low_confidence:
-        warnings.append(
-            f"OL_WARN: TERM_AUDIT_LOW_CONFIDENCE — term '{lc.term}' "
-            f"confidence {lc.confidence} below threshold"
-        )
-
-    return warnings
-
-
-# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -622,11 +553,6 @@ def run_quality_gates(
     source_script_check_enabled: bool = True,
     protocol_artifact_check_enabled: bool = True,
     block_on_source_script_fragment: bool = False,
-    cjk_residue_enabled: bool = True,
-    target_lang: str | None = None,
-    llm_markers_enabled: bool = True,
-    terms_audit_enabled: bool = True,
-    terms_audit_confidence: float = 0.7,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -652,13 +578,6 @@ def run_quality_gates(
             fragment detection).
         protocol_artifact_check_enabled: Run Gate 7 (protocol
             artifact detection).
-        cjk_residue_enabled: Alias for source_script_check_enabled.
-        target_lang: Target language code (affects CJK locale
-            detection for Gate 6).
-        llm_markers_enabled: Alias for protocol_artifact_check_enabled.
-        terms_audit_enabled: Run full glossary term audit via
-            verify_translation.
-        terms_audit_confidence: Confidence threshold for term audit.
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -729,51 +648,4 @@ def run_quality_gates(
         except Exception as exc:
             _logger.exception("Gate 7 (protocol artifact check) failed: %s", exc)
 
-    # Gate: Terms audit (full glossary term verification via verify_translation)
-    if terms_audit_enabled:
-        try:
-            all_warnings.extend(
-                check_terms_audit(
-                    source,
-                    target,
-                    glossary=glossary,
-                    confidence_threshold=terms_audit_confidence,
-                )
-            )
-        except Exception as exc:
-            _logger.exception("Gate (terms audit) failed: %s", exc)
-
     return all_warnings
-
-
-# ---------------------------------------------------------------------------
-# Warning summary
-# ---------------------------------------------------------------------------
-
-
-def format_warning_summary(warnings_per_unit: dict[str, list[str]]) -> str:
-    """Build a one-line summary of all ``OL_WARN`` codes for a translation run.
-
-    Example::
-
-        12 warnings (LENGTH_RATIOx8, SOURCE_COPYx1, UNIT_SPELLINGx1, INLINE_TAG_MISMATCHx2)
-
-    Returns:
-        Human-readable summary string.  Returns ``"0 warnings"`` when
-        *warnings_per_unit* is empty or contains no ``OL_WARN`` entries.
-    """
-    from collections import Counter
-
-    codes: list[str] = []
-    for warns in warnings_per_unit.values():
-        for w in warns:
-            m = re.search(r"OL_WARN:\s*(\w+)", w)
-            if m:
-                codes.append(m.group(1))
-
-    if not codes:
-        return "0 warnings"
-
-    counts = Counter(codes)
-    parts = [f"{code}x{n}" for code, n in counts.most_common()]
-    return f'{sum(counts.values())} warnings ({", ".join(parts)})'

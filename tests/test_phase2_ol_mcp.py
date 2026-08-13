@@ -4,10 +4,8 @@ These tests verify the unified MCP configuration across the Omni Suite.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 

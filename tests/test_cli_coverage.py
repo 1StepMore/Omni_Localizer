@@ -6,7 +6,6 @@ import sys
 import subprocess
 from pathlib import Path
 
-import pytest
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_GLOSSARY = FIXTURES_DIR / "glossary_爱上海尔.json"

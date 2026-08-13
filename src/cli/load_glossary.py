@@ -11,7 +11,7 @@ from typing import Optional
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 
 
 def load_glossary(

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 from ol_md.shield import unshield_markdown
 
 

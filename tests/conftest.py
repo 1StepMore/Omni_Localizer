@@ -32,6 +32,11 @@ for _k, _v in _DUMMY_API_KEYS.items():
 os.environ.setdefault("OMNI_RATE_LIMIT_RPM", "0")
 os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 
+# Newer typer (>=0.27) emits ANSI in CliRunner help output; NO_COLOR alone
+# still emits bold, so TERM=dumb is required to fully disable color.
+os.environ.setdefault("NO_COLOR", "1")
+os.environ.setdefault("TERM", "dumb")
+
 
 # Several test files transitively import litellm, torch, transformers,
 # sentence_transformers, and typer via:

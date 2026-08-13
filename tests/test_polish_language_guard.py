@@ -3,7 +3,6 @@
 Verifies that polish_translated_units() and polish_md_text() skip
 corrections that would revert translated text back to the source language.
 """
-import asyncio
 import logging
 
 import pytest

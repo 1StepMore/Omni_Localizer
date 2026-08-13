@@ -10,7 +10,6 @@ After the fix: litellm imports are gated on `OMNI_TEST_FAKE_LLM != "1"`,
 so the cold start drops from ~27s to ~5.8s (Python startup only).
 Real-LLM mode is unchanged at ~27s.
 """
-import os
 import sys
 import time
 

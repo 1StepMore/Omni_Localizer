@@ -22,7 +22,6 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-import ol_cli
 from ol_cli import app
 
 runner = CliRunner()

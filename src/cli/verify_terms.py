@@ -13,7 +13,7 @@ from typing import Optional
 
 import typer
 
-from ._shared import ExitCode, validate_input_file
+from cli._shared import ExitCode, validate_input_file
 from ol_terminology.verifier import verify_translation
 
 

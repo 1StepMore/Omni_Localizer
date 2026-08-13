@@ -8,7 +8,7 @@ import json
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 from ol_mcp.security import get_default_validator
 
 

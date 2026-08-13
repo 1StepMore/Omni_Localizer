@@ -42,20 +42,6 @@ class ScorerService:
             "regex_match": regex_match,
         }
 
-    async def score_and_evaluate(
-        self,
-        source: str,
-        target: str,
-        unit_id: str,
-        source_lang: str = "en",
-        target_lang: str = "en",
-    ) -> EvaluationResult:
-        """Duck-typed interface compatible with COMETService.score_and_evaluate.
-
-        Delegates to :meth:`score` and returns the result directly.
-        """
-        return await self.score(source, target, unit_id, source_lang, target_lang)
-
     async def score_batch(
         self,
         pairs: list[tuple[str, str, str]],

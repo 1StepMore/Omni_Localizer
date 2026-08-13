@@ -1,5 +1,4 @@
 """Tests for _extract_text_from_file() helper in profile_doc.py."""
-from pathlib import Path
 import pytest
 
 from cli.profile_doc import _extract_text_from_file

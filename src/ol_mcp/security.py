@@ -73,7 +73,7 @@ class PathValidator:
         max_file_size_bytes: Maximum allowed file size in bytes (default: 100MB).
     """
 
-    ALLOWED_EXTENSIONS = {".json", ".tmx", ".xlf", ".xliff", ".md"}
+    ALLOWED_EXTENSIONS = {".json", ".tmx", ".xlf", ".xliff", ".md", ".yaml", ".yml"}
 
     @classmethod
     def get_allowed_extensions(cls) -> set[str]:

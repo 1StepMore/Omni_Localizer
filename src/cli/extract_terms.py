@@ -15,7 +15,7 @@ from pathlib import Path
 
 import typer
 
-from ._shared import ExitCode
+from cli._shared import ExitCode
 
 
 def extract_terms(

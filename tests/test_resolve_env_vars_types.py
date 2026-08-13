@@ -1,5 +1,4 @@
 """Test P1-T5: _resolve_env_vars should have correct type signature."""
-import inspect
 from typing import get_type_hints
 
 from ol_pool.router import _resolve_env_vars

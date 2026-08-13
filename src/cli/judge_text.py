@@ -10,7 +10,7 @@ from typing import Optional
 
 import typer
 
-from ._shared import ExitCode, warn_fake_llm_mode
+from cli._shared import ExitCode, warn_fake_llm_mode
 
 
 def judge_text(

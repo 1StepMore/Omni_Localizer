@@ -10,10 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from ol_pool.router import ModelPool
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
@@ -30,10 +27,9 @@ from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
+from ol_pool.router import ModelPool
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
-from ol_lqa.quality_gates import run_quality_gates
-from ol_config.loader import load_config
 
 
 @_register_tool(
@@ -42,7 +38,7 @@ from ol_config.loader import load_config
     "Translate multiple texts in parallel.",
 )
 @mcp_error_boundary
-async def batch_translate_texts(params: BatchTranslateInput, pool: 'ModelPool | None' = None) -> str:
+async def batch_translate_texts(params: BatchTranslateInput) -> str:
     # H5: token bucket rate limiter
     rate_ok, rate_err = check_rate_limit()
     if not rate_ok:
@@ -74,9 +70,7 @@ async def batch_translate_texts(params: BatchTranslateInput, pool: 'ModelPool | 
             except Exception as e:  # expected — glossary load is best-effort
                 warnings.append(f"Glossary load failed: {e}")
 
-    if pool is None:
-        from ol_pool.router import ModelPool  # noqa: PLC0415
-        pool = ModelPool.get_instance(config_path)
+    pool = ModelPool.get_instance(config_path)
     repair_pipeline = MDRepairPipeline()
 
     concurrency = max(1, min(getattr(params, "concurrency", 5), 20))
@@ -110,37 +104,9 @@ async def batch_translate_texts(params: BatchTranslateInput, pool: 'ModelPool | 
                 if shield_map:
                     translated = unshield_markdown(translated, shield_map)
                 repaired = repair_pipeline.repair(translated, text, shield_map)
+                repair_warnings = []
 
-                item_warnings: list[str] = []
-                try:
-                    cfg, _ = load_config(config_path)
-                    qg = cfg.quality_gates
-                    qg_result = run_quality_gates(
-                        source=text,
-                        target=repaired,
-                        glossary=glossary,
-                        inline_tags_enabled=qg.inline_tags,
-                        terminology_enabled=qg.terminology and glossary is not None,
-                        length_ratio_enabled=qg.length_ratio.enabled,
-                        length_ratio_min=qg.length_ratio.min,
-                        length_ratio_max=qg.length_ratio.max,
-                        locale_enabled=qg.locale.enabled,
-                        target_locale=qg.locale.target_locale,
-                        cjk_residue_enabled=qg.cjk_residue,
-                        target_lang=params.target_lang,
-                        llm_markers_enabled=qg.llm_markers,
-                    )
-                    item_warnings.extend(qg_result)
-                except Exception as qg_err:
-                    _logger.warning("Quality gates failed for item %d: %s", i, qg_err)
-
-                if params.self_reflect:
-                    from ol_xliff.self_reflect import self_reflect_md_text
-                    repaired = await self_reflect_md_text(
-                        repaired, params.source_lang, params.target_lang, pool,
-                    )
-
-                return {"index": i, "success": True, "translated": repaired, "warnings": item_warnings}
+                return {"index": i, "success": True, "translated": repaired, "warnings": repair_warnings}
             except Exception as e:
                 _logger.warning("batch_translate_texts item %d failed: %s", i, e)
                 return {"index": i, "success": False, "translated": "", "warnings": [str(e)]}
