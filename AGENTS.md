@@ -395,3 +395,35 @@ for the complete decision tree and format support matrix.
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
 - Per-Agent skill files: `src/.opencode/skills/ol-localizer/SKILL.md`
   and `src/.hermes/skills/ol-localizer/SKILL.md`
+
+## How to validate this module
+
+OL ships its own validation scenarios in the Omni Suite validation
+framework (`tool-ol-*` = 21 MCP tools, plus the pipeline quality-bar
+scenarios that carry the HUMAN-QUALITY bar: LQA ≥ 4.0/5, paragraph ratio
+±5%, CJK < 5%, 0 foreign punctuation). Any agent or the human director
+can validate OL in isolation with the suite's per-module filter:
+
+```bash
+# From the Omni Suite root (clone: https://github.com/1StepMore/e2e-test-suite)
+source .venv_ol/bin/activate
+
+# List OL's scenarios
+python scripts/validation/run_validation.py --list --module ol
+
+# Run OL's hermetic tool scenarios (tier 1 = no LLM keys needed)
+python scripts/validation/run_validation.py --module ol --tier 1
+
+# Full quality bar (real LLM keys required; reports `unconfigured` without them)
+python scripts/validation/run_validation.py --module suite --tier 2
+
+# Coverage: every OL MCP tool must be scenario-exercised
+python scripts/validation/coverage_audit.py   # ol row must show 21/21, 0 missing
+```
+
+The standards bar is `scenarios/STANDARDS.md` (AGENT-SURFACE family for
+the tool scenarios; HUMAN-QUALITY family — lqa-threshold, para-ratio,
+cjk-density, punct-hygiene — for the pipeline scenarios). Director loop +
+10-minute checklist: `docs/dev/validation-director-loop.md` in the suite
+repo. Scenario fixes live in the suite repo, NOT here — OL product-code
+fixes go through the normal fix cycle in this repo.
