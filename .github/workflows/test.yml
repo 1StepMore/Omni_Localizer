@@ -75,6 +75,8 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: ol-src
 
       - name: Clone Omni Suite (engine + scenarios + fixtures)
         uses: actions/checkout@v4
@@ -113,7 +115,7 @@ jobs:
         working-directory: suite
         run: |
           rm -rf Omni_Localizer
-          cp -r ${{ github.workspace }} Omni_Localizer
+          cp -r ../ol-src Omni_Localizer
           uv pip install --python .venv/bin/python -e "./Omni_Localizer[mcp]"
 
       - name: Run OL validation scenarios (tier 1, hermetic)
