@@ -117,6 +117,7 @@ jobs:
           rm -rf Omni_Localizer
           cp -r ../ol-src Omni_Localizer
           uv pip install --python .venv/bin/python -e "./Omni_Localizer[mcp]"
+          uv pip install --python .venv/bin/python yake
 
       - name: Run OL validation scenarios (tier 1, hermetic)
         working-directory: suite
