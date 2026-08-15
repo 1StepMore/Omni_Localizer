@@ -162,19 +162,35 @@ def translate_batch(
             src = src or "en"
             tgt = tgt or "zh"
 
-        succeeded, failed = asyncio.run(
-            _translate_batch_async(
-                input_path,
-                output_path,
-                config,
-                src,
-                tgt,
-                glossary if config else None,
-                concurrency,
-                add_frontmatter,
-                detect_language,
-            ),
-        )
+        # asyncio.run() installs its own SIGINT handler (for graceful task
+        # cancellation), overriding the CLI's _sigint_handler — so a Ctrl+C
+        # during the batch would never set the _interrupted flag. Run on the
+        # current loop instead so the CLI handler stays active.
+        loop = asyncio.new_event_loop()
+        try:
+            succeeded, failed = loop.run_until_complete(
+                _translate_batch_async(
+                    input_path,
+                    output_path,
+                    config,
+                    src,
+                    tgt,
+                    glossary if config else None,
+                    concurrency,
+                    add_frontmatter,
+                    detect_language,
+                ),
+            )
+        finally:
+            loop.close()
+
+        # SIGINT (Ctrl+C) during the batch: the handler sets _interrupted
+        # and the run finishes in-flight files; report INTERRUPTED (3).
+        from cli._shared import is_interrupted
+        if is_interrupted():
+            if json_output:
+                output_json(False, directory, error="interrupted")
+            raise typer.Exit(code=ExitCode.INTERRUPTED)
 
         if failed > 0:
             if json_output:

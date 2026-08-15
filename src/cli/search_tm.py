@@ -9,7 +9,6 @@ import json
 import typer
 
 from cli._shared import ExitCode
-from ol_mcp.security import get_default_validator
 
 
 def search_tm(
@@ -20,6 +19,10 @@ def search_tm(
     target_lang: str = typer.Option("zh", "--target-lang", "-g", help="Target language code"),
 ) -> None:
     """Search translation memory for similar past translations."""
+    # Lazy import: ol_mcp.security pulls the MCP stack (litellm, ~30s on
+    # cold start). Module-level import would defeat the CLI's missing-key
+    # fast-fail (precheck_api_keys).
+    from ol_mcp.security import get_default_validator
     vresult = get_default_validator().validate_path(tmx_path)
     if not vresult.success:
         typer.echo(f"Error: {vresult.error}", err=True)
@@ -34,7 +37,7 @@ def search_tm(
             src_lang=source_lang,
             tgt_lang=target_lang,
         )
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: TM search failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

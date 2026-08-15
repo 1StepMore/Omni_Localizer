@@ -63,7 +63,7 @@ async def disambiguate(params: DisambiguateInput) -> str:
             ),
             ensure_ascii=False,
         )
-    except Exception as e:
+    except Exception as e:  # expected
         return json.dumps(
             _error_response("OL_DISAMBIGUATE_FAILED", str(e)),
             ensure_ascii=False,

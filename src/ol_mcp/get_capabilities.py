@@ -49,7 +49,7 @@ def get_capabilities() -> str:
     try:
         from ol import __version__ as _v  # type: ignore
         version = _v
-    except Exception:
+    except Exception:  # expected
         pass
 
     return json.dumps(

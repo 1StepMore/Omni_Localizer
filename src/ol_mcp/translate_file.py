@@ -270,7 +270,7 @@ async def translate_file(params: TranslateFileInput) -> str:
             "TIMEOUT",
             f"Subprocess timeout: {e}",
         ), ensure_ascii=False)
-    except Exception as e:
+    except Exception as e:  # expected
         return json.dumps(_error_response(
             "UNKNOWN",
             f"{type(e).__name__}: {e}",

@@ -34,7 +34,7 @@ def inspect_config(
     cfg_path = config_path or Path("config/default.yaml")
     try:
         config, glossary = load_config(str(cfg_path))
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: failed to load config: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

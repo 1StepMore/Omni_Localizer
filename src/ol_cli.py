@@ -169,6 +169,8 @@ def main(
 
 
 def main_entry() -> int:
+    from cli._shared import _setup_signal_handler
+    _setup_signal_handler()
     app()
     return ExitCode.SUCCESS
 

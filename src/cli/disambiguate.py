@@ -38,7 +38,7 @@ def disambiguate(
 
     try:
         resolved = _disambiguate(text, glossary_dict)
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: disambiguation failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

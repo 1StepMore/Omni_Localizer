@@ -68,7 +68,7 @@ def load_glossary(
             path,
             config_dir=Path(config_dir) if config_dir else None,
         )
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: failed to load glossary: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

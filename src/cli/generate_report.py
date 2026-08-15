@@ -67,7 +67,7 @@ def generate_report(
         except FileNotFoundError:
             typer.echo(f"Error: --extract-from file not found: {extract_from}", err=True)
             raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
-        except Exception as e:
+        except Exception as e:  # expected
             typer.echo(
                 f"Error: failed to extract warnings from {extract_from}: {e}",
                 err=True,
@@ -121,7 +121,7 @@ def generate_report(
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: failed to generate report: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

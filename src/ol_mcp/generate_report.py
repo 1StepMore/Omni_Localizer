@@ -90,7 +90,7 @@ async def generate_report(params: GenerateReportInput) -> str:
             _error_response("OL_FILE_EXISTS", str(e)),
             ensure_ascii=False,
         )
-    except Exception as e:
+    except Exception as e:  # expected
         return json.dumps(
             _error_response("OL_GENERATE_REPORT_FAILED", str(e)),
             ensure_ascii=False,
