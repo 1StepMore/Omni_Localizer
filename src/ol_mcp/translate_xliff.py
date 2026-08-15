@@ -97,7 +97,7 @@ async def _run_translate_xliff_async(
                 try:
                     sg = StyleGuide.from_json_file(styleguide_path)
                     styleguide_section = sg.to_prompt_section()
-                except Exception as e:
+                except Exception as e:  # expected
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:
@@ -289,7 +289,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                 try:
                     sg = StyleGuide.from_json_file(params.styleguide_path)
                     styleguide_section = sg.to_prompt_section()
-                except Exception as e:
+                except Exception as e:  # expected
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:

@@ -60,7 +60,7 @@ async def extract_terms(params: ExtractTermsInput) -> str:
             "term_count": len(sorted_terms),
         }
         return json.dumps(_success_response(content), ensure_ascii=False)
-    except Exception as e:
+    except Exception as e:  # expected
         return json.dumps(
             _error_response("OL_EXTRACT_TERMS_FAILED", str(e)),
             ensure_ascii=False,

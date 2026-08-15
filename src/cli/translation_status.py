@@ -20,7 +20,7 @@ def translation_status(
         from ol_mcp.status import get_translation_status as _impl
         from ol_mcp.task_tracker import InMemoryTaskTracker
         result = _impl(request_id, InMemoryTaskTracker())
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: failed to get status: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

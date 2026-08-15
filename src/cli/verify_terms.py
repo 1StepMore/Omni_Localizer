@@ -79,7 +79,7 @@ def verify_terms(
             glossary=glossary_dict,
             confidence_threshold=confidence_threshold,
         )
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: verification failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

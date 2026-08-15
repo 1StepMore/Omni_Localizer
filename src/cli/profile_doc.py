@@ -124,7 +124,7 @@ def profile_doc(
             config_path=config,
             cache=cache,
         ))
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: profiling failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

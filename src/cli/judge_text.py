@@ -62,7 +62,7 @@ def judge_text(
             err=True,
         )
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: judge failed: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 

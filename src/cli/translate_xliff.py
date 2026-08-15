@@ -511,7 +511,7 @@ async def _translate_xliff_async(
                 _ids = ast.literal_eval("[" + _m.group(1) + "]")
                 for _uid in _ids:
                     warnings_per_unit.setdefault(str(_uid), []).append(cw)
-            except Exception:
+            except Exception:  # expected
                 pass
     output_file = str(output_path / input_path.name)
     write_target_back(ctx, output_file, warnings_per_unit=warnings_per_unit)

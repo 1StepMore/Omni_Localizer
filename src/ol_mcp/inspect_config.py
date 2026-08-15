@@ -85,7 +85,7 @@ async def inspect_config(params: InspectConfigInput) -> str:
 
     try:
         config, glossary = load_config(cfg_path)
-    except Exception as e:
+    except Exception as e:  # expected
         return json.dumps(
             _error_response("OL_CONFIG_LOAD_FAILED", str(e)),
             ensure_ascii=False,

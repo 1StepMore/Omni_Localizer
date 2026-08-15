@@ -11,7 +11,6 @@ import json
 import typer
 
 from cli._shared import ExitCode
-from ol_mcp.get_capabilities import get_capabilities
 
 
 def capabilities(
@@ -20,6 +19,10 @@ def capabilities(
     ),
 ) -> None:
     """Print OL module capabilities (roles, language pairs, available tools)."""
+    # Lazy import: ol_mcp.get_capabilities pulls the MCP stack (litellm,
+    # ~30s on cold start). Importing it at module level would defeat the
+    # CLI's missing-key fast-fail (precheck_api_keys).
+    from ol_mcp.get_capabilities import get_capabilities
     # get_capabilities is a sync function that returns a JSON string.
     # It already runs rate-limit + auth checks internally.
     result = get_capabilities()

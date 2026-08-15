@@ -16,7 +16,7 @@ def ping() -> None:
     from importlib.metadata import version as _v
     try:
         ol_version = _v("omni-localizer")
-    except Exception:
+    except Exception:  # expected
         ol_version = "unknown"
     typer.echo(json.dumps({"module": "ol", "version": ol_version, "status": "ok"}))
     raise typer.Exit(code=ExitCode.SUCCESS)

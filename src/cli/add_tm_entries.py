@@ -66,7 +66,7 @@ def add_tm_entries(
             svc.add(e["source"], e["target"], e["source_lang"], e["target_lang"])
         svc.flush()
         typer.echo(f"Added {len(entry_list)} entries to: {tmx_path}")
-    except Exception as e:
+    except Exception as e:  # expected
         typer.echo(f"Error: failed to add TM entries: {e}", err=True)
         raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
