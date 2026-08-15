@@ -38,15 +38,15 @@ llm_pool:
       timeout: 120.0
     # Note: openai-compat endpoint (NVIDIA NIM uses OpenAI API protocol)
     - provider: "openai"
-      model: "deepseek-ai/deepseek-v4-flash"
+      model: "z-ai/glm-5.2"
       priority: 3
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
-    # Note: openai-compat endpoint (Moonshot Kimi uses OpenAI API protocol)
+    # Note: openai-compat endpoint (MiniMax uses OpenAI API protocol)
     - provider: "openai"
-      model: "moonshotai/kimi-k2.6"
+      model: "minimaxai/minimax-m3"
       priority: 4
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
