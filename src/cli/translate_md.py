@@ -124,7 +124,7 @@ def _build_restoration_pool(config_path: str | None) -> 'ModelPool | None':
     try:
         from ol_pool.router import ModelPool
         return ModelPool.get_instance(
-            config_path if config_path else "config/default.yaml",
+            config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"),
         )
     except Exception:
         logger = get_logger("cli")
