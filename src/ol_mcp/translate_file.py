@@ -69,6 +69,17 @@ def _resolve_output_path(temp_dir: Path, input_path: Path, output_format: str) -
     return temp_dir / f"{input_path.stem}.{output_format}"
 
 
+def _find_output_file(directory: Path, stem: str, extensions: list[str]) -> Path | None:
+    """Search *directory* for a file matching *stem* + any of *extensions*."""
+    for ext in extensions:
+        candidate = directory / f"{stem}{ext}"
+        if candidate.exists():
+            return candidate
+    # Fallback: any file with the target extension (OL may rename).
+    matches = sorted(directory.glob(f"*{extensions[0]}")) if extensions else []
+    return matches[0] if matches else None
+
+
 @_register_tool(
     "translate_file",
     TranslateFileInput,
@@ -204,24 +215,33 @@ async def translate_file(params: TranslateFileInput) -> str:
         final_output = final_output_dir / f"{file_path.stem}.{params.output_format}"
 
         if use_xliff:
-            orf_input = ol_input  # the translated XLIFF
+            orf_input = file_path  # ORF apply-xliff takes the ORIGINAL source document
             orf_subcommand = "apply-xliff"
         else:
-            # ORF apply-md takes the translated .md
-            orf_input = temp_dir / f"{file_path.stem}.translated.md"
+            # ORF apply-md takes the translated .md (OL writes it back under
+            # the same name as the input, in the output dir).
+            orf_input = _find_output_file(temp_dir, file_path.stem, [".md"])
             orf_subcommand = "apply-md"
 
-        if not orf_input.exists():
+        if orf_input is None or not orf_input.exists():
             return json.dumps(_error_response(
                 "ORF_INPUT_MISSING",
                 f"Expected input file for orf {orf_subcommand} does not exist: {orf_input}",
             ), ensure_ascii=False)
 
-        orf_cmd = [
-            orf_bin, orf_subcommand, str(orf_input),
-            "--target-format", params.output_format,
-            "-o", str(final_output),
-        ]
+        if use_xliff:
+            orf_cmd = [
+                orf_bin, orf_subcommand, str(orf_input),
+                "--xliff", str(ol_input),
+                "--output", str(final_output),
+                "--format", params.output_format,
+            ]
+        else:
+            orf_cmd = [
+                orf_bin, orf_subcommand, str(orf_input),
+                "--target-format", params.output_format,
+                "-o", str(final_output),
+            ]
 
         result = subprocess.run(
             orf_cmd,             capture_output=True, text=True, timeout=params.timeout,

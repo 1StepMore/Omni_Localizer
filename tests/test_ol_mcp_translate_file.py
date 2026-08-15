@@ -324,22 +324,30 @@ class TestTranslateFileTool:
                     (out_dir / f"{stem}_manifest.json").write_text("{}", encoding="utf-8")
                 except (ValueError, IndexError):
                     pass
-            # OL translate-md: find .md and create .translated.md
+            # OL translate-md: writes the translated file back under the SAME
+            # name as the input, in the -o output dir (real CLI behavior).
             elif "translate-md" in cmd:
                 md_files = [a for a in cmd if a.endswith(".md") and "translated" not in a]
                 if md_files:
                     src_md = Path(md_files[0])
-                    if src_md.exists():
-                        dst_md = src_md.parent / f"{src_md.stem}.translated.md"
-                        dst_md.write_text(f"# {src_md.stem}\n[zh] translated\n", encoding="utf-8")
-            # OL translate-xliff
+                    try:
+                        o_idx = cmd.index("-o")
+                        dst_md = Path(cmd[o_idx + 1]) / src_md.name
+                    except (ValueError, IndexError):
+                        dst_md = src_md.parent / src_md.name
+                    dst_md.write_text(f"# {src_md.stem}\n[zh] translated\n", encoding="utf-8")
+            # OL translate-xliff: writes the translated file back under the
+            # SAME name as the input, in the -o output dir (real CLI behavior).
             elif "translate-xliff" in cmd:
                 xlf_files = [a for a in cmd if a.endswith(".xlf") and "translated" not in a]
                 if xlf_files:
                     src_xlf = Path(xlf_files[0])
-                    if src_xlf.exists():
-                        dst_xlf = src_xlf.parent / f"{src_xlf.stem}.translated.xlf"
-                        dst_xlf.write_text("<xliff></xliff>", encoding="utf-8")
+                    try:
+                        o_idx = cmd.index("-o")
+                        dst_xlf = Path(cmd[o_idx + 1]) / src_xlf.name
+                    except (ValueError, IndexError):
+                        dst_xlf = src_xlf.parent / src_xlf.name
+                    dst_xlf.write_text("<xliff></xliff>", encoding="utf-8")
             # ORF: find -o and create the output
             if "apply-md" in cmd or "apply-xliff" in cmd:
                 try:

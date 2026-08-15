@@ -48,8 +48,35 @@ app = typer.Typer(
 # After this import, all public (+ private, via explicit re-exports) names
 # from cli._shared, cli.cache, cli.frontmatter, cli.translate_md,
 # cli.translate_xliff, and cli.batch are available on this module.
+#
+# Robustness: 'cli' is a common top-level name; a polluted PYTHONPATH (e.g.
+# another package shipping its own cli.py) can shadow OL's src/cli/ package
+# and make `from cli import *` import the wrong module. Ensure we import
+# OL's own cli package: if `import cli` resolved to a different file, drop
+# the shadowing module and re-import with OL's src/ dir prepended.
 # ---------------------------------------------------------------------------
-from cli import *  # noqa: E402, F401, F403
+import os as _os
+import sys as _sys
+import importlib as _importlib
+
+_ol_src = _os.path.dirname(_os.path.abspath(__file__))
+import cli as _cli  # noqa: E402
+
+if not _os.path.dirname(_cli.__file__).startswith(_ol_src):
+    # Prepend OL's src unconditionally so the re-import resolves to OL's
+    # cli even when a shadowing entry sits earlier on sys.path.
+    if _ol_src in _sys.path:
+        _sys.path.remove(_ol_src)
+    _sys.path.insert(0, _ol_src)
+    # Drop the shadowing package AND any of its submodules from the import
+    # cache, then re-import so `cli` and all `cli.*` resolve to OL's own.
+    for _name in [k for k in _sys.modules if k == "cli" or k.startswith("cli.")]:
+        _sys.modules.pop(_name, None)
+    _cli = _importlib.import_module("cli")
+    for _name in getattr(_cli, "__all__", ()):
+        globals()[_name] = getattr(_cli, _name)
+else:
+    from cli import *  # noqa: E402, F401, F403
 
 # Explicit private-name re-exports for backward compat
 # (cli.translate_md etc. already use cli._shared, so no circular import)
