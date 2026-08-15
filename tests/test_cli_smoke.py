@@ -226,8 +226,8 @@ class TestTranslateXLIFF:
         translated = list(out.glob("*.xlf"))[0].read_text(encoding="utf-8")
         # Compare source-text fragments (rough sanity)
         import re
-        orig_sources = re.findall(r"<source>([^<]*)</source>", original)
-        trans_sources = re.findall(r"<source>([^<]*)</source>", translated)
+        orig_sources = re.findall(r"<source[^>]*>([^<]*)</source>", original)
+        trans_sources = re.findall(r"<source[^>]*>([^<]*)</source>", translated)
         assert orig_sources, "no <source> in original XLIFF"
         assert orig_sources == trans_sources, (
             "OL must not modify <source> elements"
