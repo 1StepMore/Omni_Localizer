@@ -32,7 +32,7 @@ class TestMaxXliffConcurrentE2E:
 
     def test_local_yaml_has_max_xliff_5(self):
         """local.yaml must set max_xliff_concurrent: 5 (round 3 fix)."""
-        cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         assert cfg.max_xliff_concurrent == 5, (
             f"Expected max_xliff_concurrent=5 in local.yaml; "
             f"got {cfg.max_xliff_concurrent}"
@@ -44,7 +44,7 @@ class TestMaxXliffConcurrentE2E:
         import os
         os.environ["OL_ALLOW_HARDCODED_KEYS"] = "1"
         try:
-            cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+            cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         except Exception as e:
             if "ZHIPU_API_KEY" in str(e) or "AGNES_API_KEY" in str(e):
                 pytest.skip(f"default.yaml env vars not set: {e}")
@@ -56,7 +56,7 @@ class TestMaxXliffConcurrentE2E:
 
     def test_local_yaml_nvidia_models_have_rpm_40(self):
         """OPT-11/OPT-13: NVIDIA models must declare rpm=40 (40 RPM shared tier)."""
-        cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         nvidia_models = [
             m for m in cfg.llm_pool.translation
             if "nvidia" in (m.base_url or "")
@@ -76,7 +76,7 @@ class TestMaxXliffConcurrentE2E:
         resolution (which happens inside _build_model_list). Check via
         the env-var reference pattern instead of substring on URL.
         """
-        cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         ocg_models = [
             m for m in cfg.llm_pool.translation
             if m.base_url and "OPENCODE_GO" in m.base_url
@@ -91,7 +91,7 @@ class TestMaxXliffConcurrentE2E:
 
     def test_local_yaml_judge_models_have_rpm_40(self):
         """FIX-#6: judge model on OPENCODE_GO must declare rpm (judge calls also consume quota)."""
-        cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         ocg_judge = [
             m for m in cfg.llm_pool.judging
             if m.base_url and "OPENCODE_GO" in m.base_url
@@ -104,7 +104,7 @@ class TestMaxXliffConcurrentE2E:
 
     def test_modelpool_rpm_per_deployment(self):
         """FIX-#7: per-deployment rpm in litellm_params (canonical location)."""
-        cfg, _ = load_config("Omni_Localizer/config/local.yaml")
+        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
         # Use the same path the ModelPool uses to build the list
         from ol_pool.router import ModelPool as MP
         from unittest.mock import patch
