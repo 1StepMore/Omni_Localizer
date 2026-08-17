@@ -50,113 +50,87 @@ providers you actually use.
 
 Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
-`config/default.yaml` — Example LLM pool configuration:
+**Getting started (OL#92):**
+1. Run `ol init` to generate `config/local.yaml` interactively with the unified model pool.
+2. Export the printed keys (ZHIPU_API_KEY, NVIDIA_NIM_API_KEY, OPENCODE_GO_KEY, OPENCODE_GO_BASE_URL).
+3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, env vars resolve).
+
+`config/local.yaml` — Example unified LLM pool configuration (as written by `ol init`):
 
 ```yaml
 llm_pool:
   translation:
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "mimo-v2.5"          # OpenCode Go — primary translation
       priority: 1
+      role: "translation"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
+    - provider: "openai"
+      model: "glm-4.7-flash"      # Zhipu — translation/restoration primary
+      priority: 2
       role: "translation"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 2
-      role: "translation"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-ai/deepseek-v4-flash"
+      model: "z-ai/glm-5.2"       # NVIDIA NIM — fallback
       priority: 3
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "moonshotai/kimi-k2.6"
-      priority: 4
-      role: "translation"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 5
-      role: "translation"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
 
   judging:
     - provider: "openai"
-      model: "agnes-2.0-flash"
+      model: "mimo-v2.5"          # OpenCode Go — primary judging
       priority: 1
-      role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "judging"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 3
       role: "judging"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
+    - provider: "openai"
+      model: "z-ai/glm-5.2"       # NVIDIA NIM — judging fallback
+      priority: 2
+      role: "judging"
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
+      timeout: 120.0
+    - provider: "openai"
+      model: "glm-4.7-flash"      # Zhipu — judging fallback
+      priority: 3
+      role: "judging"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
 
   restoration:
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "glm-4.7-flash"      # Zhipu — restoration primary
       priority: 1
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "agnes-2.0-flash"
+      model: "mimo-v2.5"          # OpenCode Go — restoration
       priority: 2
-      role: "restoration"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 3
       role: "restoration"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
-
-Post-translation quality gates are configured under `quality_gates:` — all enabled by default,
-each independently toggleable. Gate warnings are non-blocking (`OL_WARN`), collected from the
-translate pipeline and surfaced in output metadata.
-
-```yaml
-quality_gates:
-  inline_tags: true                # Gate 1: verify inline tags preserved
-  terminology: true                # Gate 2: check glossary term consistency
-  length_ratio:
-    enabled: true                  # Gate 3: source/target length ratio bounds
-    min: 0.5
-    max: 2.0
-  locale:
-    enabled: true                  # Gate 4: locale conventions (dates, digits, units)
-    target_locale: "en-US"
-  source_copy: true                # Gate 5: detect unchanged source echo
-  source_script_check: true        # Gate 6: detect CJK residue in non-CJK locale
-  protocol_artifact_check: true    # Gate 7: detect LLM protocol markers
-  terms_audit: true                # Gate 8: full glossary term audit
+    - provider: "openai"
+      model: "z-ai/glm-5.2"       # NVIDIA NIM — restoration fallback
+      priority: 3
+      role: "restoration"
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
+      timeout: 120.0
 ```
+
+Each of `translation`, `judging`, and `restoration` must have **≥2 models**
+(the hard constraint `ol doctor` enforces).
 
 ## CLI Commands
 
@@ -489,11 +463,10 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ZHIPU_API_KEY` | (required) | API key for Zhipu AI (GLM models) |
-| `AGNES_API_KEY` | (required) | API key for Agnes AI |
-| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM |
-| `OPENCODE_GO_KEY` | (required) | API key for OPENCODE_GO provider |
-| `OPENCODE_GO_BASE_URL` | (required) | Base URL for OPENCODE_GO provider |
+| `ZHIPU_API_KEY` | (required) | API key for Zhipu AI (glm-4.7-flash) |
+| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM (z-ai/glm-5.2) |
+| `OPENCODE_GO_KEY` | (required) | API key for OpenCode Go (mimo-v2.5) |
+| `OPENCODE_GO_BASE_URL` | (required) | Base URL for OpenCode Go (mimo-v2.5) |
 | `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |

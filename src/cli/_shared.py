@@ -196,6 +196,16 @@ def precheck_api_keys(config_path: str | None) -> None:
     raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
 
+def hint_init_suggestion() -> None:
+    """Print a hint to run `ol init` when config loading/validation fails.
+
+    Fired by `ol doctor` on any FAIL and by the translate commands when
+    ``load_config`` raises a schema ``ValueError`` or ``FileNotFoundError``.
+    Written to stderr so it never pollutes ``--json`` stdout.
+    """
+    typer.echo("Hint: run 'ol init' to generate a valid config/local.yaml", err=True)
+
+
 # Module-level guard to prevent duplicate warnings within a process
 _fake_llm_warned = False
 

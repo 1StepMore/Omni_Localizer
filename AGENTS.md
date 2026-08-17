@@ -15,6 +15,10 @@ OL.
 # Install
 bash scripts/setup_dev.sh
 
+# Bootstrap config + verify (run 'ol init' to generate config/local.yaml, then 'ol doctor' to verify)
+ol init
+ol doctor
+
 # CLI: translate a single MD file
 ol translate-md document.md -s en -t zh -o /tmp/out
 
@@ -82,6 +86,8 @@ src/ol/
 | `ol translate-xliff <file> -s <src> -t <tgt>` | Translate an XLIFF file |
 | `ol translate-batch <dir> -s <src> -t <tgt> --concurrency 10` | Batch translate a directory |
 | `ol extract-warnings <file>` | Extract placeholder restoration warnings from an output |
+| `ol init [--config -c PATH] [--non-interactive] [--force]` | Interactive wizard generating `config/local.yaml` with the unified model pool |
+| `ol doctor [--config -c PATH] [--json]` | Validate model-pool config (5 checks) and print a pass/fail checklist |
 | `ol mcp` | Start the MCP server (stdio) |
 
 ### Common flags
@@ -214,13 +220,24 @@ HTTP 429 (handled by the existing backoff).
 OL is configured via `config/default.yaml` + `config/local.yaml`.
 Each model has:
 - `provider` (e.g., `openai`)
-- `model` (e.g., `glm-4-flash`)
+- `model` (e.g., `mimo-v2.5`)
 - `priority` (1 = highest)
 - `role` (`translation` | `judging` | `restoration`)
 - `api_key` (use `${ENV_VAR}` syntax)
 - `base_url` (for non-OpenAI providers)
 - `timeout` (per-request, default 120s)
 - `requests_per_minute` (default 500)
+
+**Unified pool (OL#92, 2026-08-17)** — `ol init` writes `config/local.yaml`
+with a single 3-provider pool shared across roles:
+
+- **mimo-v2.5** → OpenCode Go (`OPENCODE_GO_KEY` + `OPENCODE_GO_BASE_URL`) — primary translation + judging
+- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — translation/restoration primary, judging fallback
+- **z-ai/glm-5.2** → NVIDIA NIM (`NVIDIA_NIM_API_KEY`, `https://integrate.api.nvidia.com/v1`) — fallback
+
+Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
+never written. Each of `translation`, `judging`, and `restoration` must
+have **≥2 models** — `ol doctor` enforces this as one of its 5 checks.
 
 litellm Router with `routing_strategy="simple-shuffle"` and
 `num_retries=2` picks a model within the role group. If it fails,
@@ -236,8 +253,8 @@ exponential backoff handles it.
 |----------|---------|---------|
 | `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `OPENAI_API_KEY` / `ZHIPU_API_KEY` / `AGNES_API_KEY` / `NVIDIA_NIM_API_KEY` | (none) | LLM provider API keys. |
-| `OPENCODE_GO_KEY` / `OPENCODE_GO_BASE_URL` | (none) | OPENCODE_GO provider config. |
+| `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` | (none) | LLM provider API keys (glm-4.7-flash / z-ai/glm-5.2). |
+| `OPENCODE_GO_KEY` / `OPENCODE_GO_BASE_URL` | (none) | OpenCode Go provider config (mimo-v2.5). |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |

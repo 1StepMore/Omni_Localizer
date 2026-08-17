@@ -43,9 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **T4.0 §4 爱上海尔 glossary fixture** at `tests/fixtures/glossary_爱上海尔.json`: 6 terms (开利→Carrier, 三翼鸟→Sanyiniao, 滚筒洗衣机→drum washing machine, 波轮洗衣机→pulsator washing machine, 朗境→Lanjing, 海尔朗境 X11→Haier Lanjing X11).
 
+- **OL#92 — `ol init` config bootstrap wizard** (`src/cli/init.py`): interactive command generating `config/local.yaml` with the unified 3-provider LLM model pool (mimo-v2.5 via OpenCode Go, glm-4.7-flash via Zhipu, z-ai/glm-5.2 via NVIDIA NIM), auto-satisfying the ≥2-models-per-role schema constraint; writes only `${ENV_VAR}` references (never literal keys); `--config/-c`, `--preset`, `--non-interactive`, `--force` flags; prints the env vars to export and suggests `ol doctor`.
+
+- **OL#92 — `ol doctor` config validator** (`src/cli/doctor.py`): 5-check model-pool checklist (config file exists, YAML parses, config loads, ≥2 models per translation/judging/restoration, all `${ENV_VAR}` refs resolve) with `[PASS]`/`[FAIL]` output; `--json` machine-readable mode; fails with exit 1 and a hint to run `ol init`; `hint_init_suggestion()` also emitted from translate-md/translate-xliff/batch when a broken config triggers a schema/basic error.
+
 ### Changed
 
 - **T5.1 Version bumped to 0.7.0** (was 0.6.0). Three new P1 features (Issue #44 §1-§3) are backward compatible — all existing CLI flags, MCP fields, and Python APIs work unchanged.
+
+- **OL#92 — Model-pool documentation sync**: `.env.example`, README BYOK example, and AGENTS.md env-var/CLI tables refreshed to the unified pool (mimo-v2.5 / glm-4.7-flash / z-ai/glm-5.2); `AGNES_API_KEY` removed as a documented provider.
 
 ### Changed
 

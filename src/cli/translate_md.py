@@ -37,6 +37,7 @@ from cli._shared import (
     _apply_fake_llm_seam,
     _enforce_file_size,
     ensure_output_dir,
+    hint_init_suggestion,
     output_json,
     precheck_api_keys,
     validate_input_file,
@@ -1192,6 +1193,8 @@ def translate_md(
     except typer.Exit:
         raise
     except Exception as e:
+        if isinstance(e, (ValueError, FileNotFoundError)):
+            hint_init_suggestion()
         if json_output:
             output_json(False, str(input_path), error=str(e))
         else:

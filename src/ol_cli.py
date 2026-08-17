@@ -123,6 +123,8 @@ from cli.add_tm_entries import add_tm_entries  # noqa: E402,F401
 from cli.disambiguate import disambiguate  # noqa: E402,F401
 from cli.generate_report import generate_report  # noqa: E402,F401
 from cli.inspect_config import inspect_config  # noqa: E402,F401
+from cli.init import init  # noqa: E402,F401
+from cli.doctor import doctor  # noqa: E402,F401
 from cli.judge_text import judge_text  # noqa: E402,F401
 from cli.load_glossary import load_glossary  # noqa: E402,F401
 from cli.search_tm import search_tm  # noqa: E402,F401
@@ -146,6 +148,8 @@ app.command()(add_tm_entries)
 app.command()(disambiguate)
 app.command()(generate_report)
 app.command()(inspect_config)
+app.command()(init)
+app.command()(doctor)
 app.command()(judge_text)
 app.command()(load_glossary)
 app.command()(search_tm)
