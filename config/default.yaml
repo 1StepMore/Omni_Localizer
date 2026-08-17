@@ -14,27 +14,29 @@ glossary_path: null
 # See config/local.yaml for full design rationale.
 # 2026-06-17 round 3: mirror OPT-12 from local.yaml (lower to 5).
 # 2026-06-17 round 8 (#24): all api_key use ${ENV_VAR} refs (no literals).
+# 2026-08-17: unified model pool — primary mimo-v2.5 (opencode go),
+# fallback glm-4.7-flash (Zhipu) / z-ai/glm-5.2 (NVIDIA NIM).
 max_xliff_concurrent: 5
 enable_lqa: true
 lqa_threshold: 7.0
 lqa_max_retries: 2
 llm_pool:
   translation:
+    # Note: openai-compat endpoint (opencode go uses OpenAI API protocol)
+    - provider: "openai"
+      model: "mimo-v2.5"
+      priority: 1
+      role: "translation"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
     # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
-      model: "glm-4-flash"
-      priority: 1
+      model: "glm-4.7-flash"
+      priority: 2
       role: "translation"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 2
-      role: "translation"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
     # Note: openai-compat endpoint (NVIDIA NIM uses OpenAI API protocol)
     - provider: "openai"
@@ -44,81 +46,70 @@ llm_pool:
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
-    # Note: openai-compat endpoint (MiniMax uses OpenAI API protocol)
+
+  judging:
+    # Primary judge: mimo-v2.5 (via OpenCode Go) — strongest judgment
     - provider: "openai"
-      model: "minimaxai/minimax-m3"
-      priority: 4
-      role: "translation"
+      model: "mimo-v2.5"
+      priority: 1
+      role: "judging"
+      api_key: "${OPENCODE_GO_KEY}"
+      base_url: "${OPENCODE_GO_BASE_URL}"
+      timeout: 120.0
+    # Backup 1: GLM-4.7-Flash (Zhipu) — fast fallback
+    - provider: "openai"
+      model: "z-ai/glm-5.2"
+      priority: 2
+      role: "judging"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
+    # Backup 2: GLM-4.7-Flash (Zhipu)
     - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 5
-      role: "translation"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-
-  judging:
-    # Primary judge: DeepSeek V4 Flash (via OpenCode Go) — stronger judgment
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-    # Backup 1: GLM-4-Flash (Zhipu) — fast fallback
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
+      model: "glm-4.7-flash"
+      priority: 3
       role: "judging"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    # Backup 2: AGNES 2.0 Flash — lowest priority (historical, over-strict)
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
       timeout: 120.0
 
   restoration:
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "glm-4.7-flash"
       priority: 1
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
-    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
     - provider: "openai"
-      model: "agnes-2.0-flash"
+      model: "mimo-v2.5"
       priority: 2
-      role: "restoration"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 3
       role: "restoration"
       api_key: "${OPENCODE_GO_KEY}"
       base_url: "${OPENCODE_GO_BASE_URL}"
       timeout: 120.0
+    - provider: "openai"
+      model: "z-ai/glm-5.2"
+      priority: 3
+      role: "restoration"
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
+      timeout: 120.0
 
   profiling:
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "glm-4.7-flash"
       priority: 1
       role: "profiling"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
+    - provider: "openai"
+      model: "z-ai/glm-5.2"
+      priority: 2
+      role: "profiling"
+      api_key: "${NVIDIA_NIM_API_KEY}"
+      base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
 
 # Quality gate configuration for post-translation validation
