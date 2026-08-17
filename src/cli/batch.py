@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from cli._shared import (
     ExitCode,
     ensure_output_dir,
+    hint_init_suggestion,
     output_json,
     validate_input_file,
     warn_fake_llm_mode,
@@ -205,6 +206,8 @@ def translate_batch(
     except typer.Exit:
         raise
     except Exception as e:
+        if isinstance(e, (ValueError, FileNotFoundError)):
+            hint_init_suggestion()
         if json_output:
             output_json(False, directory, error=str(e))
         else:

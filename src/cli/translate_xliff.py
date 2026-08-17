@@ -42,6 +42,7 @@ from cli._shared import (
     OLQualityGateBlockedError,
     _enforce_file_size,
     ensure_output_dir,
+    hint_init_suggestion,
     output_json,
     precheck_api_keys,
     validate_input_file,
@@ -799,6 +800,8 @@ def translate_xliff(
         logger.critical(f"Quality gate blocked: translate_xliff {input} - {e}")
         raise typer.Exit(code=ExitCode.QUALITY_GATE_BLOCKED)
     except Exception as e:
+        if isinstance(e, (ValueError, FileNotFoundError)):
+            hint_init_suggestion()
         if json_output:
             output_json(False, str(input_path), error=str(e))
         else:
