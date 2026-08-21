@@ -1,0 +1,75 @@
+name: ol-judge-text-quality
+description: >-
+  OL judge_text quality scoring: the real ol_mcp.tools.judge_text scores a
+  known en -> zh translation pair through the LLM judge channel and returns
+  a rubric breakdown (judge_scores with adequacy/fluency/etc.) on the
+  0-100 scale. TIER 2: requires a real LLM provider key — reports
+  unconfigured when absent.
+category: ol-translation
+tier: 2
+requires_env:
+  - ZHIPU_API_KEY
+  - AGNES_API_KEY
+  - NVIDIA_NIM_API_KEY
+  - OPENCODE_GO_KEY
+  - OPENCODE_GO_BASE_URL
+instructions: |
+  This scenario proves the quality-scoring surface (the HUMAN-QUALITY bar
+  backing the LQA channel): the real ol_mcp.tools.judge_text evaluates a
+  translation pair and returns structured JSON with a numeric score and a
+  rubric breakdown. Gated on the LLM provider keys from
+  config/default.yaml — without them the run reports unconfigured.
+
+  What to do:
+  1. Step 1 calls the REAL ol_mcp.tools.judge_text on a known-good
+     en -> zh pair ("Click the button to continue" -> "点击按钮继续").
+     Expect success with a judge_scores map containing adequacy.
+  2. Step 2 calls judge_text with source_lang == target_lang; the tool
+     must reject the pair with a clean OL_INVALID_INPUT error naming the
+     constraint, no traceback (agent-facing error clarity).
+
+steps:
+  - name: 'judge_text scores a known en -> zh pair'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import JudgeInput, judge_text
+      r = asyncio.run(judge_text(params=JudgeInput(
+          source="Click the button to continue",
+          target="点击按钮继续",
+          source_lang="en", target_lang="zh",
+      )))
+      print(r)
+    timeout_seconds: 300
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', '"judge_scores"', 'adequacy']
+    standard: STANDARDS.md#judge-threshold
+    instructions: >-
+      Real LLM judging. Call the REAL ol_mcp.tools.judge_text on a known
+      pair; expect success with a judge_scores rubric including adequacy
+      (the HUMAN-QUALITY judge channel on the 0-100 scale).
+  - name: 'judge_text rejects a same-language pair cleanly'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import JudgeInput, judge_text
+      r = asyncio.run(judge_text(params=JudgeInput(
+          source="hello", target="hello",
+          source_lang="en", target_lang="en",
+      )))
+      print(r)
+    timeout_seconds: 60
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['OL_INVALID_INPUT', 'must be different']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#error-clarity
+    instructions: >-
+      Call with identical source and target languages; the tool must
+      reject the pair with a clean OL_INVALID_INPUT error naming the
+      constraint, no traceback.

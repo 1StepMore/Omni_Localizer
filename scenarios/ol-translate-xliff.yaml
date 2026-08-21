@@ -1,0 +1,108 @@
+name: ol-translate-xliff
+description: >-
+  OL translate_xliff translates a committed XLIFF fixture: the real
+  ol_mcp.tools.translate_xliff fills each <target> with translated text and
+  writes the output XLIFF, returning structured JSON with output_path and
+  units_processed. TIER 2: requires a real LLM provider key — reports
+  unconfigured when absent.
+category: ol-translation
+tier: 2
+requires_env:
+  - ZHIPU_API_KEY
+  - AGNES_API_KEY
+  - NVIDIA_NIM_API_KEY
+  - OPENCODE_GO_KEY
+  - OPENCODE_GO_BASE_URL
+instructions: |
+  This scenario proves the XLIFF translation channel (the layout-preserving
+  pipeline path) works as an agent would use it: the real
+  ol_mcp.tools.translate_xliff MCP tool reads a source XLIFF, runs each
+  trans-unit through the LLM model pool, writes translated <target>
+  elements back, and returns structured JSON. It is gated on the LLM
+  provider keys from config/default.yaml — without them the run reports
+  unconfigured.
+
+  What to do:
+  1. Step 1 copies the committed _fixtures/source.xlf into the
+     /tmp/omni-ol-scenarios workdir (outside the repo, so the write is
+     clean) and calls the REAL ol_mcp.tools.translate_xliff with a
+     TranslateXliffInput (en -> zh, explicit output_path). Expect success
+     with output_path and units_processed == 2.
+  2. Step 2 verifies the written artifact: the output XLIFF exists, is
+     parseable XML, and every trans-unit now carries a non-empty <target>.
+  3. Step 3 calls translate_xliff with an out-of-allowlist input path;
+     the OL PathValidator must deny it with OL_PATH_NOT_ALLOWED, never a
+     raw traceback.
+
+steps:
+  - name: 'translate_xliff fills <target> in the XLIFF fixture'
+    kind: python
+    command: |
+      import asyncio, json, os, shutil, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      FIXT = "/tmp/omni-ol-scenarios"
+      os.makedirs(FIXT, exist_ok=True)
+      shutil.copy("Omni_Localizer/scenarios/_fixtures/source.xlf",
+                  os.path.join(FIXT, "source.xlf"))
+      from ol_mcp.tools import TranslateXliffInput, translate_xliff
+      r = asyncio.run(translate_xliff(params=TranslateXliffInput(
+          input_path=os.path.join(FIXT, "source.xlf"),
+          output_path=os.path.join(FIXT, "out.xlf"),
+          source_lang="en", target_lang="zh",
+      )))
+      print(r)
+    timeout_seconds: 300
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', 'output_path', '"units_processed": 2']
+    standard: STANDARDS.md#tool-contract
+    collect_artifacts:
+      - path: '/tmp/omni-ol-scenarios/out.xlf'
+    instructions: >-
+      Real LLM translation. Copy the committed source.xlf fixture into the
+      /tmp workdir and call the REAL ol_mcp.tools.translate_xliff; expect
+      success with output_path and units_processed 2.
+  - name: 'output XLIFF carries non-empty <target> per trans-unit'
+    kind: python
+    command: |
+      import sys, xml.etree.ElementTree as ET
+      FIXT = "/tmp/omni-ol-scenarios/out.xlf"
+      ns = {"xliff": "urn:oasis:names:tc:xliff:document:1.2"}
+      tree = ET.parse(FIXT)
+      units = tree.getroot().findall(".//xliff:trans-unit", ns)
+      targets = [u.findtext("xliff:target", default="", namespaces=ns) for u in units]
+      print("units=", len(units), "targets=", targets)
+    timeout_seconds: 30
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['units=', 'targets=']
+    standard: STANDARDS.md#quality-gate-warnings
+    collect_artifacts:
+      - path: '/tmp/omni-ol-scenarios/out.xlf'
+    instructions: >-
+      Verify the written artifact: parse the output XLIFF with ElementTree
+      and assert every trans-unit carries a non-empty <target> element
+      (the translated text was written back).
+  - name: 'translate_xliff rejects an out-of-allowlist input path cleanly'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateXliffInput, translate_xliff
+      r = asyncio.run(translate_xliff(params=TranslateXliffInput(
+          input_path="/etc/passwd", source_lang="en", target_lang="zh",
+      )))
+      print(r)
+    timeout_seconds: 60
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['OL_PATH_NOT_ALLOWED', '"success": false']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#path-security
+    instructions: >-
+      Call with a path outside the allowlist (/etc is a system dir the
+      PathValidator always denies); expect a clean OL_PATH_NOT_ALLOWED
+      denial, no traceback.

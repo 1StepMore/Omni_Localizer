@@ -1,0 +1,103 @@
+name: ol-glossary-quality-gates
+description: >-
+  OL glossary + quality-gate scenario: the real ol_mcp.tools.load_glossary
+  loads the committed glossary fixture, then the real
+  ol_mcp.tools.translate_md_text translates glossary-bearing content with
+  that glossary injected, returning the translated text plus a structured
+  warnings list (the 8 post-translation quality gates, OL#56). TIER 2:
+  requires a real LLM provider key — reports unconfigured when absent.
+category: ol-translation
+tier: 2
+requires_env:
+  - ZHIPU_API_KEY
+  - AGNES_API_KEY
+  - NVIDIA_NIM_API_KEY
+  - OPENCODE_GO_KEY
+  - OPENCODE_GO_BASE_URL
+instructions: |
+  This scenario proves the terminology + quality-gate surface: glossary
+  terms are injected into the translation prompt (TM/TB/SG automation) and
+  the post-translation quality gates surface their results as structured
+  warnings in the tool response. Gated on the LLM provider keys from
+  config/default.yaml — without them the run reports unconfigured.
+
+  What to do:
+  1. Step 1 loads the committed _fixtures/glossary.json through the REAL
+     ol_mcp.tools.load_glossary. Expect success with glossary + term_count.
+  2. Step 2 translates glossary-bearing content (the _fixtures/source.md
+     mentions "API endpoint", "Deploy", "Meridian Robotics" — all three
+     are glossary terms) with glossary_path pointing at the committed
+     fixture. Expect success with the translated text AND a warnings key
+     (list) present, proving the quality gates ran and surfaced.
+  3. Step 3 calls load_glossary with an out-of-allowlist path; the OL
+     PathValidator must deny it with OL_PATH_NOT_ALLOWED, never a raw
+     traceback.
+
+steps:
+  - name: 'load_glossary loads the committed glossary fixture'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import LoadGlossaryInput, load_glossary
+      r = asyncio.run(load_glossary(params=LoadGlossaryInput(
+          path="Omni_Localizer/scenarios/_fixtures/glossary.json",
+      )))
+      print(r)
+    timeout_seconds: 60
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', '"glossary"', '"term_count": 3']
+    standard: STANDARDS.md#tool-contract
+    collect_artifacts:
+      - path: '/mnt/d/贯维/Omni_Suite/Omni_Localizer/scenarios/_fixtures/glossary.json'
+    instructions: >-
+      Call the REAL ol_mcp.tools.load_glossary on the committed glossary
+      fixture (3 terms); expect success with glossary and term_count 3.
+  - name: 'translate_md_text with glossary returns translated + quality-gate warnings'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateInput, translate_md_text
+      content = open("Omni_Localizer/scenarios/_fixtures/source.md", encoding="utf-8").read()
+      r = asyncio.run(translate_md_text(params=TranslateInput(
+          content=content, source_lang="en", target_lang="zh",
+          glossary_path="Omni_Localizer/scenarios/_fixtures/glossary.json",
+          glossary_max_terms=5,
+      )))
+      print(r)
+    timeout_seconds: 300
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', '"translated"', '"warnings"']
+    standard: STANDARDS.md#quality-gate-warnings
+    instructions: >-
+      Real LLM translation with glossary injection: content mentions the
+      glossary terms API endpoint / Deploy / Meridian Robotics, so the
+      terminology-aware prompt path is exercised. Expect success with the
+      translated text AND a structured warnings list key (the 8 quality
+      gates ran and surfaced their results, non-blocking).
+  - name: 'load_glossary rejects an out-of-allowlist path cleanly'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import LoadGlossaryInput, load_glossary
+      r = asyncio.run(load_glossary(params=LoadGlossaryInput(
+          path="/etc/shadow",
+      )))
+      print(r)
+    timeout_seconds: 60
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['OL_PATH_NOT_ALLOWED', '"success": false']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#path-security
+    instructions: >-
+      Call with a path outside the allowlist (/etc is a system dir the
+      PathValidator always denies); expect a clean OL_PATH_NOT_ALLOWED
+      denial, no traceback.

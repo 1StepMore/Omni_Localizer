@@ -1,0 +1,17 @@
+{
+  "API endpoint": {
+    "translation": "API 端点",
+    "variants": { "API endpoint": "API 端点", "API endpoints": "API 端点" },
+    "confidence": 0.95
+  },
+  "Deploy": {
+    "translation": "部署",
+    "variants": { "Deploy": "部署", "deploy": "部署" },
+    "confidence": 0.9
+  },
+  "Meridian Robotics": {
+    "translation": "梅里迪安机器人",
+    "variants": { "Meridian Robotics": "梅里迪安机器人" },
+    "confidence": 0.98
+  }
+}

@@ -1,0 +1,103 @@
+name: ol-translate-md-happy-path
+description: >-
+  OL translate_md_text happy path: the real ol_mcp.tools.translate_md_text
+  tool translates a markdown fixture through the shield -> translate ->
+  repair -> unshield pipeline and returns structured JSON carrying the
+  translated text plus language metadata. TIER 2: requires a real LLM
+  provider key (requires_env) — reports unconfigured when absent, never a
+  fake pass.
+category: ol-translation
+tier: 2
+requires_env:
+  - ZHIPU_API_KEY
+  - AGNES_API_KEY
+  - NVIDIA_NIM_API_KEY
+  - OPENCODE_GO_KEY
+  - OPENCODE_GO_BASE_URL
+instructions: |
+  This scenario proves the primary agent-facing OL surface — the
+  translate_md_text MCP tool (ol_mcp.tools.translate_md_text) — works as an
+  agent would use it on a realistic markdown document. It is gated on the
+  LLM provider keys OL's model pool reads from config/default.yaml
+  (ZHIPU_API_KEY / AGNES_API_KEY / NVIDIA_NIM_API_KEY / OPENCODE_GO_KEY /
+  OPENCODE_GO_BASE_URL); without them the run reports unconfigured.
+
+  What to do:
+  1. Step 1 calls the REAL ol_mcp.tools.translate_md_text with a
+     TranslateInput built from the committed _fixtures/source.md content
+     (en -> zh). Expect success with the translated text under
+     'translated' and the source_lang/target_lang metadata echoed.
+  2. Step 2 calls it with the same input plus add_frontmatter=True to prove
+     the optional YAML-frontmatter path returns the same structured
+     contract (success + translated).
+  3. Step 3 calls translate_md_text with a JSON-shaped (but plain-dict)
+     argument through the real MCP dispatch boundary; the tool must return
+     a clean structured error, never a raw traceback.
+
+steps:
+  - name: 'translate_md_text translates the markdown fixture (en -> zh)'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateInput, translate_md_text
+      content = open("Omni_Localizer/scenarios/_fixtures/source.md", encoding="utf-8").read()
+      r = asyncio.run(translate_md_text(params=TranslateInput(
+          content=content, source_lang="en", target_lang="zh",
+          add_frontmatter=False,
+      )))
+      print(r)
+    timeout_seconds: 300
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', '"translated"', 'source_lang', 'target_lang']
+    standard: STANDARDS.md#tool-contract
+    collect_artifacts:
+      - path: '/mnt/d/贯维/Omni_Suite/Omni_Localizer/scenarios/_fixtures/source.md'
+    instructions: >-
+      Real LLM translation (strict no-mocks). Call the REAL
+      ol_mcp.tools.translate_md_text with a TranslateInput carrying the
+      fixture content; expect success with the translated text under the
+      'translated' key and source_lang/target_lang echoed.
+  - name: 'translate_md_text supports add_frontmatter on the same contract'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateInput, translate_md_text
+      content = open("Omni_Localizer/scenarios/_fixtures/source.md", encoding="utf-8").read()
+      r = asyncio.run(translate_md_text(params=TranslateInput(
+          content=content, source_lang="en", target_lang="zh",
+          add_frontmatter=True,
+      )))
+      print(r)
+    timeout_seconds: 300
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": true', '"translated"']
+    standard: STANDARDS.md#tool-contract
+    instructions: >-
+      Repeat with add_frontmatter=True; the response must stay on the same
+      structured contract (success + translated), proving the optional
+      frontmatter flag does not change the tool's response shape.
+  - name: 'translate_md_text returns a clean error for wrong-shaped params'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import translate_md_text
+      r = asyncio.run(translate_md_text(params={"content": "# Hi"}))
+      print(r)
+    timeout_seconds: 60
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success": false']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#error-clarity
+    instructions: >-
+      Call with a plain dict instead of a TranslateInput; the tool's error
+      boundary must return a clean structured JSON error (success false),
+      never a raw traceback.

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="source.md" source-language="en" target-language="zh">
+    <body>
+      <trans-unit id="1">
+        <source>Meridian Robotics is a global manufacturer of industrial automation systems.</source>
+      </trans-unit>
+      <trans-unit id="2">
+        <source>Click the Deploy button to provision a new cluster.</source>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

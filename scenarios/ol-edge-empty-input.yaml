@@ -1,0 +1,72 @@
+name: ol-edge-empty-input
+description: >-
+  OL edge case: empty and whitespace-only input to the real
+  ol_mcp.tools.translate_md_text is handled gracefully — the call completes
+  with a structured JSON response carrying a success key, never a raw
+  traceback, never a hang. TIER 2: requires a real LLM provider key —
+  reports unconfigured when absent (in key-less runs the empty-content path
+  is still gated, not faked).
+category: ol-translation
+tier: 2
+requires_env:
+  - ZHIPU_API_KEY
+  - AGNES_API_KEY
+  - NVIDIA_NIM_API_KEY
+  - OPENCODE_GO_KEY
+  - OPENCODE_GO_BASE_URL
+instructions: |
+  This scenario proves the graceful-handling bar for degenerate input: an
+  agent that passes an empty or whitespace-only string must get a parseable
+  JSON response, never a crash escaping the tool surface. Gated on the LLM
+  provider keys from config/default.yaml — without them the run reports
+  unconfigured.
+
+  What to do:
+  1. Step 1 calls the REAL ol_mcp.tools.translate_md_text with content=""
+     (empty string). Expect a structured JSON response containing the
+     success key — no Traceback in the payload.
+  2. Step 2 calls it with whitespace-only content ("   \n\t "). Expect the
+     same graceful contract: a JSON response with success present, no
+     traceback.
+
+steps:
+  - name: 'translate_md_text handles empty content gracefully'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateInput, translate_md_text
+      r = asyncio.run(translate_md_text(params=TranslateInput(
+          content="", source_lang="en", target_lang="zh",
+      )))
+      print(r)
+    timeout_seconds: 120
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success"']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#empty-input-graceful
+    instructions: >-
+      Real call with content="". The tool must return a parseable JSON
+      response carrying a success key — no raw traceback, no hang.
+  - name: 'translate_md_text handles whitespace-only content gracefully'
+    kind: python
+    command: |
+      import asyncio, json, sys
+      sys.path.insert(0, "Omni_Localizer/src")
+      from ol_mcp.tools import TranslateInput, translate_md_text
+      r = asyncio.run(translate_md_text(params=TranslateInput(
+          content="   \n\t ", source_lang="en", target_lang="zh",
+      )))
+      print(r)
+    timeout_seconds: 120
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ['"success"']
+      stdout_not_has: ['Traceback (most recent call last)']
+    standard: STANDARDS.md#empty-input-graceful
+    instructions: >-
+      Real call with whitespace-only content. Expect the same graceful
+      contract: a JSON response with success present, no traceback.
