@@ -415,23 +415,29 @@ for the complete decision tree and format support matrix.
 
 ## How to validate this module
 
-OL ships its own validation scenarios in the Omni Suite validation
-framework (`tool-ol-*` = 21 MCP tools, plus the pipeline quality-bar
-scenarios that carry the HUMAN-QUALITY bar: LQA ≥ 4.0/5, paragraph ratio
-±5%, CJK < 5%, 0 foreign punctuation). Any agent or the human director
-can validate OL in isolation with the suite's per-module filter:
+OL ships its own validation scenario library **in this repo** at
+`scenarios/` — 5 tier-2 `ol-translation` scenarios (translate-md happy
+path, translate-xliff, judge-text quality, glossary + quality gates,
+empty-input edge) with their own `scenarios/STANDARDS.md` +
+`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 5
+provider vars) and report `unconfigured` without them — never a fake
+green. The suite validation engine runs them via `--repo ol`. The suite's
+own `tool-ol-*` agent-surface scenarios + the HUMAN-QUALITY pipeline
+scenarios still live in the suite repo, covered by the suite-level
+`--module` filter. Any agent or the human director can validate OL:
 
 ```bash
 # From the Omni Suite root (clone: https://github.com/1StepMore/e2e-test-suite)
 source .venv_ol/bin/activate
 
-# List OL's scenarios
-python scripts/validation/run_validation.py --list --module ol
+# List OL's in-repo scenarios
+python scripts/validation/run_validation.py --repo ol --list
 
-# Run OL's hermetic tool scenarios (tier 1 = no LLM keys needed)
-python scripts/validation/run_validation.py --module ol --tier 1
+# Run OL's tier-2 translation scenarios (real LLM keys required;
+# reports `unconfigured` without them)
+python scripts/validation/run_validation.py --repo ol --tier 2
 
-# Full quality bar (real LLM keys required; reports `unconfigured` without them)
+# Full quality bar (suite-level, real LLM keys; reports `unconfigured` without them)
 python scripts/validation/run_validation.py --module suite --tier 2
 
 # Coverage: every OL MCP tool must be scenario-exercised
@@ -442,5 +448,7 @@ The standards bar is `scenarios/STANDARDS.md` (AGENT-SURFACE family for
 the tool scenarios; HUMAN-QUALITY family — lqa-threshold, para-ratio,
 cjk-density, punct-hygiene — for the pipeline scenarios). Director loop +
 10-minute checklist: `docs/dev/validation-director-loop.md` in the suite
-repo. Scenario fixes live in the suite repo, NOT here — OL product-code
-fixes go through the normal fix cycle in this repo.
+repo. Per-repo validation delivery (run_meta, report card, delivery
+package): `docs/dev/per-repo-validation-delivery.md`. OL scenario fixes
+now live HERE (in `scenarios/`); OL product-code fixes go through the
+normal fix cycle in this repo.

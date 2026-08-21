@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OL#58 — ships its own validation scenario library in `scenarios/`** (5 tier-2 `ol-translation` scenarios + `STANDARDS.md` + `_fixtures/`; `requires_env` = the 5 real LLM provider keys, reports `unconfigured` without them), runnable from the Omni Suite root via `python scripts/validation/run_validation.py --repo ol --tier 2`.
+
 - **OL#56 — Configurable post-translation quality gates** (`src/ol_lqa/quality_gates.py`): 8 gate functions (inline tag counts, terminology consistency, length ratio, locale conventions, source copy detection, source script fragment detection, protocol artifact detection, full glossary term audit), `QualityGateConfig` schema, wired into CLI `translate-md`/`translate-xliff`/`batch` and MCP `translate_md_text`/`translate_xliff`; warnings emitted as HTML comments (MD) or `<note from="OL">` elements (XLIFF); env vars `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, `OL_TARGET_LOCALE`.
 
 - **Issue #44 §1 Glossary coverage report** (`src/ol_terminology/coverage.py`): new `format_coverage_report()` and `compute_coverage_stats()` (returns `CoverageStats` dataclass) post-translation statistics. Wraps the existing `verify_translation()` to produce a human-readable report: total terms, matched in source, unmatched, and match-type breakdown (Exact / Fuzzy >80% / Case-normalized). When `--coverage-threshold` is set and matched% falls below it, a `⚠ WARNING:` prefix is added. Accepts both legacy `dict[str, dict]` and the new `Glossary` dataclass. CLI: `--report-coverage` and `--coverage-threshold <0-100>` on both `ol translate-md` and `ol translate-xliff`. Non-blocking; informational only. No LLM, no network.
