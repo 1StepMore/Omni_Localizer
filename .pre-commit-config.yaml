@@ -1,0 +1,15 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.22.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: check-secrets
+        name: check-secrets (offline credential/URL scan)
+        entry: python3 scripts/check-secrets.py
+        language: system
+        stages: [pre-commit]
+        pass_filenames: true
+        require_serial: false
