@@ -16,26 +16,19 @@ llm_pool:
     priority: 1
     role: translation
   - provider: openai
-    model: stealth/ox-alpha
-    api_key: ${COMMANDCODE_API_KEY}
-    base_url: ${OPENCODE_GO_BASE_URL}
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
     role: translation
   - provider: openai
-    model: glm-4-flash
-    priority: 3
-    role: translation
-    api_key: ${ZHIPU_API_KEY}
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    timeout: 120.0
-  - provider: openai
-    model: z-ai/glm-5.2
-    priority: 4
-    role: translation
+    model: minimaxai/minimax-m3
     api_key: ${NVIDIA_NIM_API_KEY}
     base_url: https://integrate.api.nvidia.com/v1
     timeout: 120.0
+    priority: 3
+    role: translation
   judging:
   - provider: openai
     model: ark-code-latest
@@ -45,19 +38,19 @@ llm_pool:
     priority: 1
     role: judging
   - provider: openai
-    model: stealth/ox-alpha
-    api_key: ${COMMANDCODE_API_KEY}
-    base_url: ${OPENCODE_GO_BASE_URL}
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
     role: judging
   - provider: openai
-    model: glm-4-flash
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
     priority: 3
     role: judging
-    api_key: ${ZHIPU_API_KEY}
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    timeout: 120.0
   restoration:
   - provider: openai
     model: ark-code-latest
@@ -67,19 +60,19 @@ llm_pool:
     priority: 1
     role: restoration
   - provider: openai
-    model: stealth/ox-alpha
-    api_key: ${COMMANDCODE_API_KEY}
-    base_url: ${OPENCODE_GO_BASE_URL}
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
     role: restoration
   - provider: openai
-    model: glm-4-flash
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
     priority: 3
     role: restoration
-    api_key: ${ZHIPU_API_KEY}
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    timeout: 120.0
   profiling:
   - provider: openai
     model: ark-code-latest
@@ -89,19 +82,19 @@ llm_pool:
     priority: 1
     role: profiling
   - provider: openai
-    model: stealth/ox-alpha
-    api_key: ${COMMANDCODE_API_KEY}
-    base_url: ${OPENCODE_GO_BASE_URL}
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
     role: profiling
   - provider: openai
-    model: glm-4-flash
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
     priority: 3
     role: profiling
-    api_key: ${ZHIPU_API_KEY}
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    timeout: 120.0
 quality_gates:
   inline_tags: true
   terminology: true
