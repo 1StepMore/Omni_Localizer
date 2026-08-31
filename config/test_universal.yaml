@@ -1,71 +1,67 @@
-# Universal test config - LLM pool only, no language pair
-# language pair set via CLI: -s en -t zh or -s zh -t en
-# Usage: ol translate-md input.md -c config/test_universal.yaml -s en -t zh
-# (no .bat files — use the CLI directly)
-#
-# NOTE (2026-06-14): llm_pool is redirected to match config/local.yaml
-# (the only config with valid .env references). See local.yaml for
-# design rationale.
-
 llm_pool:
   translation:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-      role: "translation"
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "translation"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "translation"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: translation
+  - provider: openai
+    model: stealth/ox-alpha
+    api_key: ${COMMANDCODE_API_KEY}
+    base_url: ${OPENCODE_GO_BASE_URL}
+    timeout: 120.0
+    priority: 2
+    role: translation
+  - provider: openai
+    model: glm-4-flash
+    priority: 3
+    role: translation
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
   judging:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "judging"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: judging
+  - provider: openai
+    model: stealth/ox-alpha
+    api_key: ${COMMANDCODE_API_KEY}
+    base_url: ${OPENCODE_GO_BASE_URL}
+    timeout: 120.0
+    priority: 2
+    role: judging
+  - provider: openai
+    model: glm-4-flash
+    priority: 3
+    role: judging
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
   restoration:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "restoration"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "restoration"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: restoration
+  - provider: openai
+    model: stealth/ox-alpha
+    api_key: ${COMMANDCODE_API_KEY}
+    base_url: ${OPENCODE_GO_BASE_URL}
+    timeout: 120.0
+    priority: 2
+    role: restoration
+  - provider: openai
+    model: glm-4-flash
+    priority: 3
+    role: restoration
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
