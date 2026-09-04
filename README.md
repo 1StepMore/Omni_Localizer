@@ -2,6 +2,8 @@
 
 AI-native localization pipeline that translates documents through intelligent LLM routing with built-in quality control.
 
+[![Test status](https://img.shields.io/badge/Test%20status-local%20(see%20below)-lightgrey.svg)](#test-status)
+
 ## What It Does
 
 - **Translate documents** (Markdown, XLIFF) using LLM APIs
@@ -10,6 +12,28 @@ AI-native localization pipeline that translates documents through intelligent LL
 - **Configurable post-translation quality gates** — 8 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts, terms audit
 - **LLM-based judging** — evaluates translation accuracy and fluency
 - **Restoration layer** — uses LLM to restore placeholders after translation
+
+### Test status
+
+[![Test status](https://img.shields.io/badge/Test%20status-local%20(see%20below)-lightgrey.svg)](#test-status)
+
+Test status is **local-only** — CI is suspended while the upstream
+[1StepMore](https://github.com/1StepMore) origin account is restricted, and the
+`renanzai40` backup mirrors do not run GitHub Actions. The workflows that exist
+in this repo (`.github/workflows/test.yml`, `.github/workflows/publish.yml`,
+`.github/workflows/real-llm-nightly.yml`) are not triggered during the
+suspension.
+
+Run the tests locally (from this repo) — `OMNI_TEST_FAKE_LLM=1` mocks LLM
+calls so the suite runs without API keys:
+
+```bash
+OMNI_TEST_FAKE_LLM=1 pytest tests/ -q   # full in-repo suite
+```
+
+For the suite-level validation entry point (per-repo tier-1 scenario library)
+and full per-repo verification guidance, see `AGENTS.md` → "How to validate
+this module".
 
 ## Quick Start
 
