@@ -483,7 +483,7 @@ For detailed usage, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
 ### Environment Variables
 
-Configure your LLM provider API keys and quality gate overrides in your shell environment.
+Configure your LLM provider API keys and quality gate overrides in your shell environment. The MCP server (`ol mcp` / `ol-mcp`) additionally **requires** `MCP_ALLOWED_DIRECTORIES` (fail-CLOSED — see the table below).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -496,6 +496,7 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |
 | `OL_LENGTH_RATIO_MAX` | `3.0` | Maximum length ratio for Gate 3 (source/target) |
 | `OL_TARGET_LOCALE` | `en-US` | Expected target locale for Gate 4 locale checks |
+| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **Required for the MCP server** (`ol mcp` / `ol-mcp`). Comma-separated directory allowlist. **Fail-CLOSED**: if unset and the deprecated `OL_ALLOWED_DIRECTORIES` is also unset, the server raises at startup instead of silently defaulting to `cwd` + `/tmp`. |
 
 ### Testing the Agent Integration
 

@@ -261,11 +261,14 @@ exponential backoff handles it.
 | `OL_LENGTH_RATIO_MIN` | 0.5 | Minimum acceptable translated/source length ratio (quality gates). |
 | `OL_LENGTH_RATIO_MAX` | 3.0 | Maximum acceptable translated/source length ratio (quality gates). |
 | `OL_TARGET_LOCALE` | (unset) | Target locale override for locale-specific quality gates (e.g. `en-US`, `en-GB`, `fr-FR`). Falls back to `locale.target_locale` in config. |
+| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **REQUIRED for the MCP server** (`ol mcp` / `ol-mcp`). Comma-separated allowlist of directories the MCP may read/write. **Fail-CLOSED:** if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, `get_default_validator()` raises `ValueError` — the server refuses to serve (no silent `cwd` + `/tmp` default). `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
 | `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset; (2) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. |
 
 The MCP server is configured separately in `src/ol_mcp/config.py` —
 OL's MCP server is `ol-mcp` (no `-server` suffix, **different** from
-OPP's `opp-mcp-server` and ORF's `orf-mcp-server`).
+OPP's `opp-mcp-server` and ORF's `orf-mcp-server`). Startup additionally
+requires `MCP_ALLOWED_DIRECTORIES` (fail-CLOSED; see the env-var table
+above and `src/ol_mcp/security.py:get_default_validator`).
 
 ## Tests
 
