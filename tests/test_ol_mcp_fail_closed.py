@@ -44,3 +44,15 @@ def test_get_default_validator_uses_explicit_allowlist(monkeypatch, tmp_path):
     validator = get_default_validator()
 
     assert tmp_path.resolve() in validator.allowed_directories
+
+
+def test_mcp_server_main_refuses_to_start_without_allowlist(monkeypatch):
+    """server.main() must refuse to serve when no allowlist is configured."""
+    import asyncio
+
+    from ol_mcp.server import main
+
+    _clear_allowlist(monkeypatch)
+
+    with pytest.raises(SystemExit, match="fail-CLOSED"):
+        asyncio.run(main())

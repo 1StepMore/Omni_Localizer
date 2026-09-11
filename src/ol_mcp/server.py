@@ -19,6 +19,18 @@ from ol_mcp.tools import mcp
 
 async def main() -> None:
     """Run the OL MCP server with stdio transport."""
+    # Fail-CLOSED: refuse to serve without an explicit allowed-directories
+    # allowlist (MCP_ALLOWED_DIRECTORIES / OL_MCP_ALLOWED_DIRS /
+    # OL_ALLOWED_DIRECTORIES). get_default_validator() raises ValueError when
+    # none is set; surface a clear startup failure instead of serving with an
+    # implicit cwd + /tmp sandbox.
+    from ol_mcp.security import get_default_validator
+
+    try:
+        get_default_validator()
+    except ValueError as exc:
+        raise SystemExit(f"OL MCP server start refused (fail-CLOSED): {exc}") from exc
+
     _health_start()
     async with stdio_server() as (read_stream, write_stream):
         await mcp.run(
