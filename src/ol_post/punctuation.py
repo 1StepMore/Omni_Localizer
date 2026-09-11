@@ -1,4 +1,4 @@
-"""Punctuation normalizer for OL output post-processing.
+r"""Punctuation normalizer for OL output post-processing.
 
 Provides per-language-pair punctuation normalization via
 ``normalize(text, source_lang, target_lang)`` backed by a dispatch
