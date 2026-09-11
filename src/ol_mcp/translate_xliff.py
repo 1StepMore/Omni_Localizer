@@ -10,6 +10,7 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.tools import (
     _error_response,
     _get_config_path,
@@ -62,14 +63,14 @@ async def _run_translate_xliff_async(
         if not _iv.success:
             _task_tracker.update_progress(
                 request_id, TaskStatus.FAILED,
-                error={"code": "OL_INVALID_INPUT", "message": f"OL_PATH_NOT_ALLOWED: {_iv.error}"},
+                error={"code": OL_PATH_DENIED, "message": PATH_DENIED_MESSAGE},
             )
             return
         _ov = _validator.validate_path(output_path, allow_missing=True)
         if not _ov.success:
             _task_tracker.update_progress(
                 request_id, TaskStatus.FAILED,
-                error={"code": "OL_INVALID_INPUT", "message": f"OL_PATH_NOT_ALLOWED: {_ov.error}"},
+                error={"code": OL_PATH_DENIED, "message": PATH_DENIED_MESSAGE},
             )
             return
 
@@ -254,13 +255,13 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     _iv = _validator.validate_path(params.input_path)
     if not _iv.success:
         return json.dumps(
-            _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_iv.error}"),
+            _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
             ensure_ascii=False,
         )
     _ov = _validator.validate_path(output_path, allow_missing=True)
     if not _ov.success:
         return json.dumps(
-            _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_ov.error}"),
+            _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
             ensure_ascii=False,
         )
 

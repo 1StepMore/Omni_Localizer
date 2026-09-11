@@ -12,6 +12,7 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.tools import (
     _error_response,
     _get_config_path,
@@ -284,14 +285,14 @@ async def translate_md_text(params: TranslateInput) -> str:
         _gv = _validator.validate_path(params.glossary_path)
         if not _gv.success:
             return json.dumps(
-                _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_gv.error}"),
+                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
                 ensure_ascii=False,
             )
     if params.styleguide_path and not params.no_styleguide:
         _sv = _validator.validate_path(params.styleguide_path)
         if not _sv.success:
             return json.dumps(
-                _error_response("OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {_sv.error}"),
+                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
                 ensure_ascii=False,
             )
 

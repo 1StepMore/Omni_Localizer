@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 
+from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
@@ -66,9 +67,7 @@ async def inspect_config(params: InspectConfigInput) -> str:
     vresult = get_default_validator().validate_path(cfg_path)
     if not vresult.success:
         return json.dumps(
-            _error_response(
-                "OL_INVALID_INPUT", f"OL_PATH_NOT_ALLOWED: {vresult.error}"
-            ),
+            _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
             ensure_ascii=False,
         )
 
