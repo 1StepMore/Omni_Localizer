@@ -229,7 +229,7 @@ class TestP2T5PathValidatorWired:
             result = json.loads(result_raw)
             # The tool should either reject the glossary path or produce a warning
             warnings = result.get("content", {}).get("warnings", []) if result.get("content") else []
-            glossary_warning = any("PATH_NOT_ALLOWED" in w or "not within allowed" in w.lower() for w in warnings)
+            glossary_warning = any("OL_PATH_DENIED" in w or "not within allowed" in w.lower() for w in warnings)
             assert glossary_warning or result.get("success") is False, (
                 f"batch_translate should warn about glossary path outside allowed dirs. "
                 f"Got: {result}"

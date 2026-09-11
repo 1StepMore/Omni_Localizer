@@ -145,7 +145,7 @@ class TestTranslateXliffMcpStyleGuide:
         result = json.loads(result_str)
         assert result.get("success") is True
         warnings = result.get("content", {}).get("warnings", []) or result.get("warnings", [])
-        assert any("StyleGuide" in w or "PATH_NOT_ALLOWED" in w for w in warnings), (
+        assert any("StyleGuide" in w or "OL_PATH_DENIED" in w for w in warnings), (
             f"expected StyleGuide/path warning, got: {warnings!r}"
         )
 

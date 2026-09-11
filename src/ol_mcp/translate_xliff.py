@@ -87,7 +87,7 @@ async def _run_translate_xliff_async(
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
-                warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
+                warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -102,7 +102,7 @@ async def _run_translate_xliff_async(
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:
-                warnings.append(f"OL_PATH_NOT_ALLOWED: {_sg_v.error}")
+                warnings.append(f"{OL_PATH_DENIED}: {_sg_v.error}")
                 styleguide_section = None
 
         parser = XliffParser()
@@ -279,7 +279,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
-                warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
+                warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -294,7 +294,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:
-                warnings.append(f"OL_PATH_NOT_ALLOWED: {_sg_v.error}")
+                warnings.append(f"{OL_PATH_DENIED}: {_sg_v.error}")
                 styleguide_section = None
 
         parser = XliffParser()

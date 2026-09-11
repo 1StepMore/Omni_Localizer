@@ -14,6 +14,7 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from ol_mcp._errors import OL_PATH_DENIED
 from ol_mcp.tools import (
     _error_response,
     _get_config_path,
@@ -63,7 +64,7 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
     if params.glossary_path:
         _gv = get_default_validator().validate_path(params.glossary_path)
         if not _gv.success:
-            warnings.append(f"OL_PATH_NOT_ALLOWED: {_gv.error}")
+            warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
         else:
             try:
                 glossary = load_glossary_from_path(params.glossary_path)

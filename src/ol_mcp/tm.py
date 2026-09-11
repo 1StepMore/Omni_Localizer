@@ -14,6 +14,7 @@ from ol_mcp.tools import (
     SearchTMInput,
     mcp_error_boundary,
 )
+from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
@@ -49,8 +50,8 @@ async def search_tm(params: SearchTMInput) -> str:
     if not vresult.success:
         return json.dumps(
             _error_response(
-                "OL_INVALID_INPUT",
-                f"OL_PATH_NOT_ALLOWED: {vresult.error}",
+                OL_PATH_DENIED,
+                PATH_DENIED_MESSAGE,
             ),
             ensure_ascii=False,
         )
