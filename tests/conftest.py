@@ -32,6 +32,17 @@ for _k, _v in _DUMMY_API_KEYS.items():
 os.environ.setdefault("OMNI_RATE_LIMIT_RPM", "0")
 os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 
+# C3 fail-CLOSED: ol_mcp.security.get_default_validator() raises ValueError
+# when none of MCP_ALLOWED_DIRECTORIES / OL_MCP_ALLOWED_DIRS /
+# OL_ALLOWED_DIRECTORIES is set. The hermetic suite must therefore supply an
+# explicit allowlist so MCP tools that take file paths do not hit the
+# fail-closed branch. Tests that assert the UNSET behavior must
+# monkeypatch.delenv() all three vars (see tests/test_ol_mcp_fail_closed.py).
+os.environ.setdefault(
+    "MCP_ALLOWED_DIRECTORIES",
+    f"{Path(__file__).resolve().parent.parent},{Path('/tmp')}",
+)
+
 # Newer typer (>=0.27) emits ANSI in CliRunner help output; NO_COLOR alone
 # still emits bold, so TERM=dumb is required to fully disable color.
 os.environ.setdefault("NO_COLOR", "1")

@@ -23,7 +23,23 @@ def search_tm(
     # cold start). Module-level import would defeat the CLI's missing-key
     # fast-fail (precheck_api_keys).
     from ol_mcp.security import get_default_validator
-    vresult = get_default_validator().validate_path(tmx_path)
+
+    # Path validation is fail-CLOSED: get_default_validator() raises when no
+    # allowlist env var is set. Surface it as a clear usage error rather than
+    # a raw traceback, and point at the required variable.
+    try:
+        validator = get_default_validator()
+    except ValueError as e:
+        typer.echo(
+            f"Error: {e}\n"
+            f"  Hint: export MCP_ALLOWED_DIRECTORIES as a comma-separated list "
+            f"of directories the CLI may read (e.g. "
+            f"MCP_ALLOWED_DIRECTORIES=/data/corpus,/tmp).",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
+
+    vresult = validator.validate_path(tmx_path)
     if not vresult.success:
         typer.echo(f"Error: {vresult.error}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
