@@ -256,8 +256,13 @@ def get_default_validator() -> PathValidator:
     3. ``OL_ALLOWED_DIRECTORIES`` — legacy name (deprecated)
 
     Comma-separated list of allowed directories (e.g.,
-    ``MCP_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``). If
-    empty or unset, defaults to the current working directory.
+    ``MCP_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``).
+
+    Fail-CLOSED: at least one of the three env vars MUST be set. If all
+    are unset (or empty), a ``ValueError`` is raised rather than silently
+    granting access to ``cwd`` + ``/tmp``. Set
+    ``MCP_ALLOWED_DIRECTORIES`` (or one of the legacy names) to an
+    explicit comma-separated allowlist before starting the server.
 
     The validator is created fresh on each call so that env-var
     changes (e.g., between tests) are picked up. For long-running
@@ -275,6 +280,9 @@ def get_default_validator() -> PathValidator:
     if allowed.strip():
         dirs = [Path(d).resolve() for d in allowed.split(",") if d.strip()]
     else:
-        # Default: allow cwd (project root) and /tmp (standard test workspace).
-        dirs = [Path.cwd().resolve(), Path("/tmp").resolve()]
+        raise ValueError(
+            "MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / "
+            "OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy). "
+            "Export it as a comma-separated list of allowed directories."
+        )
     return PathValidator(allowed_directories=dirs)
