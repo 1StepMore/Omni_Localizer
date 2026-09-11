@@ -22,11 +22,22 @@ from typing import Any, Callable
 
 _logger = logging.getLogger("ol_mcp.errors")
 
+# Stable error code for a path outside the MCP allowed-directories sandbox.
+# Do not change the string — clients switch on it. Mirrors OPP_PATH_DENIED.
+OL_PATH_DENIED = "OL_PATH_DENIED"
+PATH_DENIED_MESSAGE = "Path is not within the allowed directories."
+
+
+class PathDeniedError(ValueError):
+    """Raised when a path falls outside the MCP allowed-directories sandbox."""
+
+
 # Stable, opaque error code mapping. Adding new codes is fine; do not
 # change the strings (clients may switch on them).
 _ERROR_CODE_MAP: dict[type, str] = {
     FileNotFoundError: "OL_FILE_NOT_FOUND",
     PermissionError: "OL_PERMISSION_DENIED",
+    PathDeniedError: OL_PATH_DENIED,
     ValueError: "OL_INVALID_INPUT",
     KeyError: "OL_MISSING_KEY",
     TimeoutError: "OL_TIMEOUT",
@@ -50,6 +61,7 @@ def _safe_user_message(exc: BaseException) -> str:
     return {
         "OL_FILE_NOT_FOUND": "A required file was not found.",
         "OL_PERMISSION_DENIED": "Permission denied for the requested operation.",
+        "OL_PATH_DENIED": PATH_DENIED_MESSAGE,
         "OL_INVALID_INPUT": "The request input was invalid.",
         "OL_MISSING_KEY": "A required key was missing from the input.",
         "OL_TIMEOUT": "The operation timed out.",
