@@ -1,128 +1,100 @@
-project_id: "ol-phase0-test"
-source_lang: "en"
-target_lang: "zh"
+project_id: ol-phase0-test
+source_lang: en
+target_lang: zh
 glossary_path: null
-# NOTE (2026-06-14): Default config. llm_pool is redirected to match
-# config/local.yaml (the only config with valid .env references). The
-# MiniMax / OpenAI / Anthropic model entries were historical and
-# referenced env vars that are no longer set. If you need to change the
-# model pool, edit config/local.yaml and mirror the change here.
-# See config/local.yaml for the full design rationale.
-# 2026-06-16: Free-tier models prioritized. Translation primary = Zhipu
-# glm-4-flash (0.5s). Judging primary = Agnes (independent family).
-# OPENCODE_GO deepseek-v4-flash kept as lowest-priority backup.
-# See config/local.yaml for full design rationale.
-# 2026-06-17 round 3: mirror OPT-12 from local.yaml (lower to 5).
-# 2026-06-17 round 8 (#24): all api_key use ${ENV_VAR} refs (no literals).
 max_xliff_concurrent: 5
 enable_lqa: true
 lqa_threshold: 7.0
 lqa_max_retries: 2
 llm_pool:
   translation:
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 1
-      role: "translation"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 2
-      role: "translation"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    # Note: openai-compat endpoint (NVIDIA NIM uses OpenAI API protocol)
-    - provider: "openai"
-      model: "z-ai/glm-5.2"
-      priority: 3
-      role: "translation"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
-    # Note: openai-compat endpoint (MiniMax uses OpenAI API protocol)
-    - provider: "openai"
-      model: "minimaxai/minimax-m3"
-      priority: 4
-      role: "translation"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 5
-      role: "translation"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: translation
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: translation
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: translation
   judging:
-    # Primary judge: DeepSeek V4 Flash (via OpenCode Go) — stronger judgment
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-    # Backup 1: GLM-4-Flash (Zhipu) — fast fallback
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "judging"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    # Backup 2: AGNES 2.0 Flash — lowest priority (historical, over-strict)
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: judging
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: judging
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: judging
   restoration:
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 1
-      role: "restoration"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    # Note: openai-compat endpoint (Agnes uses OpenAI API protocol)
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 2
-      role: "restoration"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 120.0
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 3
-      role: "restoration"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: restoration
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: restoration
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: restoration
   profiling:
-    # Note: openai-compat endpoint (Zhipu uses OpenAI API protocol)
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 1
-      role: "profiling"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-
-# Quality gate configuration for post-translation validation
-# Each gate can be independently enabled or disabled.
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: profiling
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: profiling
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: profiling
 quality_gates:
   inline_tags: true
   terminology: true
@@ -135,4 +107,4 @@ quality_gates:
     max: 2.0
   locale:
     enabled: true
-    target_locale: "en-US"
+    target_locale: en-US
