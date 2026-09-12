@@ -14,6 +14,7 @@ requires_env:
   - NVIDIA_NIM_API_KEY
   - OPENCODE_GO_KEY
   - OPENCODE_GO_BASE_URL
+  - MCP_ALLOWED_DIRECTORIES
 instructions: |
   This scenario proves the terminology + quality-gate surface: glossary
   terms are injected into the translation prompt (TM/TB/SG automation) and
@@ -30,7 +31,7 @@ instructions: |
      fixture. Expect success with the translated text AND a warnings key
      (list) present, proving the quality gates ran and surfaced.
   3. Step 3 calls load_glossary with an out-of-allowlist path; the OL
-     PathValidator must deny it with OL_PATH_NOT_ALLOWED, never a raw
+     PathValidator must deny it with OL_PATH_DENIED, never a raw
      traceback.
 
 steps:
@@ -94,10 +95,10 @@ steps:
     expect:
       success: true
       exit_code: 0
-      stdout_has: ['OL_PATH_NOT_ALLOWED', '"success": false']
+      stdout_has: ['OL_PATH_DENIED', '"success": false']
       stdout_not_has: ['Traceback (most recent call last)']
     standard: STANDARDS.md#path-security
     instructions: >-
       Call with a path outside the allowlist (/etc is a system dir the
-      PathValidator always denies); expect a clean OL_PATH_NOT_ALLOWED
+      PathValidator always denies); expect a clean OL_PATH_DENIED
       denial, no traceback.
