@@ -64,7 +64,7 @@ STANDARDS.md#json-parseable`.
 Failures are reported as clear, parseable, agent-readable error messages
 that name the failing tool and the offending parameter — never raw
 stack-trace soup. OL's `@mcp_error_boundary` (in `ol_mcp/_errors.py`)
-returns opaque, stable codes (`OL_INVALID_INPUT`, `OL_PATH_NOT_ALLOWED`,
+returns opaque, stable codes (`OL_INVALID_INPUT`, `OL_PATH_DENIED`,
 `OL_FILE_NOT_FOUND`, `OL_INTERNAL_ERROR`, ...) with user-safe messages
 and no internals.
 
@@ -79,12 +79,13 @@ as `standard: STANDARDS.md#error-clarity`.
 Path-taking tools deny access outside the configured allowlist. OL's
 `PathValidator` (`ol_mcp/security.py`) reads `MCP_ALLOWED_DIRECTORIES`,
 then `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` (precedence
-order); unset → defaults to cwd + `/tmp`. An out-of-allowlist path MUST
-be rejected with `OL_PATH_NOT_ALLOWED`, never silently accepted.
+order); unset → the validator raises `ValueError` (fail-CLOSED; no cwd +
+`/tmp` default). An out-of-allowlist path MUST
+be rejected with `OL_PATH_DENIED`, never silently accepted.
 
 **How to check:** call a path-taking tool (e.g. `load_glossary`,
 `translate_xliff`) with a path outside the allowlist; expect a denial
-error naming the path with `OL_PATH_NOT_ALLOWED`. Citable as `standard:
+error naming the path with `OL_PATH_DENIED`. Citable as `standard:
 STANDARDS.md#path-security`.
 
 ### Exit codes {#exit-codes}

@@ -13,6 +13,7 @@ requires_env:
   - NVIDIA_NIM_API_KEY
   - OPENCODE_GO_KEY
   - OPENCODE_GO_BASE_URL
+  - MCP_ALLOWED_DIRECTORIES
 instructions: |
   This scenario proves the XLIFF translation channel (the layout-preserving
   pipeline path) works as an agent would use it: the real
@@ -31,7 +32,7 @@ instructions: |
   2. Step 2 verifies the written artifact: the output XLIFF exists, is
      parseable XML, and every trans-unit now carries a non-empty <target>.
   3. Step 3 calls translate_xliff with an out-of-allowlist input path;
-     the OL PathValidator must deny it with OL_PATH_NOT_ALLOWED, never a
+     the OL PathValidator must deny it with OL_PATH_DENIED, never a
      raw traceback.
 
 steps:
@@ -99,10 +100,10 @@ steps:
     expect:
       success: true
       exit_code: 0
-      stdout_has: ['OL_PATH_NOT_ALLOWED', '"success": false']
+      stdout_has: ['OL_PATH_DENIED', '"success": false']
       stdout_not_has: ['Traceback (most recent call last)']
     standard: STANDARDS.md#path-security
     instructions: >-
       Call with a path outside the allowlist (/etc is a system dir the
-      PathValidator always denies); expect a clean OL_PATH_NOT_ALLOWED
+      PathValidator always denies); expect a clean OL_PATH_DENIED
       denial, no traceback.
