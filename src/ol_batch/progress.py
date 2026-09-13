@@ -2,16 +2,19 @@
 
 import asyncio
 
+from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 
 class ProgressContext:
     """Context manager for rich progress bar with async cleanup."""
 
-    def __init__(self) -> None:
+    def __init__(self, quiet: bool = False) -> None:
         self._progress: Progress | None = None
         self._task_id: int | None = None
         self._done = asyncio.Event()
+        # T-03: route the bar to stderr under --json (stdout = one JSON object).
+        self._console: Console | None = Console(stderr=True) if quiet else None
 
     async def __aenter__(self) -> "ProgressContext":
         self._progress = Progress(
@@ -20,6 +23,7 @@ class ProgressContext:
             TaskProgressColumn(),
             TextColumn("[progress]{task.completed}/{task.total} files"),
             TimeRemainingColumn(),
+            console=self._console,
         )
         self._progress.__enter__()
         self._task_id = self._progress.add_task("Processing: ", total=100)

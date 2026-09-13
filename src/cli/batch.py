@@ -34,6 +34,7 @@ async def _translate_batch_async(
     max_concurrent: int = 5,
     add_frontmatter: bool = True,
     detect_language: bool = True,
+    quiet: bool = False,
 ) -> tuple[int, int]:
     from ol_batch.config import BatchConfig
     from ol_batch.discovery import discover_files, validate_directory
@@ -50,10 +51,12 @@ async def _translate_batch_async(
     files = discover_files(directory, file_patterns)
 
     if not files:
-        typer.echo(f"No files found in {directory} matching {file_patterns}")
+        typer.echo(
+            f"No files found in {directory} matching {file_patterns}", err=quiet
+        )
         return (0, 0)
 
-    typer.echo(f"Found {len(files)} files to process")
+    typer.echo(f"Found {len(files)} files to process", err=quiet)
 
     batch_config = BatchConfig(max_concurrent=max_concurrent)
     warn_fake_llm_mode()
@@ -75,7 +78,7 @@ async def _translate_batch_async(
     )
 
     start_time = time.time()
-    async with ProgressContext() as _:
+    async with ProgressContext(quiet=quiet) as _:
         result = await processor.process_batch(
             files,
             output_dir,
@@ -89,7 +92,7 @@ async def _translate_batch_async(
         )
 
     duration = time.time() - start_time
-    print_summary(result, duration)
+    print_summary(result, duration, quiet=quiet)
 
     return (len(result.succeeded), len(result.failed))
 
@@ -156,7 +159,11 @@ def translate_batch(
             cfg, glossary = load_config(config)
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
-            typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
+            # T-03: human banner -> stderr under --json (stdout = one JSON object).
+            typer.echo(
+                f"Using config: {cfg.project_id} ({src} -> {tgt})",
+                err=json_output,
+            )
         else:
             # No config — fall back to historical hardcoded defaults
             # so existing CLI users without --config see no behavior change.
@@ -180,6 +187,7 @@ def translate_batch(
                     concurrency,
                     add_frontmatter,
                     detect_language,
+                    quiet=json_output,
                 ),
             )
         finally:

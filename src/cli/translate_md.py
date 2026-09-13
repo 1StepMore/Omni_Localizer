@@ -1033,7 +1033,11 @@ def translate_md(
             src = src or cfg.source_lang
             tgt = tgt or cfg.target_lang
             _enforce_file_size(input_path, cfg.max_input_size_mb)
-            typer.echo(f"Using config: {cfg.project_id} ({src} -> {tgt})")
+            # T-03: human banner -> stderr under --json (stdout = one JSON object).
+            typer.echo(
+                f"Using config: {cfg.project_id} ({src} -> {tgt})",
+                err=json_output,
+            )
         else:
             # No config — fall back to historical hardcoded defaults
             # so existing CLI users without --config see no behavior change.

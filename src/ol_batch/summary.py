@@ -8,16 +8,21 @@ from ol_batch.config import BatchResult
 console = Console()
 
 
-def print_summary(result: BatchResult, duration: float) -> None:
+def print_summary(
+    result: BatchResult, duration: float, quiet: bool = False
+) -> None:
     """Print batch processing summary with colored output.
 
     Args:
         result: Batch result containing succeeded and failed files.
         duration: Total processing duration in seconds.
+        quiet: When True (``--json``), write the summary to stderr so
+            stdout stays exactly one JSON object.
 
     """
-    console.print("\n[bold]Batch Processing Summary[/bold]")
-    console.print(f"Duration: {duration:.2f}s")
+    out = Console(stderr=True) if quiet else console
+    out.print("\n[bold]Batch Processing Summary[/bold]")
+    out.print(f"Duration: {duration:.2f}s")
 
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Metric", style="cyan")
@@ -28,20 +33,20 @@ def print_summary(result: BatchResult, duration: float) -> None:
     table.add_row("Failed", f"[red]{len(result.failed)}[/red]")
     table.add_row("Success Rate", f"{result.success_rate:.1f}%")
 
-    console.print(table)
+    out.print(table)
 
     if result.succeeded:
-        console.print("\n[green]Succeeded files:[/green] (first 5)")
+        out.print("\n[green]Succeeded files:[/green] (first 5)")
         for path in result.succeeded[:5]:
-            console.print(f"  • {path.name}")
+            out.print(f"  • {path.name}")
         if len(result.succeeded) > 5:
-            console.print(f"  ... and {len(result.succeeded) - 5} more")
+            out.print(f"  ... and {len(result.succeeded) - 5} more")
 
     if result.failed:
-        console.print("\n[red]Failed files:[/red]")
+        out.print("\n[red]Failed files:[/red]")
         for path, error in result.failed:
             safe_error = _sanitize_error(error)
-            console.print(f"  ✗ {path.name}: {safe_error}")
+            out.print(f"  ✗ {path.name}: {safe_error}")
 
 
 def _sanitize_error(error: str) -> str:
