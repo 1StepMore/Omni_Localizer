@@ -6,7 +6,7 @@
 > path, chaining tool calls, handling errors, propagating trace context,
 > and setting up path security.
 
-**Applies to:** OPP v0.9.1, OL v0.7.0, ORF v0.4.16, Suite v0.4.0.
+**Applies to:** OPP v0.9.1, OL v0.7.1, ORF v0.4.17, Suite v0.4.0.
 
 ---
 
@@ -522,9 +522,9 @@ consistently to avoid confusing failures.
 
 | Server | Env Variable | Behavior if Unset | Recommended |
 |--------|-------------|-------------------|-------------|
-| OPP MCP | `OPP_MCP_ALLOWED_DIRS` (colon-separated) | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
-| OL MCP | `MCP_ALLOWED_DIRECTORIES` (comma-separated), falls back to `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` | Defaults to `[cwd, /tmp]` (permissive) | **Set `MCP_ALLOWED_DIRECTORIES`** |
-| ORF MCP | `ORF_MCP_ALLOWED_DIRS` (colon-separated) | Defaults to `[cwd]` (fail-open) | **Always set** |
+| OPP MCP | `MCP_ALLOWED_DIRECTORIES` or `OPP_MCP_ALLOWED_DIRS` (colon- or semicolon-separated) | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
+| OL MCP | `MCP_ALLOWED_DIRECTORIES` (comma-separated), falls back to `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
+| ORF MCP | `MCP_ALLOWED_DIRECTORIES` or `ORF_MCP_ALLOWED_DIRS` (colon- or semicolon-separated) | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
 
 ### 6.2 Recommendation: Set All Three to the Same Root
 
@@ -539,7 +539,7 @@ export OPP_MCP_ALLOWED_DIRS="${SHARED_WORK_DIR}"
 # OL (uses MCP_ALLOWED_DIRECTORIES as primary)
 export MCP_ALLOWED_DIRECTORIES="${SHARED_WORK_DIR}"
 
-# ORF (fail-open without explicit setting)
+# ORF (fail-closed, required)
 export ORF_MCP_ALLOWED_DIRS="${SHARED_WORK_DIR}"
 
 # Also allow /tmp for test artifacts
@@ -568,13 +568,16 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 
 | Variable | Module | Format | Default | Notes |
 |----------|--------|--------|---------|-------|
-| `MCP_ALLOWED_DIRECTORIES` | All (unified) | Comma-separated paths | None | Preferred unified name for Phase 2. |
-| `OPP_MCP_ALLOWED_DIRS` | OPP | Colon-separated paths | None (required) | OPP is fail-closed. Server won't start without this. |
+| `MCP_ALLOWED_DIRECTORIES` | All (unified) | Comma-separated for OL; colon- or semicolon-separated for OPP/ORF | None | Preferred unified name for Phase 2. Parsed with each module's own separator. |
+| `OPP_MCP_ALLOWED_DIRS` | OPP | Colon- or semicolon-separated paths | None (required) | OPP is fail-closed. Server won't start without this. |
 | `OL_MCP_ALLOWED_DIRS` | OL | Comma-separated paths | Falls back to `OL_ALLOWED_DIRECTORIES` | Secondary fallback for OL. |
-| `OL_ALLOWED_DIRECTORIES` | OL | Comma-separated paths | `[cwd, /tmp]` | Deprecated. Use `MCP_ALLOWED_DIRECTORIES` instead. |
-| `ORF_MCP_ALLOWED_DIRS` | ORF | Colon-separated paths | `[cwd]` | ORF is fail-open without this. |
+| `OL_ALLOWED_DIRECTORIES` | OL | Comma-separated paths | None (fail-closed if all OL allowlist vars are unset) | Deprecated. Use `MCP_ALLOWED_DIRECTORIES` instead. |
+| `ORF_MCP_ALLOWED_DIRS` | ORF | Colon- or semicolon-separated paths | None (required) | ORF is fail-closed. Server won't start without this. |
 | `MCP_SHARED_SECRET` | All | String | None (auth disabled) | Must match across all 3 servers if set. |
 | `MCP_ALLOWED_EXTENSIONS` | OL | Comma-separated extensions | `.json,.tmx,.xlf,.xliff,.md` | Overrides OL's default allowed extension set. |
+
+> **Note:** the unified `MCP_ALLOWED_DIRECTORIES` variable is parsed by each
+> module's own parser -- OL splits on commas, OPP and ORF split on `:` or `;`.
 
 ---
 
@@ -583,6 +586,8 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 | Pitfall | Symptom | Fix |
 |---------|---------|-----|
 | OPP MCP server won't start | `ValueError: allowed_directories cannot be empty` | Set `OPP_MCP_ALLOWED_DIRS` before starting. |
+| OL MCP server won't start | `ValueError: MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy)` | Set `MCP_ALLOWED_DIRECTORIES` (comma-separated) before starting. |
+| ORF MCP server won't start | `ValueError: MCP_ALLOWED_DIRECTORIES (or ORF_MCP_ALLOWED_DIRS) must be set (fail-CLOSED security policy)` | Set `MCP_ALLOWED_DIRECTORIES` or `ORF_MCP_ALLOWED_DIRS` (colon/semicolon-separated) before starting. |
 | MCP server not responding to stdio | Silent failure, no JSON-RPC handshake | Use `scripts/mcp_bridge.py` workaround (FastMCP 3.4.2 stdio bug). See `ACCEPTED_GAPS.md`. |
 | Cross-format XLIFF fails | ORF rejects format mismatch | Use `orf apply-xliff --force` (e.g. DOCX XLIFF -> PPTX). |
 | PDF -> XLIFF blocked | OPP returns `OPP_NOT_IMPLEMENTED` | Use MD path for PDF. PDF->XLIFF is intentionally blocked. |
@@ -602,6 +607,9 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 | Extract multiple documents | `batch_extract` | OPP |
 | Detect file format | `detect_format_tool` | OPP |
 | Save skeleton ZIP | `save_skeleton` | OPP |
+| Generate XLIFF | `generate_xliff` | OPP |
+| Convert document to Markdown | `generate_markdown` | OPP |
+| Validate XLIFF | `validate_xliff` | OPP |
 | Translate markdown (text) | `translate_md_text` | OL |
 | Translate markdown (file) | `translate_md_text` with `file_path` | OL |
 | Translate XLIFF | `translate_xliff` | OL |
@@ -612,6 +620,8 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 | Backfill XLIFF to document | `apply_xliff` | ORF |
 | Batch convert MD files | `batch_convert` | ORF |
 | Get document info | `info` | ORF |
+| Detect document format | `detect_format` | ORF |
+| Get module capabilities | `get_capabilities` | OPP / OL / ORF |
 | Health check (any server) | `ping` | OPP / OL / ORF |
 
 **MCP server names:**
@@ -619,7 +629,7 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 - OL: `ol-mcp` (no `-server` suffix)
 - ORF: `orf-mcp-server`
 
-**Tool counts:** OPP 7, OL 21, ORF 6 (34 total across all 3 servers).
+**Tool counts:** OPP 9, OL 21, ORF 7 (37 total).
 
 ---
 
