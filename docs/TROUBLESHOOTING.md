@@ -329,9 +329,11 @@ The full set of constraints lives in `src/ol_mcp/tools.py` (one `*Input` class p
 
 **Cause**
 
-Tool-name typo. The 8 registered tools are:
+Tool-name typo. The 21 registered tools include:
 
 `translate_md_text`, `translate_xliff`, `judge_text`, `load_glossary`, `get_relevant_terms`, `search_tm`, `batch_translate_texts`, `ping`. Note the exact names — `translate_md` (no `_text`) is the CLI subcommand, not the MCP tool.
+
+The full list is readable at runtime via the `capabilities` CLI command or the `get_capabilities` MCP tool.
 
 ---
 

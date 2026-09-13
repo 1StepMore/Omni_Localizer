@@ -79,7 +79,7 @@ src/
 ├── ol_checkpoint/             # .omni_cache/ reader/writer
 ├── ol_mcp/                    # MCP server
 │   ├── server.py              # stdio_server() entry (29 lines)
-│   ├── tools.py               # 8-tool registry (994 lines)
+│   ├── tools.py               # 21-tool registry (724 lines)
 │   ├── security.py            # PathValidator
 │   ├── auth.py                # shared-secret auth
 │   ├── rate_limiter.py        # token-bucket DoS guard
@@ -299,7 +299,8 @@ If either is unavailable, OL degrades gracefully: translation proceeds without t
 
 `src/ol_mcp/server.py` is 29 lines on purpose: it does nothing except wire the stdio transport to the `Server` instance defined in `tools.py`. The earlier `mcp.server.fastmcp.FastMCP` was abandoned in Phase 1.4 because it swallowed the first JSON-RPC handshake on stdio; the raw `mcp.server.Server` + `stdio_server()` pattern works reliably when the subprocess is unbuffered (`python -u -m ol_mcp`, `bufsize=0`).
 
-8 tools, all in `TOOL_REGISTRY` (`tools.py:88`):
+21 tools, all in `TOOL_REGISTRY` (`tools.py:88`):
+(The table below lists the pipeline-critical subset; the full set is in `AGENTS.md` / `get_capabilities`.)
 
 | Tool | Input model | Returns |
 |---|---|---|
