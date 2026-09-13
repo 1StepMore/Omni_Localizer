@@ -1,14 +1,14 @@
 # OL API Reference
 
-This document is the canonical reference for every command and tool exposed by **Omni-Localizer (OL)** v0.4.4. It covers the CLI, the MCP server, the LLM config format, the glossary format, and the TMX format. File paths are relative to the `Omni_Localizer/` repository root.
+This document is the canonical reference for every command and tool exposed by **Omni-Localizer (OL)** v0.7.1. It covers the CLI, the MCP server, the LLM config format, the glossary format, and the TMX format. File paths are relative to the `Omni_Localizer/` repository root.
 
-> **Status**: v0.4.4 (matches `pyproject.toml`). CLI and MCP contracts here are stable; minor flags may appear in patch releases.
+> **Status**: v0.7.1 (matches `pyproject.toml`). CLI and MCP contracts here are stable; minor flags may appear in patch releases.
 
 ---
 
 ## 1. CLI — `ol` / `python -m ol_cli`
 
-The CLI is a `typer` application in `src/ol_cli.py:606` with a single Typer `app` and four sub-commands. The console script is registered in `pyproject.toml:64` as `ol = "ol_cli:main_entry"`.
+The CLI is a `typer` application in `src/ol_cli.py:606` with a single Typer `app` and twenty-one sub-commands. The console script is registered in `pyproject.toml:64` as `ol = "ol_cli:main_entry"`.
 
 Common help:
 
@@ -130,7 +130,7 @@ ol-mcp                       # entry point from pyproject.toml:65
 python -m ol_mcp             # with PYTHONPATH=src if running from a checkout
 ```
 
-The server registers 8 tools (`TOOL_REGISTRY` at `src/ol_mcp/tools.py:88`). All tools return a JSON string wrapped in MCP `TextContent`; arguments are validated against a Pydantic model and rejected with `error_code: "OL_INVALID_INPUT"` on schema failure. See `src/ol_mcp/tools.py:933-945` for the dispatcher.
+The server registers 21 tools (`TOOL_REGISTRY` at `src/ol_mcp/tools.py:88`). All tools return a JSON string wrapped in MCP `TextContent`; arguments are validated against a Pydantic model and rejected with `error_code: "OL_INVALID_INPUT"` on schema failure. See `src/ol_mcp/tools.py:933-945` for the dispatcher. The complete list is enumerated in `AGENTS.md` (see "MCP tools (21 total)") and readable at runtime via the `get_capabilities` tool; §2 below documents the pipeline-critical subset.
 
 ### 2.1 `translate_md_text`
 
@@ -246,7 +246,7 @@ Translate multiple short Markdown texts in series (with shared `ModelPool`). For
 Health check. No required input. Returns:
 
 ```json
-{"success": true, "module": "ol", "version": "0.4.4"}
+{"success": true, "content": {"module": "ol", "version": "0.7.1"}}
 ```
 
 `auth_token` (a `shared_secret` alias) is accepted but optional unless `MCP_SHARED_SECRET` is set in the server environment.
@@ -347,7 +347,7 @@ Each value is `{translation, variants, confidence}`. Selection is substring + va
 <tmx version="1.4">
   <header
     creationtool="ol-tm"
-    creationtoolversion="0.4.4"
+    creationtoolversion="1.0"
     segtype="sentence"
     srclang="en"
     tgtlang="zh"

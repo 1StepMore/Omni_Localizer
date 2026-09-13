@@ -34,7 +34,7 @@ What you get:
   target_lang: zh
   original_file: chapter1.md
   processor: "OL"
-  version: "0.4.4"
+  version: "0.7.1"
   translated_at: 2026-06-22T15:00:00Z
   ---
   ```
@@ -179,7 +179,7 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-If you have a real key, drop the `OMNI_TEST_FAKE_LLM` env line and set `ZHIPU_API_KEY` (or whichever your `config/default.yaml` references). Restart Claude Desktop. You'll then see eight tools under the OL server:
+If you have a real key, drop the `OMNI_TEST_FAKE_LLM` env line and set `ZHIPU_API_KEY` (or whichever your `config/default.yaml` references). Restart Claude Desktop. You'll then see twenty-one tools under the OL server:
 
 - `translate_md_text`, `translate_xliff`, `judge_text`
 - `load_glossary`, `get_relevant_terms`, `search_tm`
