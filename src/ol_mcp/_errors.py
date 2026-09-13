@@ -18,6 +18,7 @@ import inspect
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Callable
 
 _logger = logging.getLogger("ol_mcp.errors")
@@ -53,6 +54,94 @@ def _classify(exc: BaseException) -> str:
     return "OL_INTERNAL_ERROR"
 
 
+# ── R-09: recovery hints ─────────────────────────────────────────────
+# Hints are static constants: never interpolate the exception message or
+# caller-controlled data (prompt-injection safety). Contract-tested by
+# tests/contract/test_recovery_hints_contract.py.
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryHint:
+    """A recoverability hint attached to a stable error code."""
+
+    strategy: str
+    hint: str
+
+
+RECOVERY_HINTS: dict[str, RecoveryHint] = {
+    "OL_FILE_NOT_FOUND": RecoveryHint(
+        "fix_input",
+        "Verify the glossary, TMX, or config file path exists, then re-issue.",
+    ),
+    "OL_PERMISSION_DENIED": RecoveryHint(
+        "fix_input",
+        "Check file permissions for the server process, then re-issue.",
+    ),
+    "OL_PATH_DENIED": RecoveryHint(
+        "use_allowed_path",
+        "Set MCP_ALLOWED_DIRECTORIES to include the path, or use a path already "
+        "inside it, then re-issue.",
+    ),
+    "OL_INVALID_INPUT": RecoveryHint(
+        "fix_input",
+        "Validate the request against the tool's input schema; retry only if the "
+        "LLM output was transient.",
+    ),
+    "OL_MISSING_KEY": RecoveryHint(
+        "fix_input",
+        "Add the missing required field from the tool's input schema, then re-issue.",
+    ),
+    "OL_TIMEOUT": RecoveryHint(
+        "retry",
+        "Retry, or raise the model timeout for large batches.",
+    ),
+    "OL_NOT_IMPLEMENTED": RecoveryHint(
+        "abort",
+        "Do not retry; this code path is not implemented. File a feature request.",
+    ),
+    "OL_INTERNAL_ERROR": RecoveryHint(
+        "report_bug",
+        "Check server logs for the traceback; retry once only if the failure looks "
+        "transient.",
+    ),
+    "OL_UNKNOWN_TOOL": RecoveryHint(
+        "fix_input",
+        "Call one of the advertised OL tools; check the tool name spelling.",
+    ),
+    "AUTH_FAILED": RecoveryHint(
+        "reissue_with_auth",
+        "Re-issue the call with the correct auth_token matching MCP_SHARED_SECRET.",
+    ),
+    "RATE_LIMITED": RecoveryHint(
+        "retry",
+        "Wait for the rate-limit window to reset, then retry with lower concurrency.",
+    ),
+}
+
+#: Every error code this module can emit — including AUTH_FAILED /
+#: RATE_LIMITED / OL_UNKNOWN_TOOL, raised by the server's auth,
+#: rate-limit, and dispatch paths rather than by ``_ERROR_CODE_MAP``.
+DECLARED_ERROR_CODES: frozenset[str] = (
+    frozenset(_ERROR_CODE_MAP.values())
+    | {"OL_INTERNAL_ERROR", "OL_UNKNOWN_TOOL", "AUTH_FAILED", "RATE_LIMITED"}
+)
+
+_FALLBACK_RECOVERY = RecoveryHint(
+    "report_bug",
+    "Unknown error code; inspect server logs for the traceback and file a bug report.",
+)
+
+
+def recovery_for(code: str) -> dict[str, str]:
+    """Return the ``{strategy, hint}`` recovery envelope for *code*.
+
+    Unknown codes receive a safe ``report_bug`` fallback, so every error
+    envelope always carries a recovery object.
+    """
+    rec = RECOVERY_HINTS.get(code, _FALLBACK_RECOVERY)
+    return {"strategy": rec.strategy, "hint": rec.hint}
+
+
 def _safe_user_message(exc: BaseException) -> str:
     """User-facing message: never includes file paths, exception class,
     or any internal detail. Generic per code class.
@@ -68,6 +157,19 @@ def _safe_user_message(exc: BaseException) -> str:
         "OL_NOT_IMPLEMENTED": "The requested feature is not yet implemented.",
         "OL_INTERNAL_ERROR": "An internal error occurred. Check server logs.",
     }.get(code, "An internal error occurred. Check server logs.")
+
+
+def _error_payload(exc: BaseException) -> dict[str, Any]:
+    """Build the JSON-ready error payload for *exc* (code, message, recovery)."""
+    code = _classify(exc)
+    msg = _safe_user_message(exc)
+    return {
+        "success": False,
+        "error": {"code": code, "message": msg},
+        "error_code": code,
+        "message": msg,
+        "recovery": recovery_for(code),
+    }
 
 
 def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -107,14 +209,7 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
                 tool_name,
                 exc,
             )
-            code = _classify(exc)
-            payload = {
-                "success": False,
-                "error": {"code": code, "message": _safe_user_message(exc)},
-                "error_code": code,
-                "message": _safe_user_message(exc),
-            }
-            return json.dumps(payload, ensure_ascii=False)
+            return json.dumps(_error_payload(exc), ensure_ascii=False)
 
     @functools.wraps(fn)
     def sync_wrapper(*args, **kwargs):
@@ -130,14 +225,7 @@ def mcp_error_boundary(fn: Callable[..., Any]) -> Callable[..., Any]:
                 tool_name,
                 exc,
             )
-            code = _classify(exc)
-            payload = {
-                "success": False,
-                "error": {"code": code, "message": _safe_user_message(exc)},
-                "error_code": code,
-                "message": _safe_user_message(exc),
-            }
-            return json.dumps(payload, ensure_ascii=False)
+            return json.dumps(_error_payload(exc), ensure_ascii=False)
 
     if inspect.iscoroutinefunction(fn):
         return async_wrapper

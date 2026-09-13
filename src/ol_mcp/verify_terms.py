@@ -11,8 +11,10 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.auth import auth_failure_response, check_auth
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
+from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
     VerifyTermsInput,
     _error_response,
@@ -55,6 +57,14 @@ async def verify_terms(params: VerifyTermsInput) -> str:
     # Resolve glossary: inline takes precedence over path
     glossary: dict[str, dict[str, Any]] | None = params.glossary
     if glossary is None and params.glossary_path:
+        # T-08: glossary_path must clear the MCP allowed-directories sandbox
+        # before it reaches the filesystem (mirrors load_glossary/search_tm).
+        vresult = get_default_validator().validate_path(params.glossary_path)
+        if not vresult.success:
+            return json.dumps(
+                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+                ensure_ascii=False,
+            )
         try:
             from ol_terminology.glossary import load_glossary_from_path
             glossary = load_glossary_from_path(params.glossary_path)
