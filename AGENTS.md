@@ -112,6 +112,19 @@ src/ol/
 | `get_relevant_terms` | Extract top-k relevant glossary terms for a source text |
 | `search_tm` | Search TMX translation memory for similar past translations |
 | `batch_translate_texts` | Translate multiple texts in parallel |
+| `translate_file` | Translate a document file end-to-end (OPP → OL → ORF), shelling out to the `opp`/`ol`/`orf` CLIs |
+| `extract_terms` | Extract key terms from source texts using YAKE (ML deps required) |
+| `add_tm_entries` | Add translation entries to a TMX file, creating it if missing |
+| `shield_md_text` | Replace code/links/math/HTML/images in markdown with `[OL:TYPE:NNNN]` placeholders |
+| `unshield_md_text` | Restore `[OL:TYPE:NNNN]` placeholders using a prior `shield_map` |
+| `generate_report` | Generate HTML + CSV quality reports from translation warnings and model costs |
+| `inspect_config` | Inspect OL configuration (models, paths, LQA settings); API keys are redacted |
+| `disambiguate` | Resolve polysemous terms in text using context-aware confidence-based selection from a glossary |
+| `extract_warnings` | Read an MD/XLIFF file and extract OL warning markers as structured `WarningEntry` objects |
+| `get_translation_status` | Poll the status of an async translation task by `request_id` |
+| `verify_terms` | Verify glossary term usage in translated content |
+| `profile_doc` | Profile a document's writing style, returning a `StyleGuide` |
+| `get_capabilities` | Return OL module capabilities: roles, language pairs, and available MCP tools |
 | `ping` | Health check |
 
 For full per-tool parameter reference, see the suite-level
