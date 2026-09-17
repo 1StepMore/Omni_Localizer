@@ -22,8 +22,11 @@ SYSTEM_DIRS: set = {
     "/etc",
     "/usr",
     "/var",
+    "/proc",
+    "/sys",
     "/System",
     "/Library",
+    "/C:/Windows",
     "C:\\Windows",
 }
 
@@ -82,11 +85,22 @@ class PathValidator:
         If the ``MCP_ALLOWED_EXTENSIONS`` env var is set (comma-separated,
         e.g. ``.txt,.csv,.yaml``), it overrides the class default.
         An empty or whitespace-only value falls back to ``ALLOWED_EXTENSIONS``.
+
+        前导点可选（2026-09-17，ADR 0007 一致性对齐）：``MCP_ALLOWED_EXTENSIONS=txt``
+        与 ``=.txt`` 现在等价。此前 OL 只接受带点的写法，而 OPP/ORF 的
+        ``resolve_allowed_extensions()`` 会把 ``txt`` 补成 ``.txt`` —— 同一个环境变量
+        在三份实现里语义不同，配置 ``txt`` 时 OL 永远判为"不在白名单"。
+        收敛后三份实现的解析语义一致（前导点可选、纯空白视为未设置），并由
+        ``tests/security/test_path_policy_parity.py`` 锁定。
         """
         raw = os.environ.get("MCP_ALLOWED_EXTENSIONS", "").strip()
-        if raw:
-            return {ext.strip() for ext in raw.split(",") if ext.strip()}
-        return cls.ALLOWED_EXTENSIONS
+        if not raw:
+            return cls.ALLOWED_EXTENSIONS
+        return {
+            ext if ext.startswith(".") else f".{ext}"
+            for ext in (part.strip() for part in raw.split(","))
+            if ext
+        }
 
     def __init__(
         self,
@@ -247,6 +261,34 @@ class PathValidator:
         )
 
 
+def _parse_allowed_dirs(value: str) -> list[Path]:
+    """按平台路径分隔符与逗号切分 allowlist 字符串。
+
+    2026-09-17（ADR 0007 一致性对齐）：此前 OL 只按逗号切分，而 OPP/ORF 的
+    ``_parse_allowed_dirs`` 按冒号/分号切分 —— 同一个 ``MCP_ALLOWED_DIRECTORIES``
+    在三份实现里语义不同。``omni_mcp.orchestrator._path_denial_message`` 又明确告诉
+    用户 "comma- or '<os.pathsep>'-separated"，OL 不认平台分隔符会让这条提示变成假话。
+
+    统一后的契约（与 OPP/ORF 逐字一致）：按 ``os.pathsep``（POSIX ``":"``、
+    Windows ``";"``）加逗号切分，去掉空白、丢弃空段；不含分隔符的值自然成为
+    单元素列表。**绝不在 Windows 上按 ``":"`` 切分** —— 盘符本身含 ``":"``，
+    那会把 ``C:\\work`` 切成 ``C`` 与 ``\\work``，allowlist 完全失效
+    （三份实现由 ``tests/security/test_path_policy_parity.py`` 锁定）。
+
+    Args:
+        value: 环境变量原始值（可含平台分隔符、逗号与空白）。
+
+    Returns:
+        非空分段组成的 ``Path`` 列表；``value`` 为空白时返回 ``[]``。
+    """
+    if not value or not value.strip():
+        return []
+    parts: list[str] = []
+    for chunk in value.split(os.pathsep):
+        parts.extend(chunk.split(","))
+    return [Path(part.strip()) for part in parts if part.strip()]
+
+
 def get_default_validator() -> PathValidator:
     """Build PathValidator from env var allowlist.
 
@@ -255,7 +297,8 @@ def get_default_validator() -> PathValidator:
     2. ``OL_MCP_ALLOWED_DIRS`` — OL-specific name (kept for backward compat)
     3. ``OL_ALLOWED_DIRECTORIES`` — legacy name (deprecated)
 
-    Comma-separated list of allowed directories (e.g.,
+    List syntax is ``os.pathsep`` (POSIX ``":"``, Windows ``";"``) and/or
+    comma separated (e.g.,
     ``MCP_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``).
 
     Fail-CLOSED: at least one of the three env vars MUST be set. If all
@@ -277,9 +320,8 @@ def get_default_validator() -> PathValidator:
         os.environ.get("MCP_ALLOWED_DIRECTORIES") or os.environ.get("OL_MCP_ALLOWED_DIRS")
     ):
         _logger.warning("OL_ALLOWED_DIRECTORIES is deprecated, use MCP_ALLOWED_DIRECTORIES")
-    if allowed.strip():
-        dirs = [Path(d).resolve() for d in allowed.split(",") if d.strip()]
-    else:
+    dirs = [d.resolve() for d in _parse_allowed_dirs(allowed)]
+    if not dirs:
         raise ValueError(
             "MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / "
             "OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy). "

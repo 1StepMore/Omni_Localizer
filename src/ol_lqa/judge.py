@@ -13,19 +13,38 @@ class JudgeService:
     def _rescale(raw: float) -> float:
         return raw / 10.0
 
+    # 字段顺序 = 输出顺序；版块外字段（accuracy / score）权重为 0，保留仅为兼容既有报告
+    _LLM_SCORE_FIELDS: tuple[str, ...] = (
+        "adequacy",
+        "fluency",
+        "accuracy",
+        "score",
+        "terminology_consistency",
+        "format_preservation",
+    )
+
     @staticmethod
     def _remap_llm_fields(result: dict[str, Any]) -> dict[str, float]:
+        """把 LLM 返回的 0-100 分字段重映射为 0-10 分。
+
+        T13-01 修复：缺失的字段必须**省略**而非补 0。
+        `_compute_overall_score` / `EvaluationResult.judge_overall_score`
+        都是对「收到的键」做加权归一化（weighted_sum / total_weight），
+        补 0 会把该维度的 rubric 权重塞进分母却不贡献分子。
+        judge prompt 只询问 accuracy / fluency / adequacy / score，
+        因此 terminology_consistency(0.20) 与 format_preservation(0.15)
+        曾被补 0，使总分被硬性封顶在 0.65×10 = 6.5/10（即 3.25/5）。
+
+        Args:
+            result: LLM judge 的原始返回（0-100 分制）。
+
+        Returns:
+            仅包含 LLM 实际给出数值的字段，分值为 0-10 制。
+        """
         return {
-            "adequacy": JudgeService._rescale(result.get("adequacy", 0)),
-            "fluency": JudgeService._rescale(result.get("fluency", 0)),
-            "accuracy": JudgeService._rescale(result.get("accuracy", 0)),
-            "score": JudgeService._rescale(result.get("score", 0)),
-            "terminology_consistency": JudgeService._rescale(
-                result.get("terminology_consistency", 0),
-            ),
-            "format_preservation": JudgeService._rescale(
-                result.get("format_preservation", 0),
-            ),
+            field: JudgeService._rescale(result[field])
+            for field in JudgeService._LLM_SCORE_FIELDS
+            if result.get(field) is not None
         }
 
     _JUDGE_TEMPERATURE = 0.7
@@ -276,7 +295,16 @@ class EnsembleJudge:
         aggregated: dict[str, float] = {}
 
         for criterion in criteria:
-            scores = [r.judge_scores.get(criterion, 0.0) for r in results]
+            # T13-01: 只让「确实报出该维度」的 judge 参与聚合。原先用
+            # .get(criterion, 0.0) 会把缺席的维度当成 0 分投票，既污染中位数，
+            # 又让该维度的 rubric 权重进入分母（与 _remap_llm_fields 同一根因）。
+            scores = [
+                r.judge_scores[criterion]
+                for r in results
+                if criterion in r.judge_scores
+            ]
+            if not scores:
+                continue
             sorted_scores = sorted(scores)
             n = len(sorted_scores)
             if n % 2 == 0:

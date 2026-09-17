@@ -102,7 +102,7 @@ class TestJudgeService:
         service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
         glossary = {"Hello": "Bonjour", "world": "monde"}
 
-        result = await service.judge(
+        await service.judge(
             source="Hello world",
             target="Bonjour monde",
             unit_id="u1",
@@ -285,6 +285,63 @@ class TestJudgeService:
         assert result2.format_errors == []
 
 
+class TestPartialFieldRenormalization:
+    """T13-01 回归：LLM 缺席的维度必须「省略」而非补 0。
+
+    judge prompt 只询问 accuracy / fluency / adequacy / score，而 rubric 还给
+    terminology_consistency(0.20) 与 format_preservation(0.15) 留了权重。
+    修复前 _remap_llm_fields 用 .get(field, 0) 补 0，把这两个权重塞进归一化
+    分母却不贡献分子，使 judge_overall_score 被硬性封顶在 0.65×10 = 6.5/10
+    （即 3.25/5），任何译文都不可能过 7.0 的阈值。
+    """
+
+    def test_missing_dimensions_are_omitted(self):
+        scores = JudgeService._remap_llm_fields(
+            {"accuracy": 90, "fluency": 90, "adequacy": 90, "score": 90},
+        )
+        assert "terminology_consistency" not in scores
+        assert "format_preservation" not in scores
+
+    def test_partial_scores_renormalize_to_full_range(self):
+        scores = JudgeService._remap_llm_fields(
+            {"accuracy": 90, "fluency": 90, "adequacy": 90, "score": 90},
+        )
+        overall = EvaluationResult(unit_id="u1", judge_scores=scores).judge_overall_score
+        assert abs(overall - 9.0) < 1e-6, (
+            f"缺省维度补 0 会把满分压到 5.85；归一化后应为 9.0，实际 {overall}"
+        )
+
+    def test_explicit_zero_is_kept(self):
+        """LLM 明确给 0 分是真实信号，不能被当成「缺席」丢掉。"""
+        scores = JudgeService._remap_llm_fields({"adequacy": 0, "fluency": 50})
+        assert scores == {"adequacy": 0.0, "fluency": 5.0}
+
+    def test_all_dimensions_present_unchanged(self):
+        scores = JudgeService._remap_llm_fields(
+            {"adequacy": 80, "fluency": 80, "terminology_consistency": 80, "format_preservation": 80},
+        )
+        assert abs(EvaluationResult(unit_id="u1", judge_scores=scores).judge_overall_score - 8.0) < 1e-6
+
+    @pytest.mark.asyncio
+    async def test_judge_over_prompt_shaped_response_passes_threshold(self):
+        """端到端：LLM 只按 prompt 的字段作答时，优秀译文不应被误判为低分。"""
+        mock_model_pool = MagicMock()
+        mock_model_pool.judge = AsyncMock(return_value={
+            "accuracy": 90, "fluency": 90, "adequacy": 90, "score": 90,
+            "format_errors": [],
+        })
+        service = JudgeService(pass_threshold=7.0, model_pool=mock_model_pool)
+
+        result = await service.judge(
+            source="Hello world", target="Bonjour le monde", unit_id="u1",
+        )
+
+        assert abs(result.judge_overall_score - 9.0) < 1e-6
+        assert not any("below threshold" in w for w in result.warnings), (
+            f"9.0/10 的译文被误判低于 7.0 阈值：{result.warnings}"
+        )
+
+
 class TestEnsembleJudge:
     @pytest.fixture
     def ensemble_judge(self):
@@ -358,3 +415,55 @@ class TestEnsembleJudge:
         results = await ensemble_judge.judge_batch([("Hello", "Bonjour", "u1")])
         assert len(results) == 1
         assert results[0].unit_id == "u1"
+
+    @pytest.mark.asyncio
+    async def test_criterion_no_judge_reported_is_skipped(self, ensemble_judge):
+        """T13-01（ensemble 侧）：全体 judge 都缺席的维度不得当成 0 分投票。"""
+        partial = EvaluationResult(
+            unit_id="u1",
+            scorer_scores={},
+            judge_scores={"adequacy": 9.0, "fluency": 9.0},
+            format_preserved=True,
+            format_errors=[],
+            warnings=[],
+        )
+        ensemble_judge._judges[0].judge = AsyncMock(return_value=partial)
+        ensemble_judge._judges[1].judge = AsyncMock(return_value=partial)
+
+        result = await ensemble_judge.judge(source="Hello", target="Bonjour", unit_id="u1")
+
+        assert "terminology_consistency" not in result.judge_scores
+        assert "format_preservation" not in result.judge_scores
+        assert abs(result.judge_overall_score - 9.0) < 1e-6, (
+            f"缺席维度补 0 会把 9.0 压到 5.85；实际 {result.judge_overall_score}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_criterion_reported_by_some_judges_uses_only_those(self, ensemble_judge):
+        """部分 judge 报出该维度时，只用报出的分数聚合，缺席者不参与中位数。"""
+        full = EvaluationResult(
+            unit_id="u1",
+            scorer_scores={},
+            judge_scores={"adequacy": 8.0, "fluency": 8.0, "terminology_consistency": 8.0},
+            format_preserved=True,
+            format_errors=[],
+            warnings=[],
+        )
+        partial = EvaluationResult(
+            unit_id="u1",
+            scorer_scores={},
+            judge_scores={"adequacy": 8.0, "fluency": 8.0},
+            format_preserved=True,
+            format_errors=[],
+            warnings=[],
+        )
+        ensemble_judge._judges[0].judge = AsyncMock(return_value=full)
+        ensemble_judge._judges[1].judge = AsyncMock(return_value=partial)
+
+        result = await ensemble_judge.judge(source="Hello", target="Bonjour", unit_id="u1")
+
+        assert result.judge_scores["terminology_consistency"] == 8.0, (
+            f"缺席者被当成 0 分投票，中位数应为 8.0，实际 "
+            f"{result.judge_scores.get('terminology_consistency')}"
+        )
+        assert "format_preservation" not in result.judge_scores

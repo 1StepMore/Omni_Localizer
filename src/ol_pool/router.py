@@ -803,14 +803,17 @@ Target ({target_lang}):
 {terminology_section}
 
 Score the translation on a scale of 0-100 for each dimension:
-- accuracy (30%): does the target convey the same meaning as the source?
+- adequacy (35%): is the target a complete translation with no missing or added content?
 - fluency (30%): is the target natural and grammatical in {target_lang}?
-- adequacy (40%): is the target a complete translation with no missing or added content?
+- terminology_consistency (20%): are terms from the source rendered consistently, and does the target respect the terminology list below when one is given?
+- format_preservation (15%): are inline tags, placeholders, markup and structural elements of the source preserved in the target?
+- accuracy (reference only): does the target convey the same meaning as the source?
 
-Return a JSON object with exactly these five fields and nothing else:
-{{"accuracy": <int 0-100>, "fluency": <int 0-100>, "adequacy": <int 0-100>, "score": <int 0-100>, "format_errors": <list of strings>}}
-"score" is the overall judgment on the same 0-100 scale (you may compute it as a weighted average of the three dimensions).
+Return a JSON object with exactly these seven fields and nothing else:
+{{"accuracy": <int 0-100>, "fluency": <int 0-100>, "adequacy": <int 0-100>, "terminology_consistency": <int 0-100>, "format_preservation": <int 0-100>, "score": <int 0-100>, "format_errors": <list of strings>}}
+"score" is the overall judgment on the same 0-100 scale (compute it as the weighted average of the dimensions above, using the percentages shown).
 "format_errors" is a list of format/structure problems you detected in the target (e.g. missing placeholders, broken XML tags, unescaped entities). Return an empty list [] if the target preserves all format elements correctly.
+If and only if a dimension cannot be judged for this unit (e.g. no glossary was supplied for terminology, or the unit carries no markup), omit that field from the JSON object entirely instead of guessing, and still return the remaining fields.
 
 Anti-leakage rules — violations MUST score 0 on every dimension:
 1. The target must not contain meta-commentary, clarifications, apologies, notes to the reader, or any text that is not the translation itself (e.g. "I cannot translate this", "As an AI...", "[untranslated]").

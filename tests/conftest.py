@@ -1,6 +1,7 @@
 """Pytest configuration for Omni-Localizer tests."""
 import os
 import sys
+import tempfile
 import types
 from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -38,9 +39,15 @@ os.environ.setdefault("OMNI_TEST_FAKE_LLM", "1")
 # explicit allowlist so MCP tools that take file paths do not hit the
 # fail-closed branch. Tests that assert the UNSET behavior must
 # monkeypatch.delenv() all three vars (see tests/test_ol_mcp_fail_closed.py).
+#
+# 2026-09-17: the temp entry used to be the literal ``Path("/tmp")``, which on
+# Windows resolves to ``<cwd-drive>:\tmp`` — NOT where ``tmp_path`` lives, so
+# every MCP tool call taking a ``tmp_path`` file was rejected with
+# ``OL_PATH_DENIED`` (12 failures locally). ``tempfile.gettempdir()`` is
+# ``/tmp`` on POSIX, so the string is byte-identical there.
 os.environ.setdefault(
     "MCP_ALLOWED_DIRECTORIES",
-    f"{Path(__file__).resolve().parent.parent},{Path('/tmp')}",
+    f"{Path(__file__).resolve().parent.parent},{tempfile.gettempdir()}",
 )
 
 # Newer typer (>=0.27) emits ANSI in CliRunner help output; NO_COLOR alone
