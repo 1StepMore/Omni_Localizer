@@ -9,6 +9,7 @@ The decorator must:
 """
 
 import asyncio
+import dataclasses
 import importlib.util
 import logging
 import sys
@@ -107,8 +108,16 @@ class TestOPPErrorBoundary:
         assert errors_path.exists(), "OPP _errors.py should exist"
         spec = importlib.util.spec_from_file_location("opp_errors", errors_path)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        # Register before exec_module: a @dataclass in the dynamically loaded
+        # module resolves its own module through sys.modules (py3.13
+        # dataclasses._is_type), which raises AttributeError otherwise.
+        sys.modules["opp_errors"] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop("opp_errors", None)
         assert hasattr(module, "mcp_error_boundary")
+        assert dataclasses.is_dataclass(module.RecoveryHint)
 
     def test_opp_error_boundary_hides_exception_message(self):
         """Apply decorator to a fake OPP-style tool and verify error message
