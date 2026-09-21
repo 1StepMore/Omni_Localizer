@@ -28,9 +28,26 @@ _logger = logging.getLogger("ol_mcp.errors")
 OL_PATH_DENIED = "OL_PATH_DENIED"
 PATH_DENIED_MESSAGE = "Path is not within the allowed directories."
 
+# Stable error code for a running MCP server that has no allowed-directories
+# allowlist configured (fail-CLOSED refusal). This is a server-side
+# misconfiguration, not a bad request: the caller's input is fine, so it must
+# NOT collapse into OL_INVALID_INPUT (which tells the agent to fix its input).
+# Do not change the string — clients switch on it.
+OL_MCP_NOT_CONFIGURED = "OL_MCP_NOT_CONFIGURED"
+
 
 class PathDeniedError(ValueError):
     """Raised when a path falls outside the MCP allowed-directories sandbox."""
+
+
+class MCPNotConfiguredError(ValueError):
+    """Raised when the MCP server has no allowed-directories allowlist (fail-CLOSED).
+
+    Subclasses ``ValueError`` so existing handlers that already catch
+    ``ValueError`` (e.g. the startup refusal in ``ol_mcp/server.py``) keep
+    working; the more specific code is selected by ``_classify`` because its
+    map entry precedes the generic ``ValueError`` entry.
+    """
 
 
 # Stable, opaque error code mapping. Adding new codes is fine; do not
@@ -39,6 +56,7 @@ _ERROR_CODE_MAP: dict[type, str] = {
     FileNotFoundError: "OL_FILE_NOT_FOUND",
     PermissionError: "OL_PERMISSION_DENIED",
     PathDeniedError: OL_PATH_DENIED,
+    MCPNotConfiguredError: OL_MCP_NOT_CONFIGURED,
     ValueError: "OL_INVALID_INPUT",
     KeyError: "OL_MISSING_KEY",
     TimeoutError: "OL_TIMEOUT",
@@ -81,6 +99,11 @@ RECOVERY_HINTS: dict[str, RecoveryHint] = {
         "use_allowed_path",
         "Set MCP_ALLOWED_DIRECTORIES to include the path, or use a path already "
         "inside it, then re-issue.",
+    ),
+    "OL_MCP_NOT_CONFIGURED": RecoveryHint(
+        "configure_environment",
+        "Set MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS) to a "
+        "comma-separated allowlist before starting the server, then re-issue.",
     ),
     "OL_INVALID_INPUT": RecoveryHint(
         "fix_input",
@@ -151,6 +174,10 @@ def _safe_user_message(exc: BaseException) -> str:
         "OL_FILE_NOT_FOUND": "A required file was not found.",
         "OL_PERMISSION_DENIED": "Permission denied for the requested operation.",
         "OL_PATH_DENIED": PATH_DENIED_MESSAGE,
+        "OL_MCP_NOT_CONFIGURED": (
+            "The MCP server is not configured: no allowed-directories "
+            "allowlist is set (fail-CLOSED)."
+        ),
         "OL_INVALID_INPUT": "The request input was invalid.",
         "OL_MISSING_KEY": "A required key was missing from the input.",
         "OL_TIMEOUT": "The operation timed out.",
