@@ -16,6 +16,9 @@ from typing import Optional
 import typer
 
 from cli._shared import ExitCode, hint_init_suggestion
+from ol_logging.core import get_logger
+
+logger = get_logger("cli")
 
 # Human-readable checklist names (display order).
 _CHECK_NAMES: tuple[str, ...] = (
@@ -93,7 +96,9 @@ def doctor(
             with open(target, encoding="utf-8") as f:
                 yaml.safe_load(f)
             results["yaml_parses"] = True
-        except Exception:
+        except Exception as exc:
+            # Deliberate swallow: reported via results["yaml_parses"]; logged for auditability.
+            logger.debug("doctor: YAML parse failed: %s", exc)
             results["yaml_parses"] = False
 
     # 3. load_config succeeds (schema validation incl. min-models-per-role)
