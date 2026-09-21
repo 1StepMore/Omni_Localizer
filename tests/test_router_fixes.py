@@ -151,30 +151,51 @@ class TestModelPoolSilentFailure:
 class TestModelPoolInitError:
     """New tests for the ModelPoolInitError exception class."""
 
-    def test_router_init_missing_env_raises_init_error(self):
-        """Real-world scenario: ZHIPU_API_KEY unset -> Router init fails -> ModelPoolInitError.
+    def test_router_init_missing_env_raises_init_error(self, monkeypatch):
+        """Real-world scenario: the pool's first API-key env var is unset
+        -> Router init fails -> ModelPoolInitError.
 
-        This is what the user hits in production with missing env vars.
+        Provider-agnostic: the variable name is read from
+        config/default.yaml's llm_pool (first role, first entry) instead of
+        hardcoding a provider key (e.g. ZHIPU/ARK).  This is what the user
+        hits in production with missing env vars.
         """
+        import yaml
+        from pathlib import Path
+
         from ol_pool.router import ModelPool, ModelPoolInitError
         from ol_pool.router import _pool_cache
-        import os
+        import ol_config.loader as loader_mod
 
-        # Ensure FAKE_LLM is NOT set
-        original_fake = os.environ.pop("OMNI_TEST_FAKE_LLM", None)
-        # Ensure ZHIPU_API_KEY is NOT set (simulate missing env)
-        original_zhipu = os.environ.pop("ZHIPU_API_KEY", None)
+        config_path = (
+            Path(__file__).resolve().parents[1] / "config" / "default.yaml"
+        )
+        pool = yaml.safe_load(config_path.read_text(encoding="utf-8"))["llm_pool"]
+        first_role = next(iter(pool))
+        api_key_ref = pool[first_role][0]["api_key"]
+        assert (
+            isinstance(api_key_ref, str)
+            and api_key_ref.startswith("${")
+            and api_key_ref.endswith("}")
+        ), f"first pool entry must use a ${{ENV_VAR}} reference, got {api_key_ref!r}"
+        env_var = api_key_ref.strip()[2:-1]
+
+        # Ensure FAKE_LLM is NOT set (otherwise __init__ short-circuits).
+        monkeypatch.delenv("OMNI_TEST_FAKE_LLM", raising=False)
+        # Simulate the missing env var of the pool's first entry.
+        monkeypatch.delenv(env_var, raising=False)
+        # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
+        # FIXED path (loader.py) and would re-introduce the popped var through
+        # os.environ.setdefault, masking the missing-var path.
+        monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
+
+        _pool_cache.clear()
         try:
-            _pool_cache.clear()
             with pytest.raises(ModelPoolInitError) as exc_info:
-                ModelPool("config/default.yaml")
+                ModelPool(str(config_path))
             # The error message should mention the missing variable
-            assert "ZHIPU_API_KEY" in str(exc_info.value)
+            assert env_var in str(exc_info.value)
         finally:
-            if original_fake is not None:
-                os.environ["OMNI_TEST_FAKE_LLM"] = original_fake
-            if original_zhipu is not None:
-                os.environ["ZHIPU_API_KEY"] = original_zhipu
             _pool_cache.clear()
 
     def test_fake_llm_short_circuit_still_works(self):

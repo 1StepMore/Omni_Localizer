@@ -33,6 +33,27 @@ _CONFIG_PATH = str(
 )
 
 
+def _pool_api_key_env_vars() -> list[str]:
+    """Return the ``${ENV_VAR}`` names referenced by ``llm_pool`` api_keys in
+    resolution order, so tests don't couple to a specific provider ordering."""
+    import re
+
+    import yaml
+
+    data = yaml.safe_load(Path(_CONFIG_PATH).read_text(encoding="utf-8"))
+    pool = data.get("llm_pool", {}) or {}
+    names: list[str] = []
+    for role in ("translation", "judging", "restoration", "profiling"):
+        for entry in pool.get(role, []) or []:
+            match = re.fullmatch(
+                r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}",
+                str(entry.get("api_key", "")),
+            )
+            if match:
+                names.append(match.group(1))
+    return names
+
+
 class TestRouterNotConfiguredWithEnforceModelRateLimits:
     """The pre-call check that causes E2E-83 must not be set on Router."""
 
@@ -47,7 +68,13 @@ class TestRouterNotConfiguredWithEnforceModelRateLimits:
             router_mod._pool_cache.clear()
             # Force a fresh ModelPool construction under the patched Router.
             from ol_pool.router import ModelPool
-            with patch.dict(os.environ, {"OMNI_TEST_FAKE_LLM": "0"}):
+            # Supply dummy values for every provider key referenced by the
+            # pool so init reaches the (mocked) Router regardless of which
+            # provider currently sits first in config/default.yaml.
+            dummy_env = {"OMNI_TEST_FAKE_LLM": "0"}
+            for env_var in _pool_api_key_env_vars():
+                dummy_env[env_var] = "dummy"
+            with patch.dict(os.environ, dummy_env):
                 # Bypass the FAKE_LLM short-circuit so the (mocked) Router
                 # construction path actually runs.
                 ModelPool(_CONFIG_PATH)
