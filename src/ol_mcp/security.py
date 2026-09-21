@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from ol_mcp._errors import MCPNotConfiguredError
+
 _logger = logging.getLogger(__name__)
 
 SYSTEM_DIRS: set = {
@@ -302,8 +304,8 @@ def get_default_validator() -> PathValidator:
     ``MCP_ALLOWED_DIRECTORIES=/tmp/ol-work,/data/corpus``).
 
     Fail-CLOSED: at least one of the three env vars MUST be set. If all
-    are unset (or empty), a ``ValueError`` is raised rather than silently
-    granting access to ``cwd`` + ``/tmp``. Set
+    are unset (or empty), an ``MCPNotConfiguredError`` is raised rather than
+    silently granting access to ``cwd`` + ``/tmp``. Set
     ``MCP_ALLOWED_DIRECTORIES`` (or one of the legacy names) to an
     explicit comma-separated allowlist before starting the server.
 
@@ -322,7 +324,7 @@ def get_default_validator() -> PathValidator:
         _logger.warning("OL_ALLOWED_DIRECTORIES is deprecated, use MCP_ALLOWED_DIRECTORIES")
     dirs = [d.resolve() for d in _parse_allowed_dirs(allowed)]
     if not dirs:
-        raise ValueError(
+        raise MCPNotConfiguredError(
             "MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / "
             "OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy). "
             "Export it as a comma-separated list of allowed directories."

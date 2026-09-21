@@ -65,8 +65,8 @@ Failures are reported as clear, parseable, agent-readable error messages
 that name the failing tool and the offending parameter — never raw
 stack-trace soup. OL's `@mcp_error_boundary` (in `ol_mcp/_errors.py`)
 returns opaque, stable codes (`OL_INVALID_INPUT`, `OL_PATH_DENIED`,
-`OL_FILE_NOT_FOUND`, `OL_INTERNAL_ERROR`, ...) with user-safe messages
-and no internals.
+`OL_MCP_NOT_CONFIGURED`, `OL_FILE_NOT_FOUND`, `OL_INTERNAL_ERROR`, ...)
+with user-safe messages and no internals.
 
 **How to check:** invoke the tool with a deliberately bad input (e.g. a
 same-language pair to `judge_text`, an out-of-allowlist path to
@@ -79,7 +79,8 @@ as `standard: STANDARDS.md#error-clarity`.
 Path-taking tools deny access outside the configured allowlist. OL's
 `PathValidator` (`ol_mcp/security.py`) reads `MCP_ALLOWED_DIRECTORIES`,
 then `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` (precedence
-order); unset → the validator raises `ValueError` (fail-CLOSED; no cwd +
+order); unset → the validator raises `MCPNotConfiguredError` (error code
+`OL_MCP_NOT_CONFIGURED`; a `ValueError` subclass) (fail-CLOSED; no cwd +
 `/tmp` default). An out-of-allowlist path MUST
 be rejected with `OL_PATH_DENIED`, never silently accepted.
 

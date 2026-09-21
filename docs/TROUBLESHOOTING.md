@@ -316,6 +316,25 @@ Cross-check your call against the tool's schema (`session.list_tools()` returns 
 
 The full set of constraints lives in `src/ol_mcp/tools.py` (one `*Input` class per tool).
 
+> **Not all `success: false` is `OL_INVALID_INPUT`.** If the MCP server was started with no allowed-directories allowlist, its fail-CLOSED refusal is reported with its own stable code:
+>
+> ```json
+> {"success": false, "error": {"code": "OL_MCP_NOT_CONFIGURED",
+>  "message": "The MCP server is not configured: no allowed-directories allowlist is set (fail-CLOSED)."},
+>  "recovery": {"strategy": "configure_environment", "hint": "Set MCP_ALLOWED_DIRECTORIES …"}}
+> ```
+>
+> **Cause:** server-side misconfiguration — none of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` was set (`get_default_validator()` raises `MCPNotConfiguredError`). Your request input is not the problem; the recovery strategy is `configure_environment`, **not** `fix_input`.
+>
+> **Fix:** export the allowlist and restart the server, then re-issue:
+>
+> ```bash
+> export MCP_ALLOWED_DIRECTORIES=/data/documents,/tmp/ol-work
+> ol mcp   # restart
+> ```
+>
+> The server never silently falls back to `cwd` + `/tmp` — this refusal is intentional.
+
 ---
 
 ## 12. MCP server returns `OL_UNKNOWN_TOOL`

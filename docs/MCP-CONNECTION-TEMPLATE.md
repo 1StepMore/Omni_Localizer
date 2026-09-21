@@ -377,6 +377,7 @@ All three MCP servers return errors in a uniform shape:
 | Code | Meaning | Caller Action |
 |------|---------|---------------|
 | `OL_FILE_NOT_FOUND` | Glossary, TMX, or config path not found. | Verify the file path. |
+| `OL_MCP_NOT_CONFIGURED` | Server has no allowed-directories allowlist (fail-CLOSED). This is a server-side misconfiguration, not bad input. | Set `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) to a comma-separated allowlist before starting the server, then re-issue. Do NOT change the request input. |
 | `OL_INVALID_INPUT` | Bad input or LLM returned unparseable output. | Validate input; retry may succeed if LLM transient. |
 | `OL_TIMEOUT` | LLM call exceeded timeout. | Retry with backoff; consider increasing timeout for large batches. |
 | `OL_PERMISSION_DENIED` | File not readable. | Check file permissions. |
@@ -399,6 +400,7 @@ All three MCP servers return errors in a uniform shape:
 | `CLI_ERROR` (missing dependency) | Install the missing tool and retry. |
 | `AUTH_FAILED` | Check MCP_SHARED_SECRET across all servers. Do not retry without fixing config. |
 | `PATH_NOT_ALLOWED`, `OPP_PATH_DENIED` | Do not retry. Fix the path to be within allowed directories. |
+| `OL_MCP_NOT_CONFIGURED` | Do not retry. Configure the server: set `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`), restart, then re-issue. |
 | `OPP_FILE_NOT_FOUND`, `OL_FILE_NOT_FOUND` | Verify path exists. Do not retry without fixing the path. |
 
 ### 4.3 Graceful Degradation
@@ -523,7 +525,7 @@ consistently to avoid confusing failures.
 | Server | Env Variable | Behavior if Unset | Recommended |
 |--------|-------------|-------------------|-------------|
 | OPP MCP | `MCP_ALLOWED_DIRECTORIES` or `OPP_MCP_ALLOWED_DIRS` (colon- or semicolon-separated) | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
-| OL MCP | `MCP_ALLOWED_DIRECTORIES` (comma-separated), falls back to `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
+| OL MCP | `MCP_ALLOWED_DIRECTORIES` (comma-separated), falls back to `OL_MCP_ALLOWED_DIRS`, then `OL_ALLOWED_DIRECTORIES` | Raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`) -- server refuses to start (fail-closed) | **Always set** |
 | ORF MCP | `MCP_ALLOWED_DIRECTORIES` or `ORF_MCP_ALLOWED_DIRS` (colon- or semicolon-separated) | Raises `ValueError` -- server refuses to start (fail-closed) | **Always set** |
 
 ### 6.2 Recommendation: Set All Three to the Same Root
@@ -586,7 +588,7 @@ OL's `PathValidator` (in `src/ol_mcp/security.py`) checks (in order):
 | Pitfall | Symptom | Fix |
 |---------|---------|-----|
 | OPP MCP server won't start | `ValueError: allowed_directories cannot be empty` | Set `OPP_MCP_ALLOWED_DIRS` before starting. |
-| OL MCP server won't start | `ValueError: MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy)` | Set `MCP_ALLOWED_DIRECTORIES` (comma-separated) before starting. |
+| OL MCP server won't start | `MCPNotConfiguredError: MCP_ALLOWED_DIRECTORIES (or OL_MCP_ALLOWED_DIRS / OL_ALLOWED_DIRECTORIES) must be set (fail-CLOSED security policy)` (error code `OL_MCP_NOT_CONFIGURED`) | Set `MCP_ALLOWED_DIRECTORIES` (comma-separated) before starting. |
 | ORF MCP server won't start | `ValueError: MCP_ALLOWED_DIRECTORIES (or ORF_MCP_ALLOWED_DIRS) must be set (fail-CLOSED security policy)` | Set `MCP_ALLOWED_DIRECTORIES` or `ORF_MCP_ALLOWED_DIRS` (colon/semicolon-separated) before starting. |
 | MCP server not responding to stdio | Silent failure, no JSON-RPC handshake | Use `scripts/mcp_bridge.py` workaround (FastMCP 3.4.2 stdio bug). See `ACCEPTED_GAPS.md`. |
 | Cross-format XLIFF fails | ORF rejects format mismatch | Use `orf apply-xliff --force` (e.g. DOCX XLIFF -> PPTX). |

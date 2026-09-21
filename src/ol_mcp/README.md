@@ -41,7 +41,7 @@ OL_CONFIG_PATH=/path/to/config.yaml python -m ol_mcp
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **Required.** Comma-separated allowlist of directories the MCP can read/write. Fail-CLOSED: if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, the server raises `ValueError` at startup (no `cwd` + `/tmp` default). `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
+| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **Required.** Comma-separated allowlist of directories the MCP can read/write. Fail-CLOSED: if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, the server raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`) at startup (no `cwd` + `/tmp` default). `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
 | `MCP_SHARED_SECRET` | (none) | Shared-secret auth (omit for dev). |
 
