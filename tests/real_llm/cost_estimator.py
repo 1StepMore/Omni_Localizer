@@ -1,18 +1,28 @@
 """A11 — CostEstimator for real-LLM nightly runs.
 
-Hardcoded per-1M-token USD rates for the three models configured in
-``config/local.yaml`` (the MiniMax-M2.7 priority chain). The estimator
-provides a **pre-call gate** (``would_exceed_budget``) so a runaway test
-suite can't rack up a surprise bill, and a **post-call tracker**
+The estimator provides a **pre-call gate** (``would_exceed_budget``) so a
+runaway test suite can't rack up a surprise bill, and a **post-call tracker**
 (``record_call``) so cumulative spend is auditable from ``summary()``.
 
+Pricing is **explicit and fail-closed**. This module ships no hardcoded
+prices: provider list prices change, and a stale number would silently
+mis-bill real calls. Supply the current per-1M-token USD rates either:
+
+- via the constructor —
+  ``CostEstimator(rates={"<model>": [input_rate, output_rate], ...})``, or
+- via the ``OL_REAL_LLM_RATES`` env var holding that same JSON object
+  (``rates_from_env()`` reads it).
+
+Any model missing from the map raises ``KeyError`` at ``estimate_call``
+time — before the LLM call is issued — so an unknown or unpriced model fails
+closed instead of spending. See ``docs/real_llm_runbook.md`` for the
+rate-supply / recalibration procedure.
+
 Design constraints:
-- No I/O, no LLM calls, no env-var lookups. Pure stdlib + dataclass.
-- Unknown models raise ``KeyError`` (fail-closed: better to refuse than
-  to silently spend real money on an unconfigured model).
-- Rates are intentionally hardcoded rather than read from the YAML
-  config: a stale config must not silently mis-bill real LLM calls.
-- Recalibrate quarterly — see ``docs/real_llm_runbook.md``.
+- Pure stdlib + dataclass; no LLM calls.
+- The rate table is caller-supplied data, never inferred from
+  ``config/*.yaml`` (a stale config must not silently mis-bill).
+- Unknown/missing model → ``KeyError`` (fail-closed).
 
 Marker convention: this module is import-safe from any test in
 ``tests/real_llm/``. The conftest's ``cost_estimator`` fixture returns a
@@ -20,18 +30,49 @@ fresh instance per test.
 """
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
+from typing import Any
 
 
-# Per-1M-token USD rates. (input_rate, output_rate).
-# Source: provider list pricing as of 2026-05; recalibrate quarterly.
-# Recalibration owner: see docs/real_llm_runbook.md.
-_RATES_PER_1M_TOKENS: dict[str, tuple[float, float]] = {
-    # model_name: (input_rate_usd_per_1m, output_rate_usd_per_1m)
-    "MiniMax-M3": (3.0, 15.0),
-    "MiniMax-M2.7": (2.0, 10.0),
-    "ernie-4.5-turbo-32k": (1.0, 4.0),
-}
+RATES_ENV_VAR = "OL_REAL_LLM_RATES"
+"""Env var holding the explicit JSON rate map: ``{"<model>": [in, out]}``."""
+
+
+def load_rates(raw: str | None) -> dict[str, tuple[float, float]]:
+    """Parse an explicit JSON rate map.
+
+    Args:
+        raw: JSON object mapping model name to ``[input_rate, output_rate]``
+            (USD per 1M tokens). ``None`` or empty string yields ``{}`` —
+            fail-closed (every model then raises at ``estimate_call``).
+
+    Raises:
+        ValueError: ``raw`` is not a JSON object, or a value is not a
+            two-element ``[input, output]`` list.
+    """
+    if not raw:
+        return {}
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{RATES_ENV_VAR} must be a JSON object mapping "
+            f"model -> [input_rate, output_rate]"
+        )
+    rates: dict[str, tuple[float, float]] = {}
+    for model, pair in data.items():
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ValueError(
+                f"rate for {model!r} must be [input_rate, output_rate]"
+            )
+        rates[str(model)] = (float(pair[0]), float(pair[1]))
+    return rates
+
+
+def rates_from_env(env_var: str = RATES_ENV_VAR) -> dict[str, tuple[float, float]]:
+    """Load the explicit rate map from ``env_var`` (empty dict when unset)."""
+    return load_rates(os.environ.get(env_var))
 
 
 @dataclass
@@ -53,17 +94,25 @@ class CostEstimator:
     budget, the test that would push it over short-circuits with a
     clear ``pytest.skip`` rather than charging real money.
 
+    ``rates`` is the explicit model → (input_rate, output_rate) map; build
+    it with ``rates_from_env()`` (``OL_REAL_LLM_RATES``) or pass it directly.
+    An unset/empty map makes every ``estimate_call`` raise, which is the
+    intended fail-closed behavior.
+
     Usage::
 
-        estimator = CostEstimator(budget_usd=5.0)
+        estimator = CostEstimator(
+            budget_usd=5.0, rates=rates_from_env(),
+        )
         for unit in corpus:
-            est = estimator.estimate_call("MiniMax-M3", in_tok, out_tok)
+            est = estimator.estimate_call("ark-code-latest", in_tok, out_tok)
             if estimator.would_exceed_budget(est):
                 pytest.skip("budget exceeded")
             response = await pool.translate(unit)
-            estimator.record_call("MiniMax-M3", in_tok, out_tok)
+            estimator.record_call("ark-code-latest", in_tok, out_tok)
     """
     budget_usd: float = 10.0
+    rates: dict[str, tuple[float, float]] = field(default_factory=dict)
     _calls: list[_CallRecord] = field(default_factory=list)
 
     # ------------------------------------------------------------------ #
@@ -78,21 +127,24 @@ class CostEstimator:
         Cost = (input_tokens / 1e6) * input_rate + (output_tokens / 1e6) * output_rate.
 
         Raises:
-            KeyError: ``model`` is not in the rate table. Fail-closed.
+            KeyError: ``model`` is not in ``self.rates``. Fail-closed — the
+                caller must supply explicit rates before spending.
             ValueError: token counts are negative.
         """
-        if model not in _RATES_PER_1M_TOKENS:
+        if model not in self.rates:
             raise KeyError(
                 f"No rate configured for model {model!r}. "
-                f"Known models: {sorted(_RATES_PER_1M_TOKENS)}. "
-                f"Add a rate entry in cost_estimator._RATES_PER_1M_TOKENS."
+                f"Configured models: {sorted(self.rates)}. "
+                f"Supply rates via the {RATES_ENV_VAR} env var (JSON) or "
+                f"CostEstimator(rates=...). See docs/real_llm_runbook.md. "
+                f"Fail-closed: refusing to guess a price."
             )
         if input_tokens < 0 or output_tokens < 0:
             raise ValueError(
                 f"Token counts must be non-negative; got input_tokens={input_tokens}, "
                 f"output_tokens={output_tokens}"
             )
-        input_rate, output_rate = _RATES_PER_1M_TOKENS[model]
+        input_rate, output_rate = self.rates[model]
         return (
             (input_tokens / 1_000_000) * input_rate
             + (output_tokens / 1_000_000) * output_rate
@@ -143,7 +195,7 @@ class CostEstimator:
         """Number of completed calls recorded so far."""
         return len(self._calls)
 
-    def summary(self) -> dict:
+    def summary(self) -> dict[str, Any]:
         """Return cumulative tracker state for the runbook / dashboard.
 
         Format::

@@ -2,12 +2,28 @@
 
 Runs in normal CI (no LLM calls, no env-var gating). The estimator is a
 pure-Python class; tests are deterministic and fast.
+
+Rates are caller-supplied here (never shipped by the module), so the tests
+pass explicit test doubles rather than real provider prices. The fail-closed
+contract — a missing or unknown model raises before any call is issued — is
+pinned explicitly.
 """
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
-from tests.real_llm.cost_estimator import CostEstimator
+import pytest
+import yaml
+
+from tests.real_llm.cost_estimator import (
+    RATES_ENV_VAR,
+    CostEstimator,
+    load_rates,
+    rates_from_env,
+)
+from tests.real_llm.test_real_llm_e2e import _PRIMARY_MODEL
+
+_OL_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ===========================================================================
@@ -15,95 +31,128 @@ from tests.real_llm.cost_estimator import CostEstimator
 # ===========================================================================
 
 def test_estimate_call_returns_correct_usd() -> None:
-    """Pin per-model USD math: M3 = $3/$15, M2.7 = $2/$10, ernie-4.5 = $1/$4.
+    """Pin the USD math for caller-supplied rates.
 
-    For 1M input + 1M output tokens:
-      - MiniMax-M3:        $3 + $15 = $18
-      - MiniMax-M2.7:      $2 + $10 = $12
-      - ernie-4.5-turbo-32k: $1 + $4 = $5
-
-    Asserts the cost estimator returns the expected USD amount for a
-    full-million-token call on each known model. This is the contract
-    the nightly runbook depends on (see docs/real_llm_runbook.md).
+    Rates are test doubles (not provider prices): alpha = $1/$2, beta =
+    $3/$4 per 1M tokens. For 1M input + 1M output tokens that is $3 and $7
+    respectively; a 1K/2K call scales linearly.
     """
-    est = CostEstimator(budget_usd=100.0)
+    est = CostEstimator(budget_usd=100.0, rates={"alpha": (1.0, 2.0), "beta": (3.0, 4.0)})
 
-    # MiniMax-M3: $3/M input + $15/M output
-    cost_m3 = est.estimate_call("MiniMax-M3", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert cost_m3 == pytest.approx(18.0), (
-        f"MiniMax-M3 1M+1M tokens must cost $18 (3+15), got ${cost_m3}"
-    )
+    assert est.estimate_call("alpha", 1_000_000, 1_000_000) == pytest.approx(3.0)
+    assert est.estimate_call("beta", 1_000_000, 1_000_000) == pytest.approx(7.0)
 
-    # MiniMax-M2.7: $2/M input + $10/M output
-    cost_m27 = est.estimate_call("MiniMax-M2.7", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert cost_m27 == pytest.approx(12.0), (
-        f"MiniMax-M2.7 1M+1M tokens must cost $12 (2+10), got ${cost_m27}"
-    )
+    small = est.estimate_call("beta", input_tokens=1000, output_tokens=2000)
+    assert small == pytest.approx(0.003 + 0.008)
 
-    # ernie-4.5-turbo-32k: $1/M input + $4/M output
-    cost_ernie = est.estimate_call("ernie-4.5-turbo-32k", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert cost_ernie == pytest.approx(5.0), (
-        f"ernie-4.5-turbo-32k 1M+1M tokens must cost $5 (1+4), got ${cost_ernie}"
-    )
-
-    # Sanity: a smaller call scales linearly
-    cost_small = est.estimate_call("MiniMax-M3", input_tokens=1000, output_tokens=2000)
-    assert cost_small == pytest.approx(0.003 + 0.030), (
-        f"MiniMax-M3 1K input + 2K output = $0.003 + $0.030 = $0.033, got ${cost_small}"
-    )
-
-    # record_call is a no-op for estimation correctness; estimator state stays clean
     assert est.call_count == 0
     assert est.total_cost_usd == 0.0
 
 
-def test_would_exceed_budget_returns_true_when_over() -> None:
-    """Pin pre-call budget gate: returns True iff cumulative+candidate > budget.
+def test_missing_rate_fails_closed() -> None:
+    """No rates configured → estimate_call raises before any call is issued."""
+    est = CostEstimator(budget_usd=5.0)
+    with pytest.raises(KeyError) as exc:
+        est.estimate_call("ark-code-latest", 1000, 1000)
+    assert RATES_ENV_VAR in str(exc.value)
 
-    Scenario: $1.00 budget, $0.50 already spent, candidate $0.60. Sum = $1.10
-    exceeds $1.00 → gate returns True (caller should skip the call).
 
-    The boundary is strict (``>``): a candidate that exactly hits the
-    budget is allowed through. The exact-budget case is asserted too
-    so the contract is pinned on both sides.
+def test_unknown_model_fails_closed() -> None:
+    """A model absent from the supplied map raises (never silently $0)."""
+    est = CostEstimator(budget_usd=5.0, rates={"alpha": (1.0, 2.0)})
+    with pytest.raises(KeyError) as exc:
+        est.estimate_call("gamma", 1000, 1000)
+    assert "gamma" in str(exc.value)
+    assert "alpha" in str(exc.value)
+
+
+def test_selected_primary_model_matches_canonical_default() -> None:
+    """The harness's cost-gate model must be config/default.yaml priority 1.
+
+    Locks the selected model to the canonical pool so a model swap cannot
+    leave the cost gate pricing a model that is no longer the primary.
     """
-    est = CostEstimator(budget_usd=1.0)
+    data = yaml.safe_load((_OL_ROOT / "config" / "default.yaml").read_text(encoding="utf-8"))
+    canonical_primary = data["llm_pool"]["translation"][0]["model"]
+    assert _PRIMARY_MODEL == "ark-code-latest"
+    assert _PRIMARY_MODEL == canonical_primary
 
-    # Record $0.50 of spend (M3, 100K input + ~13.33K output → $0.30 + $0.20 = $0.50)
-    # 100_000 input * 3.0 / 1e6 = 0.30
-    # 13_334 output * 15.0 / 1e6 ≈ 0.20001 — round to whole tokens to hit 0.20
-    # Use simpler: 100_000 input * 3.0 = $0.30; 13_333 output * 15.0 ≈ $0.19999
-    # Easier: build a $0.50 spend via 50_000 input + 25_000 output on M3:
-    #   50_000 * 3.0 / 1e6 = 0.15
-    #   25_000 * 15.0 / 1e6 = 0.375 → total 0.525 — not exactly 0.50
-    # Use M2.7: 100_000 input * 2.0 = $0.20; 30_000 output * 10.0 = $0.30 → total $0.50 exactly
-    est.record_call("MiniMax-M2.7", input_tokens=100_000, output_tokens=30_000)
-    assert est.total_cost_usd == pytest.approx(0.50), (
-        f"Setup: 100K input + 30K output on M2.7 must be $0.50, got ${est.total_cost_usd}"
-    )
 
-    # Candidate $0.60 → total would be $1.10 > $1.00 → gate returns True
-    candidate = est.estimate_call("MiniMax-M2.7", input_tokens=100_000, output_tokens=40_000)
-    assert candidate == pytest.approx(0.60), (
-        f"Candidate cost must be $0.60, got ${candidate}"
-    )
-    assert est.would_exceed_budget(candidate) is True, (
-        "Budget=$1.00, cumulative=$0.50, candidate=$0.60 → sum $1.10 > $1.00, "
-        "gate must return True (skip the call)"
-    )
+def test_selected_primary_model_rate_is_priceable() -> None:
+    """With an explicit rate supplied, the selected model estimates cleanly."""
+    est = CostEstimator(budget_usd=5.0, rates={_PRIMARY_MODEL: (1.0, 2.0)})
+    assert est.estimate_call(_PRIMARY_MODEL, 1_000_000, 0) == pytest.approx(1.0)
 
-    # Caller skipped: estimator state unchanged
+
+# ===========================================================================
+# Rate-map parsing (OL_REAL_LLM_RATES)
+# ===========================================================================
+
+def test_rates_from_env_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        RATES_ENV_VAR,
+        '{"ark-code-latest": [1.5, 3.0], "glm-4.7-flash": [0.5, 1.0]}',
+    )
+    rates = rates_from_env()
+    assert rates == {"ark-code-latest": (1.5, 3.0), "glm-4.7-flash": (0.5, 1.0)}
+
+
+def test_rates_from_env_unset_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(RATES_ENV_VAR, raising=False)
+    assert rates_from_env() == {}
+
+
+def test_rates_from_env_malformed_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(RATES_ENV_VAR, '{"broken": [1.0]}')
+    with pytest.raises(ValueError):
+        rates_from_env()
+
+
+def test_load_rates_rejects_non_object() -> None:
+    with pytest.raises(ValueError):
+        load_rates("[1, 2, 3]")
+
+
+# ===========================================================================
+# Budget gate
+# ===========================================================================
+
+def test_would_exceed_budget_returns_true_when_over() -> None:
+    """Pin pre-call budget gate: True iff cumulative+candidate > budget.
+
+    Rates are test doubles: alpha = $2/$4 per 1M tokens. 100K input +
+    30K output = $0.20 + $0.12 = $0.32 recorded; the same candidate pushes
+    $0.64 past a $0.50 budget. The boundary is strict (``>``): a candidate
+    that exactly hits the remaining budget is allowed through.
+    """
+    est = CostEstimator(budget_usd=0.50, rates={"alpha": (2.0, 4.0)})
+
+    est.record_call("alpha", input_tokens=100_000, output_tokens=30_000)
+    assert est.total_cost_usd == pytest.approx(0.32)
+
+    candidate = est.estimate_call("alpha", input_tokens=100_000, output_tokens=30_000)
+    assert candidate == pytest.approx(0.32)
+    assert est.would_exceed_budget(candidate) is True
     assert est.call_count == 1
-    assert est.total_cost_usd == pytest.approx(0.50)
+    assert est.total_cost_usd == pytest.approx(0.32)
 
-    # Boundary: candidate that exactly hits the budget is allowed through (strict >)
-    boundary = est.estimate_call("MiniMax-M2.7", input_tokens=100_000, output_tokens=30_000)
-    assert boundary == pytest.approx(0.50)
-    assert est.would_exceed_budget(boundary) is False, (
-        "Boundary: cumulative=$0.50, candidate=$0.50 → sum $1.00 == $1.00, "
-        "gate must return False (allow the call, strict >)"
-    )
+    # Boundary: cumulative $0.32 + candidate $0.18 == $0.50 → allowed (strict >).
+    boundary = est.estimate_call("alpha", input_tokens=90_000, output_tokens=0)
+    assert boundary == pytest.approx(0.18)
+    assert est.would_exceed_budget(boundary) is False
 
-    # Sanity: a tiny safe candidate is also allowed
-    safe = est.estimate_call("MiniMax-M2.7", input_tokens=1_000, output_tokens=1_000)
+    # A tiny safe candidate is also allowed.
+    safe = est.estimate_call("alpha", input_tokens=1_000, output_tokens=1_000)
     assert est.would_exceed_budget(safe) is False
+
+
+def test_negative_tokens_raise() -> None:
+    est = CostEstimator(budget_usd=5.0, rates={"alpha": (1.0, 2.0)})
+    with pytest.raises(ValueError):
+        est.estimate_call("alpha", -1, 10)
+
+
+def test_negative_cost_raises() -> None:
+    est = CostEstimator(budget_usd=5.0)
+    with pytest.raises(ValueError):
+        est.would_exceed_budget(-0.01)
