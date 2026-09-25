@@ -1,9 +1,10 @@
 """ol init — Bootstrap a local OL config (config/local.yaml).
 
-Generates a YAML config with the unified 3-provider LLM pool (PR #91,
-2026-08-17 "current" pool): mimo-v2.5 (OpenCode Go) + glm-4.7-flash
-(Zhipu) + z-ai/glm-5.2 (NVIDIA NIM). Every api_key/base_url is a
-${ENV_VAR} reference — literal keys are never written.
+Generates a YAML config with the unified 3-provider LLM pool that mirrors
+``config/default.yaml`` (the single source of truth): ark-code-latest
+(Volcengine Ark) + glm-4.7-flash (Zhipu) + minimaxai/minimax-m3 (NVIDIA
+NIM). Every api_key/base_url is a ${ENV_VAR} reference — literal keys are
+never written.
 """
 from __future__ import annotations
 
@@ -13,124 +14,36 @@ import typer
 
 from cli._shared import ExitCode
 
-# PR #91 unified model pool. All entries: provider "openai", role per
-# role, timeout 120.0. api_key/base_url are ${ENV_VAR} refs only.
+# Mirrors config/default.yaml (the source of truth): provider "openai",
+# timeout 120.0, all api_key/base_url as ${ENV_VAR} refs. Parity is locked by
+# tests/test_model_pool_config_parity.py — keep the two in sync.
+_POOL_MODELS: tuple[tuple[str, str, str], ...] = (
+    ("ark-code-latest", "${ARK_API_KEY}", "https://ark.cn-beijing.volces.com/api/coding/v3"),
+    ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
+    ("minimaxai/minimax-m3", "${NVIDIA_NIM_API_KEY}", "https://integrate.api.nvidia.com/v1"),
+)
+
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
-    "translation": [
+    role: [
         {
             "provider": "openai",
-            "model": "mimo-v2.5",
-            "priority": 1,
-            "role": "translation",
-            "api_key": "${OPENCODE_GO_KEY}",
-            "base_url": "${OPENCODE_GO_BASE_URL}",
+            "model": model,
+            "priority": priority,
+            "role": role,
+            "api_key": api_key,
+            "base_url": base_url,
             "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "glm-4.7-flash",
-            "priority": 2,
-            "role": "translation",
-            "api_key": "${ZHIPU_API_KEY}",
-            "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "z-ai/glm-5.2",
-            "priority": 3,
-            "role": "translation",
-            "api_key": "${NVIDIA_NIM_API_KEY}",
-            "base_url": "https://integrate.api.nvidia.com/v1",
-            "timeout": 120.0,
-        },
-    ],
-    "judging": [
-        {
-            "provider": "openai",
-            "model": "mimo-v2.5",
-            "priority": 1,
-            "role": "judging",
-            "api_key": "${OPENCODE_GO_KEY}",
-            "base_url": "${OPENCODE_GO_BASE_URL}",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "z-ai/glm-5.2",
-            "priority": 2,
-            "role": "judging",
-            "api_key": "${NVIDIA_NIM_API_KEY}",
-            "base_url": "https://integrate.api.nvidia.com/v1",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "glm-4.7-flash",
-            "priority": 3,
-            "role": "judging",
-            "api_key": "${ZHIPU_API_KEY}",
-            "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "timeout": 120.0,
-        },
-    ],
-    "restoration": [
-        {
-            "provider": "openai",
-            "model": "glm-4.7-flash",
-            "priority": 1,
-            "role": "restoration",
-            "api_key": "${ZHIPU_API_KEY}",
-            "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "mimo-v2.5",
-            "priority": 2,
-            "role": "restoration",
-            "api_key": "${OPENCODE_GO_KEY}",
-            "base_url": "${OPENCODE_GO_BASE_URL}",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "z-ai/glm-5.2",
-            "priority": 3,
-            "role": "restoration",
-            "api_key": "${NVIDIA_NIM_API_KEY}",
-            "base_url": "https://integrate.api.nvidia.com/v1",
-            "timeout": 120.0,
-        },
-    ],
-    "profiling": [
-        {
-            "provider": "openai",
-            "model": "glm-4.7-flash",
-            "priority": 1,
-            "role": "profiling",
-            "api_key": "${ZHIPU_API_KEY}",
-            "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "timeout": 120.0,
-        },
-        {
-            "provider": "openai",
-            "model": "z-ai/glm-5.2",
-            "priority": 2,
-            "role": "profiling",
-            "api_key": "${NVIDIA_NIM_API_KEY}",
-            "base_url": "https://integrate.api.nvidia.com/v1",
-            "timeout": 120.0,
-        },
-    ],
+        }
+        for priority, (model, api_key, base_url) in enumerate(_POOL_MODELS, start=1)
+    ]
+    for role in ("translation", "judging", "restoration", "profiling")
 }
 
 # Env vars the generated config references (for the export hint).
 PRESET_ENV_VARS: tuple[str, ...] = (
+    "ARK_API_KEY",
     "ZHIPU_API_KEY",
     "NVIDIA_NIM_API_KEY",
-    "OPENCODE_GO_KEY",
-    "OPENCODE_GO_BASE_URL",
 )
 
 

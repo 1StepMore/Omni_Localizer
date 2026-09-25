@@ -15,6 +15,7 @@ if str(src_path) not in sys.path:
 # FAKE_LLM mode creates _FakeModelPool and ignores these values;
 # config validators only check that the env vars are non-empty.
 _DUMMY_API_KEYS = {
+    "ARK_API_KEY": "sk-dummy",
     "ZHIPU_API_KEY": "sk-dummy",
     "AGNES_API_KEY": "sk-dummy",
     "NVIDIA_NIM_API_KEY": "nvapi-dummy",
