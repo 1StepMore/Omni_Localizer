@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **OL#58 — ships its own validation scenario library in `scenarios/`** (5 tier-2 `ol-translation` scenarios + `STANDARDS.md` + `_fixtures/`; `requires_env` = the 5 real LLM provider keys, reports `unconfigured` without them), runnable from the Omni Suite root via `python scripts/validation/run_validation.py --repo ol --tier 2`.
+- **OL#58 — ships its own validation scenario library in `scenarios/`** (5 tier-2 `ol-translation` scenarios + `STANDARDS.md` + `_fixtures/`; `requires_env` = the 3 canonical real LLM provider keys, reports `unconfigured` without them), runnable from the Omni Suite root via `python scripts/validation/run_validation.py --repo ol --tier 2`.
+
+- **OL#94 — model-pool config parity regression test** (`tests/test_model_pool_config_parity.py`): locks every `${VAR}` referenced by `config/default.yaml` to the OL `.env.example`, the in-repo scenario `requires_env` declarations, and (when the suite root is present) the suite OL-driving scenarios; asserts the `ol init` preset (`UNIFIED_POOL_PRESET` + `PRESET_ENV_VARS`) mirrors the canonical pool exactly.
 
 - **OL#56 — Configurable post-translation quality gates** (`src/ol_lqa/quality_gates.py`): 8 gate functions (inline tag counts, terminology consistency, length ratio, locale conventions, source copy detection, source script fragment detection, protocol artifact detection, full glossary term audit), `QualityGateConfig` schema, wired into CLI `translate-md`/`translate-xliff`/`batch` and MCP `translate_md_text`/`translate_xliff`; warnings emitted as HTML comments (MD) or `<note from="OL">` elements (XLIFF); env vars `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, `OL_TARGET_LOCALE`.
 
@@ -54,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **T5.1 Version bumped to 0.7.0** (was 0.6.0). Three new P1 features (Issue #44 §1-§3) are backward compatible — all existing CLI flags, MCP fields, and Python APIs work unchanged.
 
 - **OL#92 — Model-pool documentation sync**: `.env.example`, README BYOK example, and AGENTS.md env-var/CLI tables refreshed to the unified pool (mimo-v2.5 / glm-4.7-flash / z-ai/glm-5.2); `AGNES_API_KEY` removed as a documented provider.
+
+- **OL#94 — user-facing model-pool surfaces reconciled to `config/default.yaml`**: `ol init` preset + env hints, OL/suite `.env.example`, `config/slim-test.yaml`, real-LLM gate/dummy-key fixtures, and OL docs (`AGENTS.md`, `README.md`, `AGENT_USAGE.md`, `docs/{ARCHITECTURE,API,TROUBLESHOOTING,real_llm_runbook}.md`) now describe the canonical Ark + Zhipu + NVIDIA pool (`ark-code-latest` / `glm-4.7-flash` / `minimaxai/minimax-m3`); retired mimo-v2.5 / z-ai/glm-5.2 / OpenCode Go / Agnes refs dropped. Parity is locked by the OL#94 regression test above.
 
 ### Changed
 

@@ -277,17 +277,17 @@ Top-level fields:
 ```yaml
 llm_pool:
   translation:   # role: translation | judging | restoration
-    - provider: "openai"            # or anthropic, zhipu, agnes, nvidia_nim, …
-      model: "glm-4-flash"
+    - provider: "openai"            # or anthropic, zhipu, nvidia_nim, …
+      model: "ark-code-latest"
       priority: 1                   # 1 = highest, lower = higher
       role: "translation"           # MUST match the parent bucket
-      api_key: "${ZHIPU_API_KEY}"   # env-var reference recommended
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      api_key: "${ARK_API_KEY}"     # env-var reference recommended
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       timeout: 120.0
       requests_per_minute: 500      # hard RPM cap; set to provider's real value
 ```
 
-Provider strings map 1:1 to LiteLLM. Validated providers in production: `openai`, `anthropic`, `zhipu`, `agnes`, `nvidia_nim`. Pool validity rules:
+Provider strings map 1:1 to LiteLLM. Validated providers in production: `openai`, `anthropic`, `zhipu`, `nvidia_nim`. Pool validity rules:
 
 - **At least 2 models per role** — `LLMPoolConfig.check_min_models_per_role` (schema.py:72) raises `ValueError` otherwise.
 - `priority: 1` is tried first; on failure, the model is opened in the per-role circuit breaker (5 consecutive failures → 60 s open).
@@ -380,7 +380,7 @@ Source/target language is stored on the `TMXFile` instance and emitted as `xml:l
 | `OMNI_TEST_FAKE_LLM=1` | Skip real LLM calls; `ModelPool` returns placeholders. Required for hermetic tests. |
 | `OL_CONFIG_PATH=path` | Override default LLM config for the MCP server. |
 | `MCP_SHARED_SECRET=…` | Enable shared-secret auth on the MCP server; every tool must then pass `shared_secret`. |
-| `OPENAI_API_KEY`, `ZHIPU_API_KEY`, `AGNES_API_KEY`, `NVIDIA_NIM_API_KEY`, `OPENCODE_GO_KEY`, `OPENCODE_GO_BASE_URL` | Resolved at config-load time when referenced as `${VAR}`. |
+| `ARK_API_KEY`, `ZHIPU_API_KEY`, `NVIDIA_NIM_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
 
 ---
 

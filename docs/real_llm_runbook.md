@@ -15,8 +15,8 @@ require explicit user authorization for ongoing spend.
 | Environment | Trigger | What happens |
 |---|---|---|
 | Normal CI (`.github/workflows/test.yml`) | every PR, every push to main | `OMNI_RUN_REAL_LLM` is unset → all 4 real-LLM tests SKIP. The 2 cost-estimator unit tests RUN (pure stdlib, no LLM). |
-| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `OPENCODE_GO_KEY` set → 4 real-LLM tests RUN against the real model pool. |
-| Local dev (you) | `OMNI_RUN_REAL_LLM=1 OPENCODE_GO_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
+| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `ARK_API_KEY` set → 4 real-LLM tests RUN against the real model pool. |
+| Local dev (you) | `OMNI_RUN_REAL_LLM=1 ARK_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
 
 **Promote weekly → nightly** after 1 month of stable green runs (per
 plan A11 risk register). The cadence change is a one-line edit in
@@ -32,10 +32,13 @@ The harness has a **two-layer cost gate**:
    call would push the test's cumulative spend over the $5 budget, the
    test short-circuits with `pytest.skip`. The budget is per-test, not
    per-night — a single misbehaving test cannot starve the others.
-2. **Hardcoded rates** in `cost_estimator._RATES_PER_1M_TOKENS`: the
-   estimator does NOT read rates from the YAML config (a stale config
-   must not silently mis-bill real LLM calls). Rates are recalibrated
-   **quarterly** — see "Recalibration cadence" below.
+2. **Explicit rates** via `OL_REAL_LLM_RATES`: the estimator reads rates
+   from that JSON env var (or a `rates=` mapping passed to `CostEstimator`),
+   never from the YAML config (a stale config must not silently mis-bill).
+   It ships no hardcoded prices. An unpriced model raises `KeyError` at
+   estimate time — before the call — so the gate fails closed rather than
+   guessing. Rates are refreshed **quarterly** — see "Recalibration cadence"
+   below.
 
 Expected spend at 4 tests × ~$0.005/test ≈ **$0.02/night** (weekly
 cadence) → **$0.08/month** for 4 weekly runs. The plan's $5-15/month
@@ -44,10 +47,9 @@ is well below the budget.
 
 ## API key rotation
 
-**Cadence**: quarterly. The OpenCode Go API key (`OPENCODE_GO_KEY` GitHub
-secret) must be rotated every 90 days. See the provider dashboard for
-additional keys (Zhipu, Agnes, NVIDIA NIM) that may need rotation. Set a
-calendar reminder when you rotate.
+**Cadence**: quarterly. The Volcengine Ark API key (`ARK_API_KEY` GitHub
+secret) and the Zhipu / NVIDIA NIM keys (the other providers in the canonical
+pool) must be rotated every 90 days. Set a calendar reminder when you rotate.
 
 **Owner**: whoever has GitHub repo write access. As of 2026-06-07, the
 sole owner is `@1StepMore`. When that changes, update this section
@@ -56,11 +58,11 @@ and the calendar reminder.
 ### How to rotate
 
 1. Generate a new key in the provider's console:
-   - OpenCode Go: provider dashboard → API keys → "Create new"
-   - Repeat for any other providers in use (Zhipu, Agnes, NVIDIA NIM)
+   - Volcengine Ark: provider dashboard → API keys → "Create new"
+   - Repeat for the other providers in use (Zhipu, NVIDIA NIM)
 2. Update the GitHub secret:
    - Repo → Settings → Secrets and variables → Actions
-   - `OPENCODE_GO_KEY` → "Update secret" → paste the new value
+   - `ARK_API_KEY` → "Update secret" → paste the new value
 3. Trigger a manual nightly run to verify the new key works:
    ```bash
    gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer
@@ -78,9 +80,8 @@ Set a recurring calendar event for the first Monday of each quarter
 Omni-Localizer real-LLM API keys"**. Description: link to this
 runbook.
 
-If you skip a quarter, the worst case is the keys expire (MiniMax
-keys are valid for 90 days; Baidu varies). A nightly failure is the
-signal — see "When the nightly job fails" below.
+If you skip a quarter, the worst case is the keys expire. A nightly failure
+is the signal — see "When the nightly job fails" below.
 
 ## When the nightly job fails
 
@@ -95,7 +96,7 @@ signal — see "When the nightly job fails" below.
      nightly is FOR. Open an issue, decide whether to roll back the
      provider or wait for the issue to clear.
    - **API key expired / auth error**: rotate the key (see above).
-      If rotation doesn't fix it, check `secrets.OPENCODE_GO_KEY` is
+      If rotation doesn't fix it, check `secrets.ARK_API_KEY` is
       still set in repo settings.
    - **Cost overrun**: the pre-call gate should have prevented this.
      If it didn't, recalibrate the rates in `cost_estimator.py` (see
@@ -111,28 +112,36 @@ signal — see "When the nightly job fails" below.
 
 ## Recalibration cadence
 
-**Quarterly** (with the API key rotation). Update
-`tests/real_llm/cost_estimator._RATES_PER_1M_TOKENS` to match the
-provider's current list price:
+**Quarterly** (with the API key rotation). Refresh the `OL_REAL_LLM_RATES`
+JSON for every model in your `config/local.yaml` pool (canonical:
+`ark-code-latest`, `glm-4.7-flash`, `minimaxai/minimax-m3`).
 
-- **glm-4-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
-- **agnes-2.0-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
-- **deepseek-v4-flash**: input $0.5/M, output $2/M tokens (as of 2026-06)
+The harness ships no hardcoded prices: `cost_estimator.py` fails closed
+(`KeyError`) when a model has no rate, so a stale or missing entry stops the
+run instead of mis-billing.
 
 To recalibrate:
 
-1. Check the provider's published rate card (MiniMax dashboard, Baidu
-   Qianfan pricing page).
-2. Update the tuple `(input_rate, output_rate)` in
-   `_RATES_PER_1M_TOKENS`.
-3. Re-run the cost-estimator unit tests to confirm the contract is
-   pinned:
+1. Check each provider's published rate card (Volcengine Ark, Zhipu,
+   NVIDIA NIM pricing pages).
+2. Set `OL_REAL_LLM_RATES` to the JSON object (USD per 1M tokens,
+   `[input, output]` per model), e.g.:
+   ```json
+   {"ark-code-latest": [<in>, <out>],
+    "glm-4.7-flash": [<in>, <out>],
+    "minimaxai/minimax-m3": [<in>, <out>]}
+   ```
+   Locally, `export` it in your shell. In GitHub Actions, set it as a repo
+   *variable* (Settings → Secrets and variables → Actions → Variables); the
+   nightly workflow maps it to `OL_REAL_LLM_RATES`. Values are intentionally
+   not committed.
+3. Re-run the cost-estimator unit tests to confirm the parsing + gate
+   contract:
    ```bash
    pytest tests/real_llm/test_cost_estimator.py -v
    ```
-4. Update the rates in the comment above if the providers changed.
-5. Commit with message `chore(cost): recalibrate real-LLM rates for
-   <quarter>`.
+4. Commit with message `chore(cost): recalibrate real-LLM rates for
+   <quarter>`; for the GitHub variable, record the date in the team log.
 
 If a rate change is material (>20%), update the budget expectations
 in this runbook too.
@@ -142,10 +151,10 @@ in this runbook too.
 ```bash
 cd Omni_Localizer
 export OMNI_RUN_REAL_LLM=1
+export ARK_API_KEY=…       # your own key
 export ZHIPU_API_KEY=…     # your own key
-export AGNES_API_KEY=…     # your own key
-export OPENCODE_GO_KEY=…   # your own key
-export OPENCODE_GO_BASE_URL=…
+export NVIDIA_NIM_API_KEY=… # your own key
+export OL_REAL_LLM_RATES='{"ark-code-latest": [<in>, <out>], "glm-4.7-flash": [<in>, <out>], "minimaxai/minimax-m3": [<in>, <out>]}'
 export PYTHONPATH=src
 pytest tests/real_llm/ -v --tb=long --durations=10
 ```
@@ -156,7 +165,7 @@ LLM's actual response — useful for diagnosing provider degradation.
 
 **Do not commit your real API key** to the repo. The `.env` file (if
 you use one) is gitignored at the repo root, and GitHub secrets
-(`${{ secrets.OPENCODE_GO_KEY }}`) are the only path the workflow
+(`${{ secrets.ARK_API_KEY }}`) are the only path the workflow
 uses. See `.gitignore` for the full list.
 
 ## Adding a new real-LLM test
@@ -181,5 +190,5 @@ uses. See `.gitignore` for the full list.
 - **Conftest**: `tests/real_llm/conftest.py` — fixtures and marker
   → skipif wiring.
 - **Workflow**: `.github/workflows/real-llm-nightly.yml`.
-- **Provider pricing**: MiniMax dashboard, Baidu Qianfan pricing page
+- **Provider pricing**: Volcengine Ark, Zhipu, NVIDIA NIM pricing pages
   (re-verify quarterly).

@@ -20,11 +20,9 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
 
 3. **Configure API keys** in environment:
    ```
-   export ZHIPU_API_KEY=...   # if using Zhipu AI (primary)
-   export AGNES_API_KEY=...   # if using Agnes AI (judging)
-   export NVIDIA_NIM_API_KEY=... # if using NVIDIA NIM (free-tier)
-   export OPENCODE_GO_KEY=...    # if using OpenCode Go (backup)
-   export OPENCODE_GO_BASE_URL=...
+   export ARK_API_KEY=...        # Volcengine Ark (priority-1 primary)
+   export ZHIPU_API_KEY=...      # Zhipu AI (priority-2 fallback)
+   export NVIDIA_NIM_API_KEY=... # NVIDIA NIM (priority-3 fallback)
    ```
 
 4. **Invoke via CLI**:
@@ -80,11 +78,9 @@ On error:
 ### Environment Variables
 Set in shell before running:
 ```bash
-export ZHIPU_API_KEY=your-zhipu-key    # required for primary model
-export AGNES_API_KEY=your-agnes-key    # required for judging
-export NVIDIA_NIM_API_KEY=...          # optional, for free-tier fallback
-export OPENCODE_GO_KEY=...             # optional, for backup
-export OPENCODE_GO_BASE_URL=...
+export ARK_API_KEY=your-ark-key        # required for priority-1 primary
+export ZHIPU_API_KEY=your-zhipu-key    # required for priority-2 fallback
+export NVIDIA_NIM_API_KEY=...          # required for priority-3 fallback
 ```
 
 ### Config Structure
@@ -95,24 +91,24 @@ target_lang: "zh"
 llm_pool:
   translation:
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "ark-code-latest"
       priority: 1
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       role: "translation"
   judging:
     - provider: "openai"
-      model: "agnes-2.0-flash"
+      model: "ark-code-latest"
       priority: 1
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       role: "judging"
   restoration:
     - provider: "openai"
-      model: "glm-4-flash"
+      model: "ark-code-latest"
       priority: 1
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       role: "restoration"
 ```
 
