@@ -251,3 +251,12 @@ class TestCOMETServiceEdgeCases:
 
         assert isinstance(spans, list)
         assert len(spans) == 0
+
+
+def test_comet_service_exported_from_package():
+    """OL#72: COMETService must be re-exported from the ol_lqa package so
+    callers can pair it with JudgeService(scorer=...) without importing the
+    private submodule path."""
+    from ol_lqa import COMETService
+
+    assert COMETService.__name__ == "COMETService"

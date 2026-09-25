@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -217,6 +218,39 @@ def _load_dotenv(env_path: Path) -> None:
                 os.environ.setdefault(key, value)
     except Exception as exc:
         logger.warning("Failed to load .env file %s: %s", env_path, exc)
+
+
+def _forward_images_json(
+    input_path: Path,
+    images_json: str | None,
+    output_path: Path,
+) -> Path | None:
+    """Forward an OPP images manifest beside the translated MD (OL#73).
+
+    Resolution order, matching OPP's extraction naming:
+      1. explicit ``--images-json`` path;
+      2. auto-detected ``{stem}_images.json``;
+      3. auto-detected ``{stem}.images.json``.
+
+    Returns the copied destination, or ``None`` when there is nothing to
+    forward (no flag and no auto-detected manifest, or a path that does
+    not exist). Best-effort: a missing/unreadable manifest is a no-op,
+    never a failure of the translation itself.
+    """
+    src: Path | None = Path(images_json) if images_json else None
+    if src is None:
+        stem_candidate = input_path.with_stem(input_path.stem + "_images").with_suffix(".json")
+        dot_candidate = input_path.with_suffix(".images.json")
+        for candidate in (stem_candidate, dot_candidate):
+            if candidate.exists():
+                src = candidate
+                break
+    if src is None or not src.exists():
+        return None
+    dest = output_path / src.name
+    shutil.copy2(str(src), str(dest))
+    logger.info("Copied images.json: %s -> %s", src, dest)
+    return dest
 
 
 @dataclass
@@ -466,6 +500,7 @@ async def _translate_md_async(
     glossary_max_terms: int = 5,
     styleguide: str | None = None,
     polish: bool = False,
+    scorer_type: str = "none",
 ) -> str:
     # Wave 4 (L-C1): glossary is now passed as a direct function argument,
     # not via concurrency-unsafe module-level globals.
@@ -496,9 +531,28 @@ async def _translate_md_async(
     judge = None
     retry_mgr = None
     if cfg.enable_lqa:
+        scorer_instance = None
+        if scorer_type and scorer_type != "none":
+            if scorer_type == "bleu":
+                from ol_lqa.scorer import ScorerService
+                scorer_instance = ScorerService()
+            elif scorer_type == "comet":
+                from ol_lqa.comet import COMETService, is_comet_available
+                if is_comet_available():
+                    scorer_instance = COMETService()
+                else:
+                    logger.warning(
+                        "COMET scorer requested but the optional "
+                        "'unbabel-comet' package is not installed; "
+                        "continuing without a scorer."
+                    )
         from ol_lqa.judge import JudgeService
         from ol_retry.retry import RetryManager
-        judge = JudgeService(pass_threshold=cfg.lqa_threshold, model_pool=pool)
+        judge = JudgeService(
+            pass_threshold=cfg.lqa_threshold,
+            model_pool=pool,
+            scorer=scorer_instance,
+        )
         retry_mgr = RetryManager(
             max_retries=cfg.lqa_max_retries,
             pass_threshold=cfg.lqa_threshold,
@@ -968,6 +1022,15 @@ def translate_md(
              "unify terminology, fix missing conjunctions, normalize formats. "
              "Uses the cheapest available model.",
     ),
+    scorer: str = typer.Option(
+        "none", "--scorer",
+        help="Scorer to use: 'bleu' (sacrebleu BLEU), 'comet' (XCOMET-XL, "
+             "requires unbabel-comet), 'none' (default)",
+    ),
+    no_scorer: bool = typer.Option(
+        False, "--no-scorer",
+        help="Disable scorer (overrides --scorer)",
+    ),
     report_coverage: bool = typer.Option(
         False, "--report-coverage",
         help="After translation, print a glossary coverage report "
@@ -987,6 +1050,11 @@ def translate_md(
         help="Log output format: 'console' (default) or 'json'. "
              "Also via OMNI_LOG_FORMAT env var. JSON includes request_id, "
              "timestamp, level, module fields.",
+    ),
+    images_json: str | None = typer.Option(
+        None, "--images-json",
+        help="Path to images.json file (e.g., from OPP extraction). "
+             "Copied to output directory alongside translated .md.",
     ),
 ) -> int:
     try:
@@ -1076,6 +1144,9 @@ def translate_md(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
+        # OL#72: resolve scorer — --no-scorer overrides --scorer.
+        scorer_type = "none" if no_scorer else scorer
+
         # A6: cache check before any expensive LLM work.
         if _check_cache(
             input_path, output_path, config, no_cache=no_cache,
@@ -1091,6 +1162,7 @@ def translate_md(
             polish=polish,
         ):
             cached_output = output_path / input_path.name
+            _forward_images_json(input_path, images_json, output_path)
             if json_output:
                 output_json(True, str(input_path), str(cached_output), src, tgt)
             else:
@@ -1118,6 +1190,7 @@ def translate_md(
                     restoration_enabled=not no_restoration,
                     styleguide=styleguide_content,
                     polish=polish,
+                    scorer_type=scorer_type,
                 ),
             )
 
@@ -1148,6 +1221,9 @@ def translate_md(
             no_styleguide=no_styleguide,
             polish=polish,
         )
+
+        # OL#73: forward the images manifest next to the translated MD.
+        _forward_images_json(input_path, images_json, output_path)
 
         # OL#44 §1: glossary coverage report. Non-blocking; informational.
         if report_coverage and not no_glossary and loaded_glossary is not None:
