@@ -18,9 +18,9 @@ is what the OL library's `standard:` citations resolve against.
 
 OL translation scenarios are **tier 2** (real LLM key required): they are
 `requires_env`-gated on the provider keys OL's model pool reads from
-`config/default.yaml` (`ZHIPU_API_KEY`, `AGNES_API_KEY`,
-`NVIDIA_NIM_API_KEY`, `OPENCODE_GO_KEY`, `OPENCODE_GO_BASE_URL`), so they
-report `unconfigured` when the keys are absent — never a fake pass.
+`config/default.yaml` (`ARK_API_KEY`, `ZHIPU_API_KEY`,
+`NVIDIA_NIM_API_KEY`), so they report `unconfigured` when the keys are
+absent — never a fake pass.
 
 ## AGENT-SURFACE
 
