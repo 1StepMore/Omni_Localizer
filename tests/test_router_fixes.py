@@ -151,15 +151,57 @@ class TestModelPoolSilentFailure:
 class TestModelPoolInitError:
     """New tests for the ModelPoolInitError exception class."""
 
-    def test_router_init_missing_env_raises_init_error(self, monkeypatch):
-        """Real-world scenario: the pool's first API-key env var is unset
-        -> Router init fails -> ModelPoolInitError.
+    def test_missing_env_var_degrades_pool_instead_of_failing_init(self, monkeypatch):
+        """Real-world scenario: one provider's API-key env var is unset.
 
-        Provider-agnostic: the variable name is read from
-        config/default.yaml's llm_pool (first role, first entry) instead of
-        hardcoding a provider key (e.g. ZHIPU/ARK).  This is what the user
-        hits in production with missing env vars.
+        OL#99: the pool must degrade to the remaining priorities, not fail.
+        Only a role that loses EVERY model to unconfigured keys is a hard
+        error. Provider-agnostic: variable names are read from
+        config/default.yaml's llm_pool instead of hardcoding a provider key.
         """
+        import yaml
+        from pathlib import Path
+
+        from ol_pool.router import ModelPool
+        from ol_pool.router import _pool_cache
+        import ol_config.loader as loader_mod
+
+        config_path = (
+            Path(__file__).resolve().parents[1] / "config" / "default.yaml"
+        )
+        pool = yaml.safe_load(config_path.read_text(encoding="utf-8"))["llm_pool"]
+        first_role = next(iter(pool))
+        entries = pool[first_role]
+        api_key_ref = entries[0]["api_key"]
+        assert (
+            isinstance(api_key_ref, str)
+            and api_key_ref.startswith("${")
+            and api_key_ref.endswith("}")
+        ), f"first pool entry must use a ${{ENV_VAR}} reference, got {api_key_ref!r}"
+        env_var = api_key_ref.strip()[2:-1]
+        assert len(entries) > 1, "need a lower-priority model to degrade onto"
+
+        # Ensure FAKE_LLM is NOT set (otherwise __init__ short-circuits).
+        monkeypatch.delenv("OMNI_TEST_FAKE_LLM", raising=False)
+        monkeypatch.delenv(env_var, raising=False)
+        # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
+        # FIXED path (loader.py) and would re-introduce the popped var through
+        # os.environ.setdefault, masking the missing-var path.
+        monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
+
+        _pool_cache.clear()
+        try:
+            with patch("ol_pool.router.Router", MagicMock()):
+                built = ModelPool(str(config_path))
+            kept = [m.model for m in built._usable_by_role[first_role]]
+            assert entries[0]["model"] not in kept
+            assert kept, f"{first_role} must keep its configured fallbacks"
+        finally:
+            _pool_cache.clear()
+
+    def test_all_env_vars_unset_for_a_role_raises_init_error(self, monkeypatch):
+        """A role with no usable model left is still fail-closed (OL#99)."""
+        import re
         import yaml
         from pathlib import Path
 
@@ -172,29 +214,27 @@ class TestModelPoolInitError:
         )
         pool = yaml.safe_load(config_path.read_text(encoding="utf-8"))["llm_pool"]
         first_role = next(iter(pool))
-        api_key_ref = pool[first_role][0]["api_key"]
-        assert (
-            isinstance(api_key_ref, str)
-            and api_key_ref.startswith("${")
-            and api_key_ref.endswith("}")
-        ), f"first pool entry must use a ${{ENV_VAR}} reference, got {api_key_ref!r}"
-        env_var = api_key_ref.strip()[2:-1]
+        refs = " ".join(
+            f"{entry.get('api_key') or ''} {entry.get('base_url') or ''}"
+            for entry in pool[first_role]
+        )
+        env_vars = sorted(set(re.findall(r"\$\{(\w+)\}", refs)))
+        assert env_vars, f"{first_role} must reference env vars"
 
-        # Ensure FAKE_LLM is NOT set (otherwise __init__ short-circuits).
         monkeypatch.delenv("OMNI_TEST_FAKE_LLM", raising=False)
-        # Simulate the missing env var of the pool's first entry.
-        monkeypatch.delenv(env_var, raising=False)
-        # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
-        # FIXED path (loader.py) and would re-introduce the popped var through
-        # os.environ.setdefault, masking the missing-var path.
+        for var in env_vars:
+            monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
 
         _pool_cache.clear()
         try:
-            with pytest.raises(ModelPoolInitError) as exc_info:
-                ModelPool(str(config_path))
-            # The error message should mention the missing variable
-            assert env_var in str(exc_info.value)
+            with patch("ol_pool.router.Router", MagicMock()):
+                with pytest.raises(ModelPoolInitError) as exc_info:
+                    ModelPool(str(config_path))
+            message = str(exc_info.value)
+            assert first_role in message
+            for var in env_vars:
+                assert var in message
         finally:
             _pool_cache.clear()
 
