@@ -1,9 +1,10 @@
 name: Real-LLM Nightly
 
 # A11 — slim-pipeline-hardening. Nightly cron runs the real-LLM E2E
-# suite against the canonical pool in config/local.yaml (ark-code-latest /
-# glm-4.7-flash / minimaxai/minimax-m3). Cost is bounded at ~$0.08/month by
-# the per-test pre-call cost gate in tests/real_llm/cost_estimator.py
+# suite against the canonical pool in config/local.yaml, in priority order
+# (glm-4.7-flash / minimaxai/minimax-m3 / ark-code-latest). Cost is bounded
+# at ~$0.08/month by the per-test pre-call cost gate in
+# tests/real_llm/cost_estimator.py
 # (budget_usd=5.0 per test, ~$0.005/test observed); rates come from
 # OL_REAL_LLM_RATES and the gate fails closed on an unpriced model. The user
 # authorized nightly cadence (per PR15 — E.2 calibration prep + nightly

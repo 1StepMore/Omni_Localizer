@@ -91,7 +91,7 @@ def _estimate_output_tokens(source_text: str) -> int:
 
 # Cost-gate model: the canonical pool's priority-1 translation model
 # (config/default.yaml, mirrored by `ol init` into config/local.yaml).
-_PRIMARY_MODEL = "ark-code-latest"
+_PRIMARY_MODEL = "glm-4.7-flash"
 
 
 # ===========================================================================
@@ -109,7 +109,7 @@ def test_primary_model_matches_canonical_priority_one() -> None:
         (_OL_ROOT / "config" / "default.yaml").read_text(encoding="utf-8")
     )
     assert _PRIMARY_MODEL == data["llm_pool"]["translation"][0]["model"]
-    assert _PRIMARY_MODEL == "ark-code-latest"
+    assert _PRIMARY_MODEL == "glm-4.7-flash"
 
 @pytest.mark.real_llm_required
 @pytest.mark.asyncio

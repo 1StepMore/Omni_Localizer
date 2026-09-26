@@ -1,67 +1,67 @@
 llm_pool:
   translation:
   - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 1
-    role: translation
-  - provider: openai
     model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
-    priority: 2
+    priority: 1
     role: translation
   - provider: openai
     model: minimaxai/minimax-m3
     api_key: ${NVIDIA_NIM_API_KEY}
     base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 2
+    role: translation
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
     timeout: 120.0
     priority: 3
     role: translation
   judging:
   - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 1
-    role: judging
-  - provider: openai
     model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
-    priority: 2
+    priority: 1
     role: judging
   - provider: openai
     model: minimaxai/minimax-m3
     api_key: ${NVIDIA_NIM_API_KEY}
     base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 2
+    role: judging
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
     timeout: 120.0
     priority: 3
     role: judging
   restoration:
   - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 1
-    role: restoration
-  - provider: openai
     model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
-    priority: 2
+    priority: 1
     role: restoration
   - provider: openai
     model: minimaxai/minimax-m3
     api_key: ${NVIDIA_NIM_API_KEY}
     base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 2
+    role: restoration
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
     timeout: 120.0
     priority: 3
     role: restoration

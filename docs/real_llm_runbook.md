@@ -114,7 +114,7 @@ is the signal — see "When the nightly job fails" below.
 
 **Quarterly** (with the API key rotation). Refresh the `OL_REAL_LLM_RATES`
 JSON for every model in your `config/local.yaml` pool (canonical:
-`ark-code-latest`, `glm-4.7-flash`, `minimaxai/minimax-m3`).
+`glm-4.7-flash`, `minimaxai/minimax-m3`, `ark-code-latest`).
 
 The harness ships no hardcoded prices: `cost_estimator.py` fails closed
 (`KeyError`) when a model has no rate, so a stale or missing entry stops the
@@ -127,9 +127,9 @@ To recalibrate:
 2. Set `OL_REAL_LLM_RATES` to the JSON object (USD per 1M tokens,
    `[input, output]` per model), e.g.:
    ```json
-   {"ark-code-latest": [<in>, <out>],
-    "glm-4.7-flash": [<in>, <out>],
-    "minimaxai/minimax-m3": [<in>, <out>]}
+   {"glm-4.7-flash": [<in>, <out>],
+    "minimaxai/minimax-m3": [<in>, <out>],
+    "ark-code-latest": [<in>, <out>]}
    ```
    Locally, `export` it in your shell. In GitHub Actions, set it as a repo
    *variable* (Settings → Secrets and variables → Actions → Variables); the
@@ -154,7 +154,7 @@ export OMNI_RUN_REAL_LLM=1
 export ARK_API_KEY=…       # your own key
 export ZHIPU_API_KEY=…     # your own key
 export NVIDIA_NIM_API_KEY=… # your own key
-export OL_REAL_LLM_RATES='{"ark-code-latest": [<in>, <out>], "glm-4.7-flash": [<in>, <out>], "minimaxai/minimax-m3": [<in>, <out>]}'
+export OL_REAL_LLM_RATES='{"glm-4.7-flash": [<in>, <out>], "minimaxai/minimax-m3": [<in>, <out>], "ark-code-latest": [<in>, <out>]}'
 export PYTHONPATH=src
 pytest tests/real_llm/ -v --tb=long --durations=10
 ```

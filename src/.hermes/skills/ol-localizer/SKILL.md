@@ -60,14 +60,14 @@ and the suite-level [Pipeline Selection Strategy](https://github.com/1StepMore/O
 
 ## Configuration
 Required environment variables (the canonical pool in `config/default.yaml`):
-- `ARK_API_KEY` - Volcengine Ark (`ark-code-latest`, priority-1 primary)
-- `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-2 fallback)
-- `NVIDIA_NIM_API_KEY` - NVIDIA NIM (`minimaxai/minimax-m3`, priority-3 fallback)
+- `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-1 primary)
+- `NVIDIA_NIM_API_KEY` - NVIDIA NIM (`minimaxai/minimax-m3`, priority-2 fallback)
+- `ARK_API_KEY` - Volcengine Ark (`ark-code-latest`, priority-3 fallback)
 
 Run `ol init` to generate `config/local.yaml` with this pool.
 
 ## Pitfalls
-- **API keys not set**: Ensure `ARK_API_KEY` is in environment before invoking
+- **API keys not set**: Ensure `ZHIPU_API_KEY` is in environment before invoking
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
 - **Supported formats**: Both Markdown (.md) and XLIFF (.xlf, .xliff) are supported

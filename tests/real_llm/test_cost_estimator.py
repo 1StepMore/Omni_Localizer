@@ -74,7 +74,7 @@ def test_selected_primary_model_matches_canonical_default() -> None:
     """
     data = yaml.safe_load((_OL_ROOT / "config" / "default.yaml").read_text(encoding="utf-8"))
     canonical_primary = data["llm_pool"]["translation"][0]["model"]
-    assert _PRIMARY_MODEL == "ark-code-latest"
+    assert _PRIMARY_MODEL == "glm-4.7-flash"
     assert _PRIMARY_MODEL == canonical_primary
 
 

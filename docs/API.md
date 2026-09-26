@@ -278,11 +278,11 @@ Top-level fields:
 llm_pool:
   translation:   # role: translation | judging | restoration
     - provider: "openai"            # or anthropic, zhipu, nvidia_nim, …
-      model: "ark-code-latest"
+      model: "glm-4.7-flash"
       priority: 1                   # 1 = highest, lower = higher
       role: "translation"           # MUST match the parent bucket
-      api_key: "${ARK_API_KEY}"     # env-var reference recommended
-      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+      api_key: "${ZHIPU_API_KEY}"   # env-var reference recommended
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
       requests_per_minute: 500      # hard RPM cap; set to provider's real value
 ```
@@ -380,7 +380,7 @@ Source/target language is stored on the `TMXFile` instance and emitted as `xml:l
 | `OMNI_TEST_FAKE_LLM=1` | Skip real LLM calls; `ModelPool` returns placeholders. Required for hermetic tests. |
 | `OL_CONFIG_PATH=path` | Override default LLM config for the MCP server. |
 | `MCP_SHARED_SECRET=…` | Enable shared-secret auth on the MCP server; every tool must then pass `shared_secret`. |
-| `ARK_API_KEY`, `ZHIPU_API_KEY`, `NVIDIA_NIM_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
+| `ZHIPU_API_KEY`, `NVIDIA_NIM_API_KEY`, `ARK_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
 
 ---
 
