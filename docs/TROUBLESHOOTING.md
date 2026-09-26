@@ -43,12 +43,12 @@ The Omni_Suite `.bat` file from the README wraps exactly this pattern.
 **Symptom**
 
 ```
-ValueError: Environment variable 'ZHIPU_API_KEY' referenced in api_key but not set
+ValueError: Environment variable 'ARK_API_KEY' referenced in api_key but not set
 ```
 
 **Cause**
 
-`config/default.yaml` references `${ZHIPU_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py:17` walks every `${VAR}` in the loaded config and raises if the env var is unset.
+`config/default.yaml` references `${ARK_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py:17` walks every `${VAR}` in the loaded config and raises if the env var is unset.
 
 **Fix**
 
@@ -56,13 +56,13 @@ Either set the key, or run in fake-LLM mode (which short-circuits the check, see
 
 ```bash
 # Option A — real key
-export ZHIPU_API_KEY=sk-your-key
+export ARK_API_KEY=sk-your-key
 
 # Option B — hermetic, no LLM call
 export OMNI_TEST_FAKE_LLM=1
 ```
 
-The same applies to `AGNES_API_KEY`, `NVIDIA_NIM_API_KEY`, `OPENCODE_GO_KEY`, `OPENCODE_GO_BASE_URL`, etc. The default config uses ZHIPU/AGNES/NVIDIA/OPENCODE; replace the pool if you want a different provider.
+The same applies to `ZHIPU_API_KEY` and `NVIDIA_NIM_API_KEY`. The default config uses ARK/ZHIPU/NVIDIA; replace the pool if you want a different provider.
 
 ---
 
@@ -71,7 +71,7 @@ The same applies to `AGNES_API_KEY`, `NVIDIA_NIM_API_KEY`, `OPENCODE_GO_KEY`, `O
 **Symptom**
 
 ```
-litellm.RateLimitError: Rate limit reached for model glm-4-flash
+litellm.RateLimitError: Rate limit reached for model ark-code-latest
 ```
 
 **Cause**
@@ -92,7 +92,7 @@ Set `requests_per_minute` to the provider's actual cap in `config/default.yaml`:
 
 ```yaml
 - provider: "openai"
-  model: "deepseek-ai/deepseek-v4-flash"
+  model: "minimaxai/minimax-m3"
   requests_per_minute: 40   # NVIDIA free tier
 ```
 
@@ -224,15 +224,15 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
   llm_pool:
     restoration:
       - provider: "openai"
-        model: "glm-4-flash"
+        model: "ark-code-latest"
         priority: 1
+        api_key: "${ARK_API_KEY}"
+        base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+      - provider: "openai"
+        model: "glm-4.7-flash"
+        priority: 2
         api_key: "${ZHIPU_API_KEY}"
         base_url: "https://open.bigmodel.cn/api/paas/v4"
-      - provider: "openai"
-        model: "deepseek-v4-flash"
-        priority: 2
-        api_key: "${OPENCODE_GO_KEY}"
-        base_url: "${OPENCODE_GO_BASE_URL}"
   ```
 
 - The repair pipeline will fall back to layer 4 (safe substitution) only if layers 1–3 leave missing placeholders. In the worst case the original link/image/code block is reinserted verbatim — the output is never worse than the input for that construct.
@@ -286,7 +286,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `glm-4-flash` is fast but noisy on the judge role; `agnes-2.0-flash` tends to be more stable.
+- Add a better `judging` model — `ark-code-latest` is the primary judge; `glm-4.7-flash` and `minimaxai/minimax-m3` are fallbacks.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.

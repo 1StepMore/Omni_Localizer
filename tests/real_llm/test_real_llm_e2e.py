@@ -3,13 +3,14 @@
 All tests in this file are gated by ``@pytest.mark.real_llm_required``,
 which the ``conftest.py`` ``pytest_collection_modifyitems`` hook maps to
 ``pytest.mark.skipif(not os.environ.get("OMNI_RUN_REAL_LLM"))`` plus
-``MINIMAX_API_KEY`` must be set (the conftest's ``real_model_pool``
+``ARK_API_KEY`` must be set (the conftest's ``real_model_pool``
 fixture raises a clearer skip if the key is missing).
 
 In normal CI (no env vars set), every test in this file SKIPS without
 touching the LLM or spending any money. The nightly workflow
-(``.github/workflows/real-llm-nightly.yml``) sets both env vars and runs
-these tests against real MiniMax/M2.7.
+(``.github/workflows/real-llm-nightly.yml``) sets the canonical pool keys
+plus the ``OL_REAL_LLM_RATES`` rate map and runs these tests against the
+real model pool in ``config/local.yaml``.
 
 Cost discipline:
 - Each test uses the ``cost_estimator`` fixture (a fresh $5-budget
@@ -26,8 +27,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
+
+_OL_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +52,7 @@ def _has_chinese(text: str) -> bool:
     return bool(_CJK_RE.search(text or ""))
 
 
-def _load_corpus_entry(corpus_dir: Path, name: str) -> dict:
+def _load_corpus_entry(corpus_dir: Path, name: str) -> dict[str, Any]:
     """Load a single entry from ``reference_outputs.json`` by corpus basename."""
     ref = corpus_dir / "reference_outputs.json"
     with ref.open(encoding="utf-8") as f:
@@ -84,14 +89,27 @@ def _estimate_output_tokens(source_text: str) -> int:
     return max(1, int(len(source_text) * 1.2) // 4)
 
 
-# Pick the same model the nightly workflow resolves first: MiniMax-M2.7
-# (priority 1 in config/local.yaml translation role).
-_PRIMARY_MODEL = "MiniMax-M2.7"
+# Cost-gate model: the canonical pool's priority-1 translation model
+# (config/default.yaml, mirrored by `ol init` into config/local.yaml).
+_PRIMARY_MODEL = "ark-code-latest"
 
 
 # ===========================================================================
-# A11.4 — 4 real-LLM E2E tests (all gated)
+# A11.4 — real-LLM E2E tests (all gated) + one deterministic contract test
 # ===========================================================================
+
+def test_primary_model_matches_canonical_priority_one() -> None:
+    """The cost-gate's selected model is config/default.yaml priority 1.
+
+    Deterministic and ungated: locks the harness to the canonical pool so a
+    model swap cannot leave the cost gate pricing a model that is no longer
+    the primary.
+    """
+    data = yaml.safe_load(
+        (_OL_ROOT / "config" / "default.yaml").read_text(encoding="utf-8")
+    )
+    assert _PRIMARY_MODEL == data["llm_pool"]["translation"][0]["model"]
+    assert _PRIMARY_MODEL == "ark-code-latest"
 
 @pytest.mark.real_llm_required
 @pytest.mark.asyncio
@@ -243,7 +261,7 @@ async def test_real_lqa_score_above_threshold(
     score_floor_0_100 = min_quality_score * 100
 
     # Pre-call cost gate — covers both the translate() and judge() calls
-    # (judge uses the same M2.7 priority chain in local.yaml).
+    # (judge uses the same priority-1 model in local.yaml).
     est_translate = cost_estimator.estimate_call(
         _PRIMARY_MODEL,
         _estimate_input_tokens(source),

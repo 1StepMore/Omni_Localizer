@@ -311,8 +311,7 @@ class TestLoadConfigSecurityIntegration:
         case.
         """
         import os
-        required = ["ZHIPU_API_KEY", "AGNES_API_KEY", "NVIDIA_NIM_API_KEY",
-                    "OPENCODE_GO_KEY"]
+        required = ["ARK_API_KEY", "ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY"]
         if not all(os.environ.get(v) for v in required):
             pytest.skip("env vars not set; cannot run default.yaml end-to-end")
 

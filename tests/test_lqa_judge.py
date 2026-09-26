@@ -467,3 +467,48 @@ class TestEnsembleJudge:
             f"{result.judge_scores.get('terminology_consistency')}"
         )
         assert "format_preservation" not in result.judge_scores
+
+
+class TestJudgeServiceScorerMerge:
+    """OL#72: JudgeService must accept an optional scorer and merge its
+    ``score_and_evaluate`` output (scorer_scores + mqm_spans) into the
+    returned EvaluationResult. This is the pluggable-scorer contract."""
+
+    @pytest.mark.asyncio
+    async def test_judge_merges_bleu_scorer_scores(self):
+        from ol_lqa.scorer import ScorerService
+
+        service = JudgeService(pass_threshold=7.0, scorer=ScorerService())
+        result = await service.judge(
+            source="Hello world",
+            target="Hello world",
+            unit_id="u1",
+        )
+        assert "bleu" in result.scorer_scores
+        assert "regex_match" in result.scorer_scores
+
+    @pytest.mark.asyncio
+    async def test_judge_merges_scorer_mqm_spans(self):
+        class _StubCometScorer:
+            async def score_and_evaluate(
+                self, source, target, unit_id, source_lang="en", target_lang="en",
+            ):
+                return EvaluationResult(
+                    unit_id=unit_id,
+                    scorer_scores={"xcomet": 0.91},
+                    mqm_spans=[{"severity": "minor", "text": "x"}],
+                )
+
+        service = JudgeService(pass_threshold=7.0, scorer=_StubCometScorer())
+        result = await service.judge(
+            source="Hello", target="Bonjour", unit_id="u1",
+        )
+        assert result.scorer_scores == {"xcomet": 0.91}
+        assert result.mqm_spans == [{"severity": "minor", "text": "x"}]
+
+    @pytest.mark.asyncio
+    async def test_judge_without_scorer_keeps_empty_scorer_scores(self):
+        service = JudgeService(pass_threshold=7.0)
+        result = await service.judge(source="Hello", target="Bonjour", unit_id="u1")
+        assert result.scorer_scores == {}
+        assert result.mqm_spans == []

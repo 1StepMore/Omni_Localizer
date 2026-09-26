@@ -59,14 +59,15 @@ See the full decision tree in [OL AGENTS.md](https://github.com/1StepMore/Omni_L
 and the suite-level [Pipeline Selection Strategy](https://github.com/1StepMore/Omni_Suite/blob/main/README.md#pipeline-selection-strategy).
 
 ## Configuration
-Required environment variables:
-- `OPENAI_API_KEY` - API key for your LLM provider
+Required environment variables (the canonical pool in `config/default.yaml`):
+- `ARK_API_KEY` - Volcengine Ark (`ark-code-latest`, priority-1 primary)
+- `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-2 fallback)
+- `NVIDIA_NIM_API_KEY` - NVIDIA NIM (`minimaxai/minimax-m3`, priority-3 fallback)
 
-Optional environment variables:
-- `OPENAI_BASE_URL` - Custom endpoint for your LLM provider
+Run `ol init` to generate `config/local.yaml` with this pool.
 
 ## Pitfalls
-- **API keys not set**: Ensure OPENAI_API_KEY is in environment before invoking
+- **API keys not set**: Ensure `ARK_API_KEY` is in environment before invoking
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
 - **Supported formats**: Both Markdown (.md) and XLIFF (.xlf, .xliff) are supported

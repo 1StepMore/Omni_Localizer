@@ -48,6 +48,7 @@ pip install -e .
 Set the required environment variables in your shell:
 
 ```bash
+export ARK_API_KEY=your_ark_api_key
 export ZHIPU_API_KEY=your_zhipu_api_key
 export PYTHONPATH=src
 ```
@@ -74,32 +75,32 @@ providers you actually use.
 
 Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
-**Getting started (OL#92):**
-1. Run `ol init` to generate `config/local.yaml` interactively with the unified model pool.
-2. Export the printed keys (ZHIPU_API_KEY, NVIDIA_NIM_API_KEY, OPENCODE_GO_KEY, OPENCODE_GO_BASE_URL).
+**Getting started:**
+1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool (mirroring `config/default.yaml`).
+2. Export the printed keys (ARK_API_KEY, ZHIPU_API_KEY, NVIDIA_NIM_API_KEY).
 3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, env vars resolve).
 
-`config/local.yaml` — Example unified LLM pool configuration (as written by `ol init`):
+`config/default.yaml` — canonical unified LLM pool (the required roles; `ol init` also writes the optional `profiling:` role with the same three models):
 
 ```yaml
 llm_pool:
   translation:
     - provider: "openai"
-      model: "mimo-v2.5"          # OpenCode Go — primary translation
+      model: "ark-code-latest"        # Volcengine Ark — priority-1 primary
       priority: 1
       role: "translation"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       timeout: 120.0
     - provider: "openai"
-      model: "glm-4.7-flash"      # Zhipu — translation/restoration primary
+      model: "glm-4.7-flash"          # Zhipu — priority-2 fallback
       priority: 2
       role: "translation"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "z-ai/glm-5.2"       # NVIDIA NIM — fallback
+      model: "minimaxai/minimax-m3"   # NVIDIA NIM — priority-3 fallback
       priority: 3
       role: "translation"
       api_key: "${NVIDIA_NIM_API_KEY}"
@@ -108,44 +109,44 @@ llm_pool:
 
   judging:
     - provider: "openai"
-      model: "mimo-v2.5"          # OpenCode Go — primary judging
+      model: "ark-code-latest"
       priority: 1
       role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
       timeout: 120.0
     - provider: "openai"
-      model: "z-ai/glm-5.2"       # NVIDIA NIM — judging fallback
+      model: "glm-4.7-flash"
       priority: 2
+      role: "judging"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 120.0
+    - provider: "openai"
+      model: "minimaxai/minimax-m3"
+      priority: 3
       role: "judging"
       api_key: "${NVIDIA_NIM_API_KEY}"
       base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
-    - provider: "openai"
-      model: "glm-4.7-flash"      # Zhipu — judging fallback
-      priority: 3
-      role: "judging"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
 
   restoration:
     - provider: "openai"
-      model: "glm-4.7-flash"      # Zhipu — restoration primary
+      model: "ark-code-latest"
       priority: 1
+      role: "restoration"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+      timeout: 120.0
+    - provider: "openai"
+      model: "glm-4.7-flash"
+      priority: 2
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "mimo-v2.5"          # OpenCode Go — restoration
-      priority: 2
-      role: "restoration"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 120.0
-    - provider: "openai"
-      model: "z-ai/glm-5.2"       # NVIDIA NIM — restoration fallback
+      model: "minimaxai/minimax-m3"
       priority: 3
       role: "restoration"
       api_key: "${NVIDIA_NIM_API_KEY}"
@@ -487,10 +488,9 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `ARK_API_KEY` | (required) | API key for Volcengine Ark (ark-code-latest) |
 | `ZHIPU_API_KEY` | (required) | API key for Zhipu AI (glm-4.7-flash) |
-| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM (z-ai/glm-5.2) |
-| `OPENCODE_GO_KEY` | (required) | API key for OpenCode Go (mimo-v2.5) |
-| `OPENCODE_GO_BASE_URL` | (required) | Base URL for OpenCode Go (mimo-v2.5) |
+| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM (minimaxai/minimax-m3) |
 | `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |

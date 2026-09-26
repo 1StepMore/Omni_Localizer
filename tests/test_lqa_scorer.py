@@ -65,3 +65,17 @@ class TestScorerService:
         assert "bleu" in scores
         assert "regex_match" in scores
         assert scores["bleu"] < 1.0
+
+    @pytest.mark.asyncio
+    async def test_score_and_evaluate_satisfies_comet_interface(self):
+        """OL#72: ScorerService must expose the same duck-typed entry point
+        ``JudgeService`` uses for COMETService, so a ``--scorer bleu`` run
+        does not fail with AttributeError at judge time."""
+        svc = ScorerService()
+        result = await svc.score_and_evaluate(
+            "Hello world", "Hello world", "u1", "en", "en",
+        )
+        assert isinstance(result, EvaluationResult)
+        assert result.unit_id == "u1"
+        assert "bleu" in result.scorer_scores
+        assert "regex_match" in result.scorer_scores

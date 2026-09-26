@@ -9,18 +9,16 @@ description: >-
 category: ol-translation
 tier: 2
 requires_env:
+  - ARK_API_KEY
   - ZHIPU_API_KEY
-  - AGNES_API_KEY
   - NVIDIA_NIM_API_KEY
-  - OPENCODE_GO_KEY
-  - OPENCODE_GO_BASE_URL
 instructions: |
   This scenario proves the primary agent-facing OL surface — the
   translate_md_text MCP tool (ol_mcp.tools.translate_md_text) — works as an
   agent would use it on a realistic markdown document. It is gated on the
   LLM provider keys OL's model pool reads from config/default.yaml
-  (ZHIPU_API_KEY / AGNES_API_KEY / NVIDIA_NIM_API_KEY / OPENCODE_GO_KEY /
-  OPENCODE_GO_BASE_URL); without them the run reports unconfigured.
+  (ARK_API_KEY / ZHIPU_API_KEY / NVIDIA_NIM_API_KEY); without them the run
+  reports unconfigured.
 
   What to do:
   1. Step 1 calls the REAL ol_mcp.tools.translate_md_text with a

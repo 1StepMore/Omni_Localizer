@@ -12,8 +12,10 @@ the gate env vars are set.
 Gating contract (enforced both here and on individual tests):
 - ``OMNI_RUN_REAL_LLM=1`` — master switch. When unset, real-LLM tests
   skip cleanly without touching the model pool.
-- ``MINIMAX_API_KEY`` — required for ``config/local.yaml`` to resolve
-  ``${MINIMAX_API_KEY}`` in the translation/judging/restoration roles.
+- ``ARK_API_KEY`` / ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` — the
+  canonical pool env vars (``config/default.yaml`` / ``ol init``). All three
+  must be set: ``ModelPool`` resolves every ``${VAR}`` eagerly when it builds
+  the router, so a single missing key aborts instantiation.
 
 Markers (registered in ``pyproject.toml``):
 - ``real_llm_required`` — tests that ALWAYS need a real LLM. Skipped in
@@ -23,8 +25,11 @@ Markers (registered in ``pyproject.toml``):
   future use; the A11 suite only ships ``real_llm_required`` tests.)
 
 Cost gate: the ``cost_estimator`` fixture returns a fresh
-``CostEstimator(budget_usd=5.0)`` per test. The nightly workflow and
-the runbook document the per-night budget expectation ($5-15/month).
+``CostEstimator(budget_usd=5.0)`` per test. Rates are explicit and
+fail-closed — supplied via ``OL_REAL_LLM_RATES`` (see
+``docs/real_llm_runbook.md``); an unpriced model raises at estimate time
+rather than guessing. The nightly workflow and the runbook document the
+per-night budget expectation ($5-15/month).
 """
 from __future__ import annotations
 
@@ -48,6 +53,10 @@ _OL_ROOT = _REAL_LLM_DIR.parent.parent  # .../Omni_Localizer/
 _LOCAL_CONFIG = _OL_ROOT / "config" / "local.yaml"
 _CORPUS_DIR = _OL_ROOT / "tests" / "fixtures" / "real_llm_corpus"
 
+# The canonical pool env vars (config/default.yaml). ModelPool resolves every
+# ${VAR} eagerly, so all three are required to build the real router.
+_CANONICAL_KEYS = ("ARK_API_KEY", "ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY")
+
 
 # ---------------------------------------------------------------------------
 # Marker → skipif wiring
@@ -57,15 +66,20 @@ _REAL_LLM_REQUIRED_SKIP = pytest.mark.skipif(
     not os.environ.get("OMNI_RUN_REAL_LLM"),
     reason=(
         "OMNI_RUN_REAL_LLM not set; real-LLM test skipped. "
-        "Set OMNI_RUN_REAL_LLM=1 (and MINIMAX_API_KEY) to enable. "
+        "Set OMNI_RUN_REAL_LLM=1 plus the canonical pool keys "
+        "(ARK_API_KEY, ZHIPU_API_KEY, NVIDIA_NIM_API_KEY) to enable. "
         "See docs/real_llm_runbook.md."
     ),
 )
 
 _REAL_LLM_OPTIONAL_SKIP = pytest.mark.skipif(
-    not (os.environ.get("OMNI_RUN_REAL_LLM") and os.environ.get("MINIMAX_API_KEY")),
+    not (
+        os.environ.get("OMNI_RUN_REAL_LLM")
+        and all(os.environ.get(k) for k in _CANONICAL_KEYS)
+    ),
     reason=(
-        "Real LLM unavailable (need OMNI_RUN_REAL_LLM=1 and MINIMAX_API_KEY). "
+        "Real LLM unavailable (need OMNI_RUN_REAL_LLM=1 and the canonical "
+        "pool keys ARK_API_KEY/ZHIPU_API_KEY/NVIDIA_NIM_API_KEY). "
         "Test falls back to a mock or is skipped; see docs/real_llm_runbook.md."
     ),
 )
@@ -107,12 +121,12 @@ def corpus_dir() -> Path:
 def cost_estimator() -> "CostEstimator":
     """A fresh ``CostEstimator`` with a $5 budget, per-test.
 
-    Pure-Python class; no I/O, no LLM. Available in normal CI so the
-    cost-estimator unit tests can be re-run against the same fixture
-    the real-LLM tests use in nightly CI.
+    Rates come from ``OL_REAL_LLM_RATES``; when unset the estimator is
+    fail-closed (any ``estimate_call`` for an unpriced model raises before
+    the LLM call is issued).
     """
-    from tests.real_llm.cost_estimator import CostEstimator
-    return CostEstimator(budget_usd=5.0)
+    from tests.real_llm.cost_estimator import CostEstimator, rates_from_env
+    return CostEstimator(budget_usd=5.0, rates=rates_from_env())
 
 
 @pytest.fixture(scope="session")
@@ -121,8 +135,8 @@ def real_model_pool():
 
     Skips unless:
       - ``OMNI_RUN_REAL_LLM=1`` (master gate)
-      - ``MINIMAX_API_KEY`` is set (required for local.yaml env-var
-        resolution)
+      - ``ARK_API_KEY`` / ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` are all
+        set (ModelPool resolves every ``${VAR}`` eagerly)
 
     The root ``tests/conftest.py`` installs a ``_HeavyImportBlocker``
     that stubs litellm for fast unit tests. To make real LLM calls
@@ -149,10 +163,13 @@ def real_model_pool():
             "OMNI_RUN_REAL_LLM not set; real-LLM pool not instantiated. "
             "Set OMNI_RUN_REAL_LLM=1 to enable."
         )
-    if not os.environ.get("MINIMAX_API_KEY"):
+    missing = [k for k in _CANONICAL_KEYS if not os.environ.get(k)]
+    if missing:
         pytest.skip(
-            "MINIMAX_API_KEY not set; cannot resolve ${MINIMAX_API_KEY} "
-            "in config/local.yaml. See docs/real_llm_runbook.md."
+            f"Canonical pool env vars not set: {', '.join(missing)}. "
+            f"ModelPool resolves every ${{VAR}} eagerly, so all of "
+            f"ARK_API_KEY/ZHIPU_API_KEY/NVIDIA_NIM_API_KEY are required. "
+            f"See docs/real_llm_runbook.md."
         )
     if not _LOCAL_CONFIG.exists():
         pytest.skip(

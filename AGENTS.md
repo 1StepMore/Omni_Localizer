@@ -127,9 +127,9 @@ src/ol/
 | `get_capabilities` | Return OL module capabilities: roles, language pairs, and available MCP tools |
 | `ping` | Health check |
 
-For full per-tool parameter reference, see the suite-level
-[AGENTS.md → MCP Tool Reference](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md) table,
-or [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md).
+For full per-tool parameter reference, see this module's [`docs/API.md`](docs/API.md).
+The suite-level [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md)
+covers server/tool inventory and namespacing.
 
 ## Translation pipeline (MD channel)
 
@@ -233,20 +233,21 @@ HTTP 429 (handled by the existing backoff).
 OL is configured via `config/default.yaml` + `config/local.yaml`.
 Each model has:
 - `provider` (e.g., `openai`)
-- `model` (e.g., `mimo-v2.5`)
+- `model` (e.g., `ark-code-latest`)
 - `priority` (1 = highest)
-- `role` (`translation` | `judging` | `restoration`)
+- `role` (`translation` | `judging` | `restoration` | `profiling`)
 - `api_key` (use `${ENV_VAR}` syntax)
 - `base_url` (for non-OpenAI providers)
 - `timeout` (per-request, default 120s)
 - `requests_per_minute` (default 500)
 
-**Unified pool (OL#92, 2026-08-17)** — `ol init` writes `config/local.yaml`
-with a single 3-provider pool shared across roles:
+**Unified pool (canonical)** — `config/default.yaml` is the source of truth;
+`ol init` writes `config/local.yaml` with the same single 3-provider pool
+shared across all roles:
 
-- **mimo-v2.5** → OpenCode Go (`OPENCODE_GO_KEY` + `OPENCODE_GO_BASE_URL`) — primary translation + judging
-- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — translation/restoration primary, judging fallback
-- **z-ai/glm-5.2** → NVIDIA NIM (`NVIDIA_NIM_API_KEY`, `https://integrate.api.nvidia.com/v1`) — fallback
+- **ark-code-latest** → Volcengine Ark (`ARK_API_KEY`, `https://ark.cn-beijing.volces.com/api/coding/v3`) — priority-1 primary for translation/judging/restoration/profiling
+- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-2 fallback
+- **minimaxai/minimax-m3** → NVIDIA NIM (`NVIDIA_NIM_API_KEY`, `https://integrate.api.nvidia.com/v1`) — priority-3 fallback
 
 Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
 never written. Each of `translation`, `judging`, and `restoration` must
@@ -266,8 +267,7 @@ exponential backoff handles it.
 |----------|---------|---------|
 | `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` | (none) | LLM provider API keys (glm-4.7-flash / z-ai/glm-5.2). |
-| `OPENCODE_GO_KEY` / `OPENCODE_GO_BASE_URL` | (none) | OpenCode Go provider config (mimo-v2.5). |
+| `ARK_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` | (none) | LLM provider API keys (ark-code-latest / glm-4.7-flash / minimaxai/minimax-m3). |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
@@ -426,7 +426,7 @@ for the complete decision tree and format support matrix.
 ## Pointers to the suite-level docs
 
 - Cross-module orchestration: [AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
-- MCP tool full parameter reference: [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md)
+- MCP tool full parameter reference: [`docs/API.md`](docs/API.md)
 - Pre-commit hooks: [.pre-commit-config.yaml](https://github.com/1StepMore/e2e-test-suite/blob/main/.pre-commit-config.yaml)
 - Compatibility matrix: [COMPATIBILITY.md](https://github.com/1StepMore/e2e-test-suite/blob/main/COMPATIBILITY.md)
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
@@ -439,8 +439,9 @@ OL ships its own validation scenario library **in this repo** at
 `scenarios/` — 5 tier-2 `ol-translation` scenarios (translate-md happy
 path, translate-xliff, judge-text quality, glossary + quality gates,
 empty-input edge) with their own `scenarios/STANDARDS.md` +
-`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 5
-provider vars) and report `unconfigured` without them — never a fake
+`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 3
+canonical provider vars `ARK_API_KEY` / `ZHIPU_API_KEY` /
+`NVIDIA_NIM_API_KEY`) and report `unconfigured` without them — never a fake
 green. The suite validation engine runs them via `--repo ol`. The suite's
 own `tool-ol-*` agent-surface scenarios + the HUMAN-QUALITY pipeline
 scenarios still live in the suite repo, covered by the suite-level

@@ -1,12 +1,14 @@
 name: Real-LLM Nightly
 
 # A11 — slim-pipeline-hardening. Nightly cron runs the real-LLM E2E
-# suite against a real MiniMax/M2.7 pool. Cost is bounded at ~$0.08/month
-# by the per-test pre-call cost gate in tests/real_llm/cost_estimator.py
-# (budget_usd=5.0 per test, ~$0.005/test observed). The user authorized
-# nightly cadence (per PR15 — E.2 calibration prep + nightly promotion).
-# To go BACK to weekly cadence: change the cron below to "0 2 * * 0".
-# See docs/real_llm_runbook.md for the runbook.
+# suite against the canonical pool in config/local.yaml (ark-code-latest /
+# glm-4.7-flash / minimaxai/minimax-m3). Cost is bounded at ~$0.08/month by
+# the per-test pre-call cost gate in tests/real_llm/cost_estimator.py
+# (budget_usd=5.0 per test, ~$0.005/test observed); rates come from
+# OL_REAL_LLM_RATES and the gate fails closed on an unpriced model. The user
+# authorized nightly cadence (per PR15 — E.2 calibration prep + nightly
+# promotion). To go BACK to weekly cadence: change the cron below to
+# "0 2 * * 0". See docs/real_llm_runbook.md for the runbook.
 #
 # Manual trigger: `gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer`
 # Useful when validating a model swap or config change.
@@ -49,14 +51,18 @@ jobs:
       - name: Run real-LLM E2E suite
         env:
           OMNI_RUN_REAL_LLM: "1"
-          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          MINIMAX_BASE_URL: ${{ secrets.MINIMAX_BASE_URL }}
-          # BAIDU_API_KEY is required by config/local.yaml's
-          # ernie-4.5-turbo-32k translation + judging + restoration entries.
-          # The harness resolves it at config-load time even if the
-          # nightly run never picks the ernie-4.5 model.
-          BAIDU_API_KEY: ${{ secrets.BAIDU_API_KEY }}
-          BAIDU_BASE_URL: ${{ secrets.BAIDU_BASE_URL }}
+          # Canonical pool (config/default.yaml; `ol init` mirrors it into
+          # config/local.yaml). ModelPool resolves every ${VAR} eagerly, so
+          # all three keys must be present.
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          # Explicit per-1M-token USD rates for the cost gate, as JSON:
+          #   {"ark-code-latest": [in, out], "glm-4.7-flash": [...], ...}
+          # A repo *variable* (not a secret). Unset -> the gate fails closed
+          # on the first estimate rather than guessing a price. See
+          # docs/real_llm_runbook.md §Cost discipline.
+          OL_REAL_LLM_RATES: ${{ vars.OL_REAL_LLM_RATES }}
           PYTHONPATH: src
         run: |
           echo "Real-LLM nightly run starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -82,6 +88,5 @@ jobs:
           echo "Exit code: ${{ job.status }}"
           echo "Tests run: see pytest-real-llm.log"
           echo "Cost: see cost_estimator.summary() in test output"
-          echo "If cost > $0.10/night for 4 tests, recalibrate rates in"
-          echo "  tests/real_llm/cost_estimator.py (quarterly). See"
-          echo "  docs/real_llm_runbook.md."
+          echo "If cost > $0.10/night for 4 tests, refresh OL_REAL_LLM_RATES"
+          echo "  (quarterly). See docs/real_llm_runbook.md §Recalibration cadence."

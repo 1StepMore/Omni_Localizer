@@ -17,6 +17,18 @@ except ImportError:
     load_from_checkpoint = None  # type: ignore[assignment]
 
 
+def is_comet_available() -> bool:
+    """True when the optional ``unbabel-comet`` dependency is importable.
+
+    ``download_model`` / ``load_from_checkpoint`` are set to ``None`` at
+    import time when ``comet`` is absent (see the try/except above). Callers
+    gate scorer construction on this so selecting ``--scorer comet`` without
+    the optional dependency degrades to no scorer with one warning, instead
+    of raising from ``_ensure_model`` once per judged unit.
+    """
+    return download_model is not None and load_from_checkpoint is not None
+
+
 class COMETService:
     DEFAULT_MODEL = "Unbabel/XCOMET-XL"
 

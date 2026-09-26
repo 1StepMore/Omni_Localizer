@@ -7,7 +7,7 @@ Contract (scenarios 4-7):
    ExitCode.PIPELINE_ERROR, output contains "[FAIL]" AND the
    "run 'ol init'" hint.
 6. `ol doctor` on a valid pool but a referenced ${VAR} is unset
-   (OPENCODE_GO_KEY deleted + .env auto-load neutralized) → exit 1,
+   (ARK_API_KEY deleted + .env auto-load neutralized) → exit 1,
    "[FAIL]" for the env check.
 7. `--json` emits ONE parseable object {"ok": bool, "checks": {5 keys}}.
 8. `doctor` appears in `ol --help` output.
@@ -53,18 +53,18 @@ target_lang: zh
 llm_pool:
   translation:
     - provider: openai
-      model: mimo-v2.5
+      model: ark-code-latest
       priority: 1
       role: translation
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
   judging:
     - provider: openai
-      model: mimo-v2.5
+      model: ark-code-latest
       priority: 1
       role: judging
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
     - provider: openai
       model: glm-4.7-flash
       priority: 2
@@ -73,17 +73,17 @@ llm_pool:
       base_url: "https://open.bigmodel.cn/api/paas/v4"
   restoration:
     - provider: openai
-      model: glm-4.7-flash
+      model: ark-code-latest
       priority: 1
+      role: restoration
+      api_key: "${ARK_API_KEY}"
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+    - provider: openai
+      model: glm-4.7-flash
+      priority: 2
       role: restoration
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-    - provider: openai
-      model: mimo-v2.5
-      priority: 2
-      role: restoration
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
 """
 
 
@@ -127,16 +127,16 @@ def test_doctor_fail_one_model_role(tmp_path):
 
 
 def test_doctor_fail_missing_env_var(tmp_path, monkeypatch):
-    """Scenario 6: valid pool but ${OPENCODE_GO_KEY} unset → exit 1, env check FAIL."""
+    """Scenario 6: valid pool but ${ARK_API_KEY} unset → exit 1, env check FAIL."""
     cfg = _write_valid_config(tmp_path)
 
     # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
     # FIXED path (loader.py:62-69) — NOT OL_DOTENV, NOT cwd — and would
-    # re-introduce OPENCODE_GO_KEY via os.environ.setdefault. Patch it out.
+    # re-introduce ARK_API_KEY via os.environ.setdefault. Patch it out.
     import ol_config.loader as loader_mod
 
     monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
-    monkeypatch.delenv("OPENCODE_GO_KEY", raising=False)
+    monkeypatch.delenv("ARK_API_KEY", raising=False)
 
     result = runner.invoke(app, ["doctor", "--config", str(cfg)], env=ENV)
     assert result.exit_code == ExitCode.PIPELINE_ERROR, (

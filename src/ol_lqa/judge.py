@@ -1,13 +1,62 @@
 import asyncio
-from typing import Any
+from typing import Any, Protocol
 
 from ol_core.dataclass import EvaluationResult, RUBRIC_WEIGHTS
 
 
+class Scorer(Protocol):
+    """Pluggable scorer interface shared by ScorerService and COMETService.
+
+    OL#72: ``JudgeService`` accepts any object implementing this method.
+    Both implementations are async and return an ``EvaluationResult`` whose
+    ``scorer_scores`` / ``mqm_spans`` are merged into the judge result.
+    """
+
+    async def score_and_evaluate(
+        self,
+        source: str,
+        target: str,
+        unit_id: str,
+        source_lang: str,
+        target_lang: str,
+    ) -> EvaluationResult:
+        ...  # pragma: no cover - structural typing only
+
+
 class JudgeService:
-    def __init__(self, pass_threshold: float = 7.0, model_pool=None) -> None:
+    def __init__(
+        self,
+        pass_threshold: float = 7.0,
+        model_pool=None,
+        scorer: Scorer | None = None,
+    ) -> None:
         self._pass_threshold = pass_threshold
         self._model_pool = model_pool
+        self._scorer: Scorer | None = scorer
+
+    async def _with_scorer(
+        self,
+        result: EvaluationResult,
+        source: str,
+        target: str,
+        unit_id: str,
+        source_lang: str,
+        target_lang: str,
+    ) -> EvaluationResult:
+        """Merge the optional scorer's output into ``result`` (OL#72).
+
+        No-op when no scorer is configured. Preserves the judge result's
+        own judge_scores/warnings; scorer_scores and mqm_spans come from
+        the scorer.
+        """
+        if self._scorer is None:
+            return result
+        scorer_result = await self._scorer.score_and_evaluate(
+            source, target, unit_id, source_lang, target_lang,
+        )
+        result.scorer_scores.update(scorer_result.scorer_scores)
+        result.mqm_spans = scorer_result.mqm_spans
+        return result
 
     @staticmethod
     def _rescale(raw: float) -> float:
@@ -65,7 +114,7 @@ class JudgeService:
                     temperature=self._JUDGE_TEMPERATURE,
                 )
             except Exception as pool_err:  # expected — return safe fallback result
-                return EvaluationResult(
+                result = EvaluationResult(
                     unit_id=unit_id,
                     scorer_scores={},
                     judge_scores={
@@ -78,6 +127,9 @@ class JudgeService:
                     format_errors=[],
                     warnings=[f"LQA judge error ({type(pool_err).__name__}: {pool_err})"],
                 )
+                return await self._with_scorer(
+                    result, source, target, unit_id, source_lang, target_lang,
+                )
             judge_scores = self._remap_llm_fields(result)
             format_errors = result.get("format_errors", [])
             warnings: list[str] = []
@@ -86,13 +138,16 @@ class JudgeService:
                 warnings.append(
                     f"Judge score {overall:.1f} below threshold {self._pass_threshold}"
                 )
-            return EvaluationResult(
-                unit_id=unit_id,
-                scorer_scores={},
-                judge_scores=judge_scores,
-                format_preserved=len(format_errors) == 0,
-                format_errors=format_errors,
-                warnings=warnings,
+            return await self._with_scorer(
+                EvaluationResult(
+                    unit_id=unit_id,
+                    scorer_scores={},
+                    judge_scores=judge_scores,
+                    format_preserved=len(format_errors) == 0,
+                    format_errors=format_errors,
+                    warnings=warnings,
+                ),
+                source, target, unit_id, source_lang, target_lang,
             )
 
         loop = asyncio.get_event_loop()
@@ -104,7 +159,7 @@ class JudgeService:
                 target,
             )
         except Exception as sync_err:  # expected — return safe fallback result
-            return EvaluationResult(
+            result = EvaluationResult(
                 unit_id=unit_id,
                 scorer_scores={},
                 judge_scores={
@@ -117,19 +172,25 @@ class JudgeService:
                 format_errors=[],
                 warnings=[f"LQA sync judge error ({type(sync_err).__name__}: {sync_err})"],
             )
+            return await self._with_scorer(
+                result, source, target, unit_id, source_lang, target_lang,
+            )
 
         warnings = []
         overall = self._compute_overall_score(scores)
         if overall < self._pass_threshold:
             warnings.append(f"Judge score {overall:.1f} below threshold {self._pass_threshold}")
 
-        return EvaluationResult(
-            unit_id=unit_id,
-            scorer_scores={},
-            judge_scores=scores,
-            format_preserved=True,
-            format_errors=[],
-            warnings=warnings,
+        return await self._with_scorer(
+            EvaluationResult(
+                unit_id=unit_id,
+                scorer_scores={},
+                judge_scores=scores,
+                format_preserved=True,
+                format_errors=[],
+                warnings=warnings,
+            ),
+            source, target, unit_id, source_lang, target_lang,
         )
 
     # WAVE 4 (L-C7): replaced the naive mock scorer (length-only heuristic)

@@ -6,71 +6,97 @@ enable_lqa: true
 lqa_threshold: 4.0
 lqa_max_retries: 2
 cache_system_prompt: true
-# NOTE (2026-06-14): Slim-test config. llm_pool mirrors config/local.yaml.
-# Created because .omo/run-e2e-slim.sh references config/slim-test.yaml
-# (line 22) and the file was missing. If the model pool changes in
-# local.yaml, mirror it here.
-# 2026-06-17 round 3: lower to 5 (mirror OPT-12 fix in local.yaml).
+# Mirror config/default.yaml (the source of truth): canonical 3-provider pool
+# (ark-code-latest + glm-4.7-flash + minimaxai/minimax-m3), all api_key/base_url
+# as ${ENV_VAR} refs. Parity is locked by
+# tests/test_model_pool_config_parity.py — keep the two in sync.
 max_xliff_concurrent: 5
 llm_pool:
   translation:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "translation"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "translation"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "translation"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 60.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: translation
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: translation
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: translation
   judging:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "judging"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "judging"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
-    - provider: "openai"
-      model: "agnes-2.0-flash"
-      priority: 3
-      role: "judging"
-      api_key: "${AGNES_API_KEY}"
-      base_url: "https://apihub.agnes-ai.com/v1"
-      timeout: 60.0
-
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: judging
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: judging
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: judging
   restoration:
-    - provider: "openai"
-      model: "deepseek-v4-flash"
-      priority: 1
-      role: "restoration"
-      api_key: "${OPENCODE_GO_KEY}"
-      base_url: "${OPENCODE_GO_BASE_URL}"
-      timeout: 60.0
-    - provider: "openai"
-      model: "glm-4-flash"
-      priority: 2
-      role: "restoration"
-      api_key: "${ZHIPU_API_KEY}"
-      base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 60.0
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: restoration
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: restoration
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: restoration
+  profiling:
+  - provider: openai
+    model: ark-code-latest
+    api_key: ${ARK_API_KEY}
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    timeout: 120.0
+    priority: 1
+    role: profiling
+  - provider: openai
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 120.0
+    priority: 2
+    role: profiling
+  - provider: openai
+    model: minimaxai/minimax-m3
+    api_key: ${NVIDIA_NIM_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    timeout: 120.0
+    priority: 3
+    role: profiling

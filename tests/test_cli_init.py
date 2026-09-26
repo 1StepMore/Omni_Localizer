@@ -6,7 +6,7 @@ Contract (scenarios 1-4):
 2. Overwrite WITHOUT --force is refused with ExitCode.PIPELINE_ERROR (exit 1).
 3. `init` appears in `ol --help` output.
 4. Generated YAML contains ONLY ${ENV_VAR} refs for api_key/base_url — no
-   literal keys (e.g. "glm-4-flash" absent, "${ZHIPU_API_KEY}" present).
+   literal keys (retired pool absent, canonical "${ARK_API_KEY}" present).
 """
 from __future__ import annotations
 
@@ -78,15 +78,15 @@ def test_init_yaml_has_only_env_refs(tmp_path):
     )
 
     text = cfg.read_text(encoding="utf-8")
-    # No literal old keys / providers.
-    assert "glm-4-flash" not in text
-    assert "agnes" not in text.lower()
-    assert "deepseek-v4-flash" not in text
-    # ${ENV_VAR} refs present.
+    # No retired-pool literals / provider refs.
+    assert "mimo" not in text.lower()
+    assert "z-ai/glm-5.2" not in text
+    assert "OPENCODE_GO" not in text
+    assert "AGNES" not in text
+    # Canonical ${ENV_VAR} refs present.
+    assert "${ARK_API_KEY}" in text
     assert "${ZHIPU_API_KEY}" in text
     assert "${NVIDIA_NIM_API_KEY}" in text
-    assert "${OPENCODE_GO_KEY}" in text
-    assert "${OPENCODE_GO_BASE_URL}" in text
 
     # Every api_key is a ${ENV_VAR} ref (never a literal).
     data = yaml.safe_load(text)

@@ -213,15 +213,15 @@ Shielding extracts them as opaque placeholders. The LLM only sees the surroundin
 Each role can list multiple models, each with a `priority` (1 = highest). Failover inside a role is automatic:
 
 ```
-translation priority=1 (glm-4-flash)
+translation priority=1 (ark-code-latest)
        │
        │  fail / 429 / 5xx
        ▼
-translation priority=2 (agnes-2.0-flash)
+translation priority=2 (glm-4.7-flash)
        │
        │  fail
        ▼
-translation priority=3 (deepseek-v4-flash)
+translation priority=3 (minimaxai/minimax-m3)
        │
        │  fail
        ▼
