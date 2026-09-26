@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **OL#94 — user-facing model-pool surfaces reconciled to `config/default.yaml`**: `ol init` preset + env hints, OL/suite `.env.example`, `config/slim-test.yaml`, real-LLM gate/dummy-key fixtures, and OL docs (`AGENTS.md`, `README.md`, `AGENT_USAGE.md`, `docs/{ARCHITECTURE,API,TROUBLESHOOTING,real_llm_runbook}.md`) now describe the canonical Ark + Zhipu + NVIDIA pool (`ark-code-latest` / `glm-4.7-flash` / `minimaxai/minimax-m3`); retired mimo-v2.5 / z-ai/glm-5.2 / OpenCode Go / Agnes refs dropped. Parity is locked by the OL#94 regression test above.
 
+- **OL#99 — Zhipu GLM promoted to priority 1; Ark demoted to last-resort**: the canonical pool order is now `glm-4.7-flash` (p1) → `minimaxai/minimax-m3` (p2) → `ark-code-latest` (p3), across all four roles. The Ark channel's quota is exhausted in the operator's production line, so Ark at p1 meant every call first burned retry latency on a dead channel before falling back. All three providers are retained, so the required env-var set is unchanged (`ARK_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY`) and the OL#94 parity test still holds. Rotated together: `config/default.yaml`, `config/test_universal.yaml`, `config/slim-test.yaml`, the `ol init` preset (`src/cli/init.py`), the real-LLM cost-gate primary model, and OL docs.
+
 ### Changed
 
 - **T5.0 Version bumped to 0.6.0** (was 0.5.9). All changes backward compatible.
@@ -72,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Issue #29 — YAKE is the primary term extractor**: KeyBERT removed entirely from `ol_terminology.extractor`. YAKE is now the sole extractor (was the fallback). Removes `keybert` and `transformers` from `[ml]` optional dependencies. The `sentence-transformers` dep stays (used by `ol_tm/service.py` for TM semantic search). Also fixes a previously-undetected bug: CLI/MCP `extract-terms` were sorting with `reverse=True`, which selected LEAST relevant terms under YAKE (lower = more relevant). Now sorts with `reverse=False`.
 
 ### Fixed
+
+- **OL#99 — one unset provider key no longer disables the whole model pool** (`src/ol_pool/router.py`): `_build_model_list` resolved every model's `${VAR}` inside `__init__`, so a missing priority-1 key raised out of the `Router` call and `ModelPoolInitError` took every role down — a user holding two working providers could not use OL at all, contradicting the documented two-layer env contract. `partition_usable_models()` now skips unresolvable models with one WARNING naming the provider/model/variable, and both `_build_model_list` and `_build_fallbacks` consume the same filtered mapping (a fallback can no longer name a model the Router never received). Fail-closed is preserved where it matters: a role that loses *every* model still raises, and the message now names the role and the variables instead of only the variable. Locked by `tests/test_ol99_pool_env_fallback.py` (6 cases, verified RED against the pre-fix router).
 
 - **OL#53 — Polish pass guards against source-language residual revert** (`src/ol_xliff/polish.py`): In zh→en direction, skips corrections that would restore source-language text, preventing the polish pass from reverting translated content back to the source.
 

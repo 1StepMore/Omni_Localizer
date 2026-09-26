@@ -1,10 +1,10 @@
 """ol init — Bootstrap a local OL config (config/local.yaml).
 
 Generates a YAML config with the unified 3-provider LLM pool that mirrors
-``config/default.yaml`` (the single source of truth): ark-code-latest
-(Volcengine Ark) + glm-4.7-flash (Zhipu) + minimaxai/minimax-m3 (NVIDIA
-NIM). Every api_key/base_url is a ${ENV_VAR} reference — literal keys are
-never written.
+``config/default.yaml`` (the single source of truth), in priority order:
+glm-4.7-flash (Zhipu) + minimaxai/minimax-m3 (NVIDIA NIM) + ark-code-latest
+(Volcengine Ark). Every api_key/base_url is a ${ENV_VAR} reference — literal
+keys are never written.
 """
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from cli._shared import ExitCode
 # timeout 120.0, all api_key/base_url as ${ENV_VAR} refs. Parity is locked by
 # tests/test_model_pool_config_parity.py — keep the two in sync.
 _POOL_MODELS: tuple[tuple[str, str, str], ...] = (
-    ("ark-code-latest", "${ARK_API_KEY}", "https://ark.cn-beijing.volces.com/api/coding/v3"),
     ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
     ("minimaxai/minimax-m3", "${NVIDIA_NIM_API_KEY}", "https://integrate.api.nvidia.com/v1"),
+    ("ark-code-latest", "${ARK_API_KEY}", "https://ark.cn-beijing.volces.com/api/coding/v3"),
 )
 
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
@@ -39,11 +39,12 @@ UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
     for role in ("translation", "judging", "restoration", "profiling")
 }
 
-# Env vars the generated config references (for the export hint).
+# Env vars the generated config references (for the export hint). Order is
+# presentation-only (parity compares sets) but must track _POOL_MODELS.
 PRESET_ENV_VARS: tuple[str, ...] = (
-    "ARK_API_KEY",
     "ZHIPU_API_KEY",
     "NVIDIA_NIM_API_KEY",
+    "ARK_API_KEY",
 )
 
 

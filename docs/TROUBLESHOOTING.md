@@ -71,7 +71,7 @@ The same applies to `ZHIPU_API_KEY` and `NVIDIA_NIM_API_KEY`. The default config
 **Symptom**
 
 ```
-litellm.RateLimitError: Rate limit reached for model ark-code-latest
+litellm.RateLimitError: Rate limit reached for model glm-4.7-flash
 ```
 
 **Cause**
@@ -224,15 +224,20 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
   llm_pool:
     restoration:
       - provider: "openai"
-        model: "ark-code-latest"
-        priority: 1
-        api_key: "${ARK_API_KEY}"
-        base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
-      - provider: "openai"
         model: "glm-4.7-flash"
-        priority: 2
+        priority: 1
         api_key: "${ZHIPU_API_KEY}"
         base_url: "https://open.bigmodel.cn/api/paas/v4"
+      - provider: "openai"
+        model: "minimaxai/minimax-m3"
+        priority: 2
+        api_key: "${NVIDIA_NIM_API_KEY}"
+        base_url: "https://integrate.api.nvidia.com/v1"
+      - provider: "openai"
+        model: "ark-code-latest"
+        priority: 3
+        api_key: "${ARK_API_KEY}"
+        base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
   ```
 
 - The repair pipeline will fall back to layer 4 (safe substitution) only if layers 1–3 leave missing placeholders. In the worst case the original link/image/code block is reinserted verbatim — the output is never worse than the input for that construct.
@@ -286,7 +291,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `ark-code-latest` is the primary judge; `glm-4.7-flash` and `minimaxai/minimax-m3` are fallbacks.
+- Add a better `judging` model — `glm-4.7-flash` is the primary judge; `minimaxai/minimax-m3` and `ark-code-latest` are fallbacks.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.
