@@ -174,7 +174,7 @@ else:
     Router = None  # type: ignore[assignment,misc]
 
 from ol_config.loader import load_config
-from ol_config.schema import LLMPoolConfig
+from ol_config.schema import LLMModelConfig, LLMPoolConfig
 from ol_logging.core import get_logger
 
 
@@ -296,6 +296,57 @@ def _resolve_env_vars(value: str | None) -> str | None:
     return "".join(result)
 
 
+def _unresolved_env_vars(model: LLMModelConfig) -> list[str]:
+    """Names of ``${VAR}`` refs in a model's api_key/base_url that are unset.
+
+    Mirrors :func:`_resolve_env_vars`' parsing without raising, so it can be
+    used as a pre-filter. ``_resolve_env_vars`` still runs on every model that
+    survives, so the resolved value stays fail-closed.
+    """
+    missing: list[str] = []
+    for value in (model.api_key, model.base_url):
+        if not value:
+            continue
+        for part in value.split("${")[1:]:
+            close_idx = part.find("}")
+            if close_idx == -1:
+                continue
+            name = part[:close_idx]
+            if name and name not in missing and os.environ.get(name) is None:
+                missing.append(name)
+    return missing
+
+
+def partition_usable_models(
+    pool: LLMPoolConfig,
+) -> tuple[dict[str, list], list[tuple[str, LLMModelConfig, list[str]]]]:
+    """Split each role's models into usable ones and skipped-but-reasoned ones.
+
+    A missing key for ONE provider must not disable the whole pool. The
+    canonical pool lists three providers per role, so a user holding only the
+    priority-2/3 keys can still serve every request; previously the missing
+    priority-1 key raised inside ``_build_model_list`` at ``__init__`` and
+    every role became unusable — a hard fail that contradicted the documented
+    two-layer env contract (``schema._check_env_vars`` WARNS at startup, and a
+    model is only unusable once actually selected).
+
+    Returns ``(usable_by_role, skipped)`` where ``skipped`` carries the role,
+    the model, and its unresolved env-var names so the caller can warn once.
+    """
+    usable: dict[str, list] = {}
+    skipped: list[tuple[str, LLMModelConfig, list[str]]] = []
+    for role in ("translation", "judging", "restoration", "profiling"):
+        kept: list = []
+        for model in getattr(pool, role, []) or []:
+            missing = _unresolved_env_vars(model)
+            if missing:
+                skipped.append((role, model, missing))
+            else:
+                kept.append(model)
+        usable[role] = kept
+    return usable, skipped
+
+
 # 2026-06-18 round 16 Phase B1: circuit breaker for LLM calls.
 class _LogBreakerListener(pybreaker.CircuitBreakerListener):
     """Logs circuit breaker state transitions at WARNING level."""
@@ -359,13 +410,48 @@ class ModelPool:
             )
             for role in ("translation", "judging", "restoration", "profiling")
         }
+        # Fail-open per model, fail-closed per role (OL#99): one unset
+        # provider key must not disable every role, but a role that lost EVERY
+        # model to the filter is a hard error. Starvation is read off what the
+        # filter removed -- an already-empty role (or a test-double pool) has
+        # nothing to starve and is the config's business, not this filter's.
+        self._usable_by_role, _skipped = partition_usable_models(config.llm_pool)
+        for role, model, missing in _skipped:
+            _logger.warning(
+                "Skipping %s/%s for role %r: %s not set. "
+                "Set it to use this model; the pool continues with the "
+                "remaining priorities.",
+                model.provider, model.model, role, ", ".join(missing),
+            )
+        starved = sorted({
+            role
+            for role, _model, _missing in _skipped
+            if not self._usable_by_role.get(role)
+        })
+        if starved:
+            unconfigured = sorted({
+                var
+                for _role, _model, missing in _skipped
+                for var in missing
+            })
+            raise ModelPoolInitError(
+                f"No usable model for role(s) {', '.join(starved)}: every "
+                f"configured model references unset env var(s) "
+                f"{', '.join(unconfigured)}. "
+                f"Set them, set OMNI_TEST_FAKE_LLM=1 for fake mode, "
+                f"or fix the config file."
+            )
         try:
             self._router = Router(
-                model_list=self._build_model_list(config.llm_pool),
+                model_list=self._build_model_list(
+                    config.llm_pool, usable=self._usable_by_role,
+                ),
                 routing_strategy="simple-shuffle",
                 num_retries=2,
                 timeout=120.0,
-                fallbacks=self._build_fallbacks(config.llm_pool),
+                fallbacks=self._build_fallbacks(
+                    config.llm_pool, usable=self._usable_by_role,
+                ),
                 # E2E-83: the previous 'enforce_model_rate_limits' pre-call
                 # check maintained a per-model RPM token bucket and raised
                 # litellm.RouterRateLimitError synchronously. For large
@@ -438,10 +524,15 @@ class ModelPool:
             pass
         return result
 
-    def _build_model_list(self, pool: LLMPoolConfig) -> list[dict]:
+    def _build_model_list(
+        self,
+        pool: LLMPoolConfig,
+        usable: dict[str, list] | None = None,
+    ) -> list[dict]:
+        usable = usable if usable is not None else partition_usable_models(pool)[0]
         model_list = []
         for role in ("translation", "judging", "restoration", "profiling"):
-            for model in getattr(pool, role, []):
+            for model in usable.get(role, []):
                 litellm_params = {
                     "model": f"{model.provider}/{model.model}",
                 }
@@ -479,7 +570,11 @@ class ModelPool:
         """
         return dict(self._rate_limit_hits)
 
-    def _build_fallbacks(self, pool: LLMPoolConfig) -> list[dict]:
+    def _build_fallbacks(
+        self,
+        pool: LLMPoolConfig,
+        usable: dict[str, list] | None = None,
+    ) -> list[dict]:
         """Build fallbacks list per role based on priority ordering.
 
         litellm Router fallbacks format: [{"model_group_name": ["fallback_model_id", ...]}]
@@ -494,10 +589,14 @@ class ModelPool:
         <= 0 from fallback chains — they'd be dead-on-arrival. The
         Pydantic schema already enforces ge=1, this is belt-and-suspenders
         for manually-constructed configs that bypass validation.
+
+        OL#99: `usable` must be the same filtered mapping _build_model_list
+        used, or a fallback would name a model the Router never received.
         """
+        usable = usable if usable is not None else partition_usable_models(pool)[0]
         fallbacks = []
         for role in ("translation", "judging", "restoration", "profiling"):
-            models = [m for m in getattr(pool, role, []) if m.requests_per_minute > 0]
+            models = [m for m in usable.get(role, []) if m.requests_per_minute > 0]
             sorted_models = sorted(models, key=lambda m: m.priority)
             if len(sorted_models) > 1:
                 fallback_models = [
@@ -508,7 +607,7 @@ class ModelPool:
         # Cross-role safety net: if judging/restoration both fail, fall back
         # to the translation role's models. This trades quality for liveness.
         translation_models = [
-            m for m in getattr(pool, "translation", [])
+            m for m in usable.get("translation", [])
             if m.requests_per_minute > 0
         ]
         if translation_models:
@@ -517,7 +616,7 @@ class ModelPool:
                 for m in sorted(translation_models, key=lambda m: m.priority)
             ]
             for role in ("judging", "restoration"):
-                if not getattr(pool, role, []):
+                if not usable.get(role, []):
                     fallbacks.append({role: translation_fallback_ids})
 
         return fallbacks
