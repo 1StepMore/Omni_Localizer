@@ -14,13 +14,6 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: translation
-  - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 3
-    role: translation
   judging:
   - provider: openai
     model: glm-4.7-flash
@@ -36,13 +29,6 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: judging
-  - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 3
-    role: judging
   restoration:
   - provider: openai
     model: glm-4.7-flash
@@ -57,11 +43,4 @@ llm_pool:
     base_url: https://integrate.api.nvidia.com/v1
     timeout: 120.0
     priority: 2
-    role: restoration
-  - provider: openai
-    model: ark-code-latest
-    api_key: ${ARK_API_KEY}
-    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
-    timeout: 120.0
-    priority: 3
     role: restoration

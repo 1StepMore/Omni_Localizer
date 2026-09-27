@@ -22,7 +22,6 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
    ```
    export ZHIPU_API_KEY=...      # Zhipu AI (priority-1 primary)
    export NVIDIA_NIM_API_KEY=... # NVIDIA NIM (priority-2 fallback)
-   export ARK_API_KEY=...        # Volcengine Ark (priority-3 fallback)
    ```
 
 4. **Invoke via CLI**:
@@ -80,7 +79,6 @@ Set in shell before running:
 ```bash
 export ZHIPU_API_KEY=your-zhipu-key    # required for priority-1 primary
 export NVIDIA_NIM_API_KEY=...          # required for priority-2 fallback
-export ARK_API_KEY=your-ark-key        # required for priority-3 fallback
 ```
 
 ### Config Structure

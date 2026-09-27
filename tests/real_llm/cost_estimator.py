@@ -105,11 +105,11 @@ class CostEstimator:
             budget_usd=5.0, rates=rates_from_env(),
         )
         for unit in corpus:
-            est = estimator.estimate_call("ark-code-latest", in_tok, out_tok)
+            est = estimator.estimate_call("glm-4.7-flash", in_tok, out_tok)
             if estimator.would_exceed_budget(est):
                 pytest.skip("budget exceeded")
             response = await pool.translate(unit)
-            estimator.record_call("ark-code-latest", in_tok, out_tok)
+            estimator.record_call("glm-4.7-flash", in_tok, out_tok)
     """
     budget_usd: float = 10.0
     rates: dict[str, tuple[float, float]] = field(default_factory=dict)

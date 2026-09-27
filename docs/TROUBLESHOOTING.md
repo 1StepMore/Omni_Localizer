@@ -43,12 +43,12 @@ The Omni_Suite `.bat` file from the README wraps exactly this pattern.
 **Symptom**
 
 ```
-ValueError: Environment variable 'ARK_API_KEY' referenced in api_key but not set
+ValueError: Environment variable 'ZHIPU_API_KEY' referenced in api_key but not set
 ```
 
 **Cause**
 
-`config/default.yaml` references `${ARK_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py:17` walks every `${VAR}` in the loaded config and raises if the env var is unset.
+`config/default.yaml` references `${ZHIPU_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py:17` walks every `${VAR}` in the loaded config and raises if the env var is unset.
 
 **Fix**
 
@@ -56,13 +56,13 @@ Either set the key, or run in fake-LLM mode (which short-circuits the check, see
 
 ```bash
 # Option A — real key
-export ARK_API_KEY=sk-your-key
+export ZHIPU_API_KEY=sk-your-key
 
 # Option B — hermetic, no LLM call
 export OMNI_TEST_FAKE_LLM=1
 ```
 
-The same applies to `ZHIPU_API_KEY` and `NVIDIA_NIM_API_KEY`. The default config uses ARK/ZHIPU/NVIDIA; replace the pool if you want a different provider.
+The same applies to `NVIDIA_NIM_API_KEY`. The default config uses ZHIPU/NVIDIA; replace the pool if you want a different provider.
 
 ---
 
@@ -233,11 +233,6 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
         priority: 2
         api_key: "${NVIDIA_NIM_API_KEY}"
         base_url: "https://integrate.api.nvidia.com/v1"
-      - provider: "openai"
-        model: "ark-code-latest"
-        priority: 3
-        api_key: "${ARK_API_KEY}"
-        base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
   ```
 
 - The repair pipeline will fall back to layer 4 (safe substitution) only if layers 1–3 leave missing placeholders. In the worst case the original link/image/code block is reinserted verbatim — the output is never worse than the input for that construct.
@@ -291,7 +286,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `glm-4.7-flash` is the primary judge; `minimaxai/minimax-m3` and `ark-code-latest` are fallbacks.
+- Add a better `judging` model — `glm-4.7-flash` is the primary judge; `minimaxai/minimax-m3` is the fallback.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.

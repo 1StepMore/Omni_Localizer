@@ -62,7 +62,6 @@ and the suite-level [Pipeline Selection Strategy](https://github.com/1StepMore/O
 Required environment variables (the canonical pool in `config/default.yaml`):
 - `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-1 primary)
 - `NVIDIA_NIM_API_KEY` - NVIDIA NIM (`minimaxai/minimax-m3`, priority-2 fallback)
-- `ARK_API_KEY` - Volcengine Ark (`ark-code-latest`, priority-3 fallback)
 
 Run `ol init` to generate `config/local.yaml` with this pool.
 

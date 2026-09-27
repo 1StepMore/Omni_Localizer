@@ -1,10 +1,9 @@
 """ol init — Bootstrap a local OL config (config/local.yaml).
 
-Generates a YAML config with the unified 3-provider LLM pool that mirrors
+Generates a YAML config with the unified 2-provider LLM pool that mirrors
 ``config/default.yaml`` (the single source of truth), in priority order:
-glm-4.7-flash (Zhipu) + minimaxai/minimax-m3 (NVIDIA NIM) + ark-code-latest
-(Volcengine Ark). Every api_key/base_url is a ${ENV_VAR} reference — literal
-keys are never written.
+glm-4.7-flash (Zhipu) + minimaxai/minimax-m3 (NVIDIA NIM). Every
+api_key/base_url is a ${ENV_VAR} reference — literal keys are never written.
 """
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from cli._shared import ExitCode
 _POOL_MODELS: tuple[tuple[str, str, str], ...] = (
     ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
     ("minimaxai/minimax-m3", "${NVIDIA_NIM_API_KEY}", "https://integrate.api.nvidia.com/v1"),
-    ("ark-code-latest", "${ARK_API_KEY}", "https://ark.cn-beijing.volces.com/api/coding/v3"),
 )
 
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
@@ -44,7 +42,6 @@ UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
 PRESET_ENV_VARS: tuple[str, ...] = (
     "ZHIPU_API_KEY",
     "NVIDIA_NIM_API_KEY",
-    "ARK_API_KEY",
 )
 
 

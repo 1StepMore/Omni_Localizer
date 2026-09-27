@@ -221,10 +221,6 @@ translation priority=2 (minimaxai/minimax-m3)
        │
        │  fail
        ▼
-translation priority=3 (ark-code-latest)
-       │
-       │  fail
-       ▼
 restoration pool  (cross-role safety net, router.py:373-385)
        │
        │  fail
