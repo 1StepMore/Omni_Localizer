@@ -3,7 +3,7 @@
 All tests in this file are gated by ``@pytest.mark.real_llm_required``,
 which the ``conftest.py`` ``pytest_collection_modifyitems`` hook maps to
 ``pytest.mark.skipif(not os.environ.get("OMNI_RUN_REAL_LLM"))`` plus
-``ARK_API_KEY`` must be set (the conftest's ``real_model_pool``
+``ZHIPU_API_KEY`` must be set (the conftest's ``real_model_pool``
 fixture raises a clearer skip if the key is missing).
 
 In normal CI (no env vars set), every test in this file SKIPS without
