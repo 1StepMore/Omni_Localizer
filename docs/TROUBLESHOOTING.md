@@ -62,7 +62,7 @@ export ZHIPU_API_KEY=sk-your-key
 export OMNI_TEST_FAKE_LLM=1
 ```
 
-The same applies to `NVIDIA_NIM_API_KEY`. The default config uses ZHIPU/NVIDIA; replace the pool if you want a different provider.
+The same applies to `AMD_API_KEY` and `NVIDIA_NIM_API_KEY`. The default config uses AMD/ZHIPU/NVIDIA; replace the pool if you want a different provider.
 
 ---
 
@@ -224,13 +224,18 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
   llm_pool:
     restoration:
       - provider: "openai"
-        model: "glm-4.7-flash"
+        model: "DeepSeek-V4.1-Flash"
         priority: 1
+        api_key: "${AMD_API_KEY}"
+        base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      - provider: "openai"
+        model: "glm-4.7-flash"
+        priority: 2
         api_key: "${ZHIPU_API_KEY}"
         base_url: "https://open.bigmodel.cn/api/paas/v4"
       - provider: "openai"
         model: "minimaxai/minimax-m3"
-        priority: 2
+        priority: 3
         api_key: "${NVIDIA_NIM_API_KEY}"
         base_url: "https://integrate.api.nvidia.com/v1"
   ```
@@ -286,7 +291,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `glm-4.7-flash` is the primary judge; `minimaxai/minimax-m3` is the fallback.
+- Add a better `judging` model — `DeepSeek-V4.1-Flash` is the primary judge; `glm-4.7-flash` and `minimaxai/minimax-m3` are the fallbacks.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.

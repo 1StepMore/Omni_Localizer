@@ -380,7 +380,7 @@ Source/target language is stored on the `TMXFile` instance and emitted as `xml:l
 | `OMNI_TEST_FAKE_LLM=1` | Skip real LLM calls; `ModelPool` returns placeholders. Required for hermetic tests. |
 | `OL_CONFIG_PATH=path` | Override default LLM config for the MCP server. |
 | `MCP_SHARED_SECRET=…` | Enable shared-secret auth on the MCP server; every tool must then pass `shared_secret`. |
-| `ZHIPU_API_KEY`, `NVIDIA_NIM_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
+| `AMD_API_KEY`, `ZHIPU_API_KEY`, `NVIDIA_NIM_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
 
 ---
 

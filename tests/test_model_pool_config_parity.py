@@ -101,7 +101,9 @@ class TestEnvExampleParity:
     def test_canonical_vars_are_exactly_the_expected_set(self):
         # Guard against silent pool churn: if the pool gains a provider, the
         # env/scenario/init surfaces must be updated in the same change.
-        assert _canonical_env_vars() == {"ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY"}
+        assert _canonical_env_vars() == {
+            "AMD_API_KEY", "ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY",
+        }
 
 
 # ---------------------------------------------------------------------------
