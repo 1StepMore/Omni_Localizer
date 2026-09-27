@@ -43,6 +43,7 @@ _ENV_REF_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 # A scenario that gates on ANY of these is an LLM-keyed scenario and must gate
 # on the full canonical set (its config/default.yaml reads all three roles).
 _LLM_KEY_MARKERS = {
+    "AMD_API_KEY",
     "ARK_API_KEY",
     "ZHIPU_API_KEY",
     "AGNES_API_KEY",
