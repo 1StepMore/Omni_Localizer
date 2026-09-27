@@ -53,7 +53,7 @@ def test_missing_rate_fails_closed() -> None:
     """No rates configured → estimate_call raises before any call is issued."""
     est = CostEstimator(budget_usd=5.0)
     with pytest.raises(KeyError) as exc:
-        est.estimate_call("ark-code-latest", 1000, 1000)
+        est.estimate_call("DeepSeek-V4.1-Flash", 1000, 1000)
     assert RATES_ENV_VAR in str(exc.value)
 
 
@@ -74,7 +74,7 @@ def test_selected_primary_model_matches_canonical_default() -> None:
     """
     data = yaml.safe_load((_OL_ROOT / "config" / "default.yaml").read_text(encoding="utf-8"))
     canonical_primary = data["llm_pool"]["translation"][0]["model"]
-    assert _PRIMARY_MODEL == "glm-4.7-flash"
+    assert _PRIMARY_MODEL == "DeepSeek-V4.1-Flash"
     assert _PRIMARY_MODEL == canonical_primary
 
 
@@ -91,10 +91,10 @@ def test_selected_primary_model_rate_is_priceable() -> None:
 def test_rates_from_env_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         RATES_ENV_VAR,
-        '{"ark-code-latest": [1.5, 3.0], "glm-4.7-flash": [0.5, 1.0]}',
+        '{"DeepSeek-V4.1-Flash": [1.5, 3.0], "glm-4.7-flash": [0.5, 1.0]}',
     )
     rates = rates_from_env()
-    assert rates == {"ark-code-latest": (1.5, 3.0), "glm-4.7-flash": (0.5, 1.0)}
+    assert rates == {"DeepSeek-V4.1-Flash": (1.5, 3.0), "glm-4.7-flash": (0.5, 1.0)}
 
 
 def test_rates_from_env_unset_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:

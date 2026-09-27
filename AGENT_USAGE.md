@@ -20,8 +20,9 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
 
 3. **Configure API keys** in environment:
    ```
-   export ZHIPU_API_KEY=...      # Zhipu AI (priority-1 primary)
-   export NVIDIA_NIM_API_KEY=... # NVIDIA NIM (priority-2 fallback)
+   export AMD_API_KEY=...        # AMD Radeon (priority-1 primary)
+   export ZHIPU_API_KEY=...      # Zhipu AI (priority-2 fallback)
+   export NVIDIA_NIM_API_KEY=... # NVIDIA NIM (priority-3 fallback)
    ```
 
 4. **Invoke via CLI**:
@@ -77,8 +78,9 @@ On error:
 ### Environment Variables
 Set in shell before running:
 ```bash
-export ZHIPU_API_KEY=your-zhipu-key    # required for priority-1 primary
-export NVIDIA_NIM_API_KEY=...          # required for priority-2 fallback
+export AMD_API_KEY=your-amd-key        # required for priority-1 primary
+export ZHIPU_API_KEY=your-zhipu-key    # required for priority-2 fallback
+export NVIDIA_NIM_API_KEY=...          # required for priority-3 fallback
 ```
 
 ### Config Structure
@@ -89,22 +91,40 @@ target_lang: "zh"
 llm_pool:
   translation:
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "DeepSeek-V4.1-Flash"
       priority: 1
+      api_key: "${AMD_API_KEY}"
+      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      role: "translation"
+    - provider: "openai"
+      model: "glm-4.7-flash"
+      priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "translation"
   judging:
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "DeepSeek-V4.1-Flash"
       priority: 1
+      api_key: "${AMD_API_KEY}"
+      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      role: "judging"
+    - provider: "openai"
+      model: "glm-4.7-flash"
+      priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "judging"
   restoration:
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "DeepSeek-V4.1-Flash"
       priority: 1
+      api_key: "${AMD_API_KEY}"
+      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      role: "restoration"
+    - provider: "openai"
+      model: "glm-4.7-flash"
+      priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "restoration"
@@ -194,6 +214,7 @@ ls src/.hermes/skills/ol-localizer/SKILL.md
 1. Read SKILL.md Configuration section
 2. Set required environment variables:
 ```bash
+export AMD_API_KEY=your-amd-key
 export ZHIPU_API_KEY=your-zhipu-key
 ```
 
@@ -206,7 +227,7 @@ python -m ol_cli translate-md input.md -c config/default.yaml -s en -t zh -o out
 ```
 
 2. Common fixes:
-   - Missing API key → Set `ZHIPU_API_KEY` (or one of the other provider keys)
+   - Missing API key → Set `AMD_API_KEY` (or one of the other provider keys)
    - Invalid config → Check `config/default.yaml` exists
    - File not found → Verify input path
    - Rate limit → Wait and retry

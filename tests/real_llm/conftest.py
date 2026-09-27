@@ -12,10 +12,10 @@ the gate env vars are set.
 Gating contract (enforced both here and on individual tests):
 - ``OMNI_RUN_REAL_LLM=1`` — master switch. When unset, real-LLM tests
   skip cleanly without touching the model pool.
-- ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` — the canonical pool env vars
-  (``config/default.yaml`` / ``ol init``). Both must be set: ``ModelPool``
-  resolves every ``${VAR}`` eagerly when it builds the router, so a single
-  missing key aborts instantiation.
+- ``AMD_API_KEY`` / ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` — the
+  canonical pool env vars (``config/default.yaml`` / ``ol init``). All three
+  must be set: ``ModelPool`` resolves every ``${VAR}`` eagerly when it
+  builds the router, so a single missing key aborts instantiation.
 
 Markers (registered in ``pyproject.toml``):
 - ``real_llm_required`` — tests that ALWAYS need a real LLM. Skipped in
@@ -54,8 +54,8 @@ _LOCAL_CONFIG = _OL_ROOT / "config" / "local.yaml"
 _CORPUS_DIR = _OL_ROOT / "tests" / "fixtures" / "real_llm_corpus"
 
 # The canonical pool env vars (config/default.yaml). ModelPool resolves every
-# ${VAR} eagerly, so both are required to build the real router.
-_CANONICAL_KEYS = ("ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY")
+# ${VAR} eagerly, so all three are required to build the real router.
+_CANONICAL_KEYS = ("AMD_API_KEY", "ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY")
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ _REAL_LLM_REQUIRED_SKIP = pytest.mark.skipif(
     reason=(
         "OMNI_RUN_REAL_LLM not set; real-LLM test skipped. "
         "Set OMNI_RUN_REAL_LLM=1 plus the canonical pool keys "
-        "(ZHIPU_API_KEY, NVIDIA_NIM_API_KEY) to enable. "
+        "(AMD_API_KEY, ZHIPU_API_KEY, NVIDIA_NIM_API_KEY) to enable. "
         "See docs/real_llm_runbook.md."
     ),
 )
@@ -79,7 +79,7 @@ _REAL_LLM_OPTIONAL_SKIP = pytest.mark.skipif(
     ),
     reason=(
         "Real LLM unavailable (need OMNI_RUN_REAL_LLM=1 and the canonical "
-        "pool keys ZHIPU_API_KEY/NVIDIA_NIM_API_KEY). "
+        "pool keys AMD_API_KEY/ZHIPU_API_KEY/NVIDIA_NIM_API_KEY). "
         "Test falls back to a mock or is skipped; see docs/real_llm_runbook.md."
     ),
 )
@@ -135,7 +135,7 @@ def real_model_pool():
 
     Skips unless:
       - ``OMNI_RUN_REAL_LLM=1`` (master gate)
-      - ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` are both
+      - ``AMD_API_KEY`` / ``ZHIPU_API_KEY`` / ``NVIDIA_NIM_API_KEY`` are all
         set (ModelPool resolves every ``${VAR}`` eagerly)
 
     The root ``tests/conftest.py`` installs a ``_HeavyImportBlocker``
@@ -168,7 +168,7 @@ def real_model_pool():
         pytest.skip(
             f"Canonical pool env vars not set: {', '.join(missing)}. "
             f"ModelPool resolves every ${{VAR}} eagerly, so all of "
-            f"ZHIPU_API_KEY/NVIDIA_NIM_API_KEY are required. "
+            f"AMD_API_KEY/ZHIPU_API_KEY/NVIDIA_NIM_API_KEY are required. "
             f"See docs/real_llm_runbook.md."
         )
     if not _LOCAL_CONFIG.exists():
