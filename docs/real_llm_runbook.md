@@ -18,6 +18,8 @@ require explicit user authorization for ongoing spend.
 | Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `AMD_API_KEY` / `ZHIPU_API_KEY` set → 4 real-LLM tests RUN against the real model pool. |
 | Local dev (you) | `OMNI_RUN_REAL_LLM=1 AMD_API_KEY=… ZHIPU_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
 
+**What `OMNI_RUN_REAL_LLM` actually does**: in the CLI it **skips the API-key pre-check** (`precheck_api_keys`, which guards `ol translate-md` / `ol translate-xliff`), and in `tests/real_llm/` it is the conftest switch that lets the real-LLM tests run. Naming trap: it does **not** enable real LLM calls — real calls are the production default (`OMNI_TEST_FAKE_LLM=1` disables them) — the variable only *bypasses a fail-fast check*. The provider keys must still be set for the calls to succeed.
+
 **Promote weekly → nightly** after 1 month of stable green runs (per
 plan A11 risk register). The cadence change is a one-line edit in
 `.github/workflows/real-llm-nightly.yml` (`cron: "0 2 * * 0"` →

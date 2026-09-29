@@ -65,8 +65,10 @@ Canonical pool providers (the pool in `config/default.yaml`; BYOK — set at lea
 
 Run `ol init` to generate `config/local.yaml` with this pool.
 
+**Env gate is OR, not AND:** at least one provider key is enough; zero keys fails closed (the error distinguishes "nothing configured" from "configured but not matching this pool"). `OMNI_RUN_REAL_LLM=1` skips the CLI key pre-check — an escape hatch, not a switch that enables real calls (`OMNI_TEST_FAKE_LLM=1` disables them).
+
 ## Pitfalls
-- **API keys not set**: Ensure `AMD_API_KEY` is in environment before invoking
+- **API keys not set**: Set at least one provider key (`AMD_API_KEY` or `ZHIPU_API_KEY`); zero keys fails closed (the error distinguishes "nothing configured" from "configured but not matching this pool")
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
 - **Supported formats**: Both Markdown (.md) and XLIFF (.xlf, .xliff) are supported

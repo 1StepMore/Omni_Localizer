@@ -134,12 +134,20 @@ _ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
 
 def precheck_api_keys(config_path: str | None) -> None:
-    """Fail fast if a required API key env var is missing.
+    """Fail fast only when NO usable API key env var is configured.
 
-    Scans the config YAML for ``${VAR}`` placeholders. If any are
-    referenced but not present in the current process environment
-    AND the FAKE_LLM seam is not enabled, this function prints a
-    clear, actionable error to stderr and raises ``typer.Exit``.
+    Scans the config YAML for ``${VAR}`` placeholders. The pool is
+    BYOK with several providers per role (``router.partition_usable_models``
+    keeps the models whose refs resolve and skips the rest as
+    fallbacks), so holding exactly ONE provider key is a valid
+    configuration. Only the zero-key case is fail-closed, and the
+    error distinguishes the two distinct mistakes:
+
+      (a) no ``*_API_KEY``-shaped var is set at all → nothing is
+          configured; list the refs this config needs + point at docs.
+      (b) key-like vars ARE set but none is referenced by this config
+          (e.g. an ``OPENAI_API_KEY`` against an AMD/Zhipu pool) →
+          configured-but-mismatched; name both sides.
 
     The pre-check is intentionally a lightweight regex scan on the
     raw YAML text — it must NOT import ``ol_pool.router`` (which
@@ -153,6 +161,7 @@ def precheck_api_keys(config_path: str | None) -> None:
       - ``OMNI_RUN_REAL_LLM=1`` (explicit opt-in to network calls)
       - The config file cannot be located or read (in that case we
         let the existing code path emit a clearer error later)
+      - The config references no ``${VAR}`` at all
     """
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         return
@@ -178,19 +187,51 @@ def precheck_api_keys(config_path: str | None) -> None:
     if not required:
         return
 
-    missing = sorted(v for v in required if v not in os.environ)
-    if not missing:
+    # A var present but set to "" counts as absent (matches
+    # ``router._unresolved_env_vars``, which uses os.environ.get).
+    if any(os.environ.get(var) for var in required):
+        # One working provider is enough: the unset refs are fallbacks
+        # the router silently skips. Do not fail the run for those.
         return
 
-    typer.echo(
-        "Error: required API key(s) not set in environment: "
-        + ", ".join(missing)
-        + f"  (referenced as ${{...}} in {cfg_file})",
-        err=True,
+    expected = ", ".join(sorted(required))
+    # Key-like = env names shaped like a provider key. Compared on the
+    # name suffix so a mismatch (case b) is distinguishable from a truly
+    # empty environment (case a).
+    key_like = sorted(
+        name for name, value in os.environ.items()
+        if name.endswith("_API_KEY") and value
     )
+
+    if not key_like:
+        typer.echo(
+            "Error: no provider API key is configured. "
+            f"This config references: {expected}. "
+            "Set at least one of them (e.g. `export AMD_API_KEY=...`).",
+            err=True,
+        )
+        typer.echo(
+            "Hint: see SETUP.md and .env.example for setup details, "
+            "or run `ol init` to regenerate a config and print the keys "
+            "it needs.",
+            err=True,
+        )
+    else:
+        found = ", ".join(key_like)
+        typer.echo(
+            "Error: the configured API key(s) do not match this model "
+            f"pool. Environment has: {found}. This pool expects: {expected}.",
+            err=True,
+        )
+        typer.echo(
+            "Hint: export one of the pool's vars (e.g. "
+            "`export AMD_API_KEY=...`), or point --config at a pool that "
+            "uses the key you already have.",
+            err=True,
+        )
+
     typer.echo(
-        "Hint: set OMNI_TEST_FAKE_LLM=1 to skip real LLM calls, "
-        "or export the missing variables (e.g. `export ZHIPU_API_KEY=...`).",
+        "Hint: set OMNI_TEST_FAKE_LLM=1 to skip real LLM calls.",
         err=True,
     )
     raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
