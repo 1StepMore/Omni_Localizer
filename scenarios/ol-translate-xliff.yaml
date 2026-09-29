@@ -10,7 +10,6 @@ tier: 2
 requires_env:
   - AMD_API_KEY
   - ZHIPU_API_KEY
-  - NVIDIA_NIM_API_KEY
   - MCP_ALLOWED_DIRECTORIES
 instructions: |
   This scenario proves the XLIFF translation channel (the layout-preserving

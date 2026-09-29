@@ -62,7 +62,7 @@ export ZHIPU_API_KEY=sk-your-key
 export OMNI_TEST_FAKE_LLM=1
 ```
 
-The same applies to `AMD_API_KEY` and `NVIDIA_NIM_API_KEY`. The default config uses AMD/ZHIPU/NVIDIA; replace the pool if you want a different provider.
+The same applies to `AMD_API_KEY`. The default config uses AMD/Zhipu; replace the pool if you want a different provider.
 
 ---
 
@@ -92,8 +92,8 @@ Set `requests_per_minute` to the provider's actual cap in `config/default.yaml`:
 
 ```yaml
 - provider: "openai"
-  model: "minimaxai/minimax-m3"
-  requests_per_minute: 40   # NVIDIA free tier
+  model: "glm-4.7-flash"
+  requests_per_minute: 40   # your provider's actual cap
 ```
 
 The `pybreaker`-backed circuit breaker (router.py:237-245) opens the role for 60 s after 5 consecutive failures, preventing a retry storm — let it cool.
@@ -233,11 +233,6 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
         priority: 2
         api_key: "${ZHIPU_API_KEY}"
         base_url: "https://open.bigmodel.cn/api/paas/v4"
-      - provider: "openai"
-        model: "minimaxai/minimax-m3"
-        priority: 3
-        api_key: "${NVIDIA_NIM_API_KEY}"
-        base_url: "https://integrate.api.nvidia.com/v1"
   ```
 
 - The repair pipeline will fall back to layer 4 (safe substitution) only if layers 1–3 leave missing placeholders. In the worst case the original link/image/code block is reinserted verbatim — the output is never worse than the input for that construct.
@@ -291,7 +286,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `DeepSeek-V4.1-Flash` is the primary judge; `glm-4.7-flash` and `minimaxai/minimax-m3` are the fallbacks.
+- Add a better `judging` model — `DeepSeek-V4.1-Flash` is the primary judge; `glm-4.7-flash` is the fallback.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.

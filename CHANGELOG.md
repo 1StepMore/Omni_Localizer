@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dead provider removed — the canonical LLM pool shrinks from 3 providers to 2** (`config/default.yaml` and every pool surface): a live probe on 2026-09-28 returned **HTTP 410 Gone** for `minimaxai/minimax-m3` (NVIDIA NIM) — *"reached its end of life on 2026-09-09"*. It was the lowest-priority (p3) fallback in all four roles (`translation` / `judging` / `restoration` / `profiling`), so every role's last-resort route pointed at a channel that could only fail. Rather than substitute an unverified third provider — an unverified fallback fails silently and invisibly, whereas a dead one at least announces itself — the pool is now the 2 remaining providers: `DeepSeek-V4.1-Flash` (p1, AMD Radeon, `AMD_API_KEY`, `https://developer.amd.com.cn/radeon/api/v1`) → `glm-4.7-flash` (p2, Zhipu BigModel, `ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`). `NVIDIA_NIM_API_KEY` and `minimaxai/minimax-m3` no longer appear anywhere in the pool; the pool now reads only `AMD_API_KEY` / `ZHIPU_API_KEY`. Rotated together: `config/default.yaml`, `config/test_universal.yaml`, `config/slim-test.yaml`, the `ol init` preset (`src/cli/init.py`), the OL#94 parity test's canonical var set, `.env.example`, `scenarios/*.yaml` `requires_env`, `real-llm-nightly.yml`, and OL docs (`AGENTS.md`, `README.md`, `AGENT_USAGE.md`, `scenarios/STANDARDS.md`, `docs/{ARCHITECTURE,API,TROUBLESHOOTING,real_llm_runbook}.md`, both `ol-localizer` SKILL.md copies). The `nvapi-` hardcoded-key detector in `src/ol_config/loader.py` is deliberately retained: a user may still paste an NVIDIA key into a gitignored local config, and that check must still catch it.
+
 ### Added
 
 - **OL#58 — ships its own validation scenario library in `scenarios/`** (5 tier-2 `ol-translation` scenarios + `STANDARDS.md` + `_fixtures/`; `requires_env` = the 3 canonical real LLM provider keys, reports `unconfigured` without them), runnable from the Omni Suite root via `python scripts/validation/run_validation.py --repo ol --tier 2`.

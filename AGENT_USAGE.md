@@ -22,7 +22,6 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
    ```
    export AMD_API_KEY=...        # AMD Radeon (priority-1 primary)
    export ZHIPU_API_KEY=...      # Zhipu AI (priority-2 fallback)
-   export NVIDIA_NIM_API_KEY=... # NVIDIA NIM (priority-3 fallback)
    ```
 
 4. **Invoke via CLI**:
@@ -78,9 +77,9 @@ On error:
 ### Environment Variables
 Set in shell before running:
 ```bash
-export AMD_API_KEY=your-amd-key        # required for priority-1 primary
-export ZHIPU_API_KEY=your-zhipu-key    # required for priority-2 fallback
-export NVIDIA_NIM_API_KEY=...          # required for priority-3 fallback
+# BYOK: set at least one provider key; the second is an optional fallback.
+export AMD_API_KEY=your-amd-key        # AMD Radeon (priority-1 primary)
+export ZHIPU_API_KEY=your-zhipu-key    # Zhipu AI (priority-2 fallback)
 ```
 
 ### Config Structure

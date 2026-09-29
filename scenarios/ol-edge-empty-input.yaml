@@ -11,7 +11,6 @@ tier: 2
 requires_env:
   - AMD_API_KEY
   - ZHIPU_API_KEY
-  - NVIDIA_NIM_API_KEY
 instructions: |
   This scenario proves the graceful-handling bar for degenerate input: an
   agent that passes an empty or whitespace-only string must get a parseable

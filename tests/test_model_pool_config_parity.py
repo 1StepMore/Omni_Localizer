@@ -47,7 +47,6 @@ _LLM_KEY_MARKERS = {
     "ARK_API_KEY",
     "ZHIPU_API_KEY",
     "AGNES_API_KEY",
-    "NVIDIA_NIM_API_KEY",
     "OPENCODE_GO_KEY",
     "OPENAI_API_KEY",
     "MINIMAX_API_KEY",
@@ -103,7 +102,7 @@ class TestEnvExampleParity:
         # Guard against silent pool churn: if the pool gains a provider, the
         # env/scenario/init surfaces must be updated in the same change.
         assert _canonical_env_vars() == {
-            "AMD_API_KEY", "ZHIPU_API_KEY", "NVIDIA_NIM_API_KEY",
+            "AMD_API_KEY", "ZHIPU_API_KEY",
         }
 
 
