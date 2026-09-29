@@ -45,7 +45,7 @@ pip install -e .
 
 ### 2. Configure API Keys
 
-Set the required environment variables in your shell:
+Set at least one provider key in your shell (BYOK — the second is an optional fallback):
 
 ```bash
 export AMD_API_KEY=your_amd_api_key
@@ -75,10 +75,12 @@ providers you actually use.
 
 Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
+**BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** provider key referenced in the config is set — you do not need every provider, which is exactly what "providers you actually use" above means. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys are configured but none is referenced by this pool" (e.g. `OPENAI_API_KEY` exported while the pool expects `AMD_API_KEY` / `ZHIPU_API_KEY`). `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**.
+
 **Getting started:**
 1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool (mirroring `config/default.yaml`).
 2. Export the printed keys (AMD_API_KEY, ZHIPU_API_KEY).
-3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, env vars resolve).
+3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, every role has at least one usable (keyed) model).
 
 `config/default.yaml` — canonical unified LLM pool (the required roles; `ol init` also writes the optional `profiling:` role with the same two models):
 
@@ -470,6 +472,7 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 | `AMD_API_KEY` | (at least one required) | API key for AMD Radeon (DeepSeek-V4.1-Flash), priority-1 primary |
 | `ZHIPU_API_KEY` | (fallback) | API key for Zhipu AI (glm-4.7-flash), priority-2 fallback |
 | `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
+| `OMNI_RUN_REAL_LLM` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |
 | `OL_LENGTH_RATIO_MAX` | `3.0` | Maximum length ratio for Gate 3 (source/target) |

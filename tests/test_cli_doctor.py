@@ -15,6 +15,7 @@ Contract (scenarios 4-7):
 from __future__ import annotations
 
 import json
+import re
 
 from typer.testing import CliRunner
 
@@ -126,8 +127,21 @@ def test_doctor_fail_one_model_role(tmp_path):
     assert "run 'ol init'" in result.output
 
 
+def _unset_all_pool_env(monkeypatch, cfg):
+    """Delete every pool var referenced by cfg, regardless of ambient state.
+
+    Typer's CliRunner MERGES ``env=`` into ``os.environ`` rather than
+    replacing it, so ambient provider keys (e.g. ``AMD_API_KEY`` from
+    ``.env`` or the shell) survive into the command unless removed here.
+    """
+    refs = set(re.findall(r"\$\{([A-Z_][A-Z0-9_]*)\}", cfg.read_text(encoding="utf-8")))
+    for var in refs:
+        monkeypatch.delenv(var, raising=False)
+    return refs
+
+
 def test_doctor_fail_missing_env_var(tmp_path, monkeypatch):
-    """Scenario 6: valid pool but a referenced ${VAR} unset → exit 1, env check FAIL."""
+    """Scenario 6: valid pool but every referenced ${VAR} unset → exit 1, env check FAIL."""
     cfg = _write_valid_config(tmp_path)
 
     # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
@@ -136,7 +150,7 @@ def test_doctor_fail_missing_env_var(tmp_path, monkeypatch):
     import ol_config.loader as loader_mod
 
     monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
-    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    _unset_all_pool_env(monkeypatch, cfg)
 
     result = runner.invoke(app, ["doctor", "--config", str(cfg)], env=ENV)
     assert result.exit_code == ExitCode.PIPELINE_ERROR, (
@@ -144,6 +158,25 @@ def test_doctor_fail_missing_env_var(tmp_path, monkeypatch):
     )
     assert "[FAIL]" in result.output
     assert "env vars resolve" in result.output
+
+
+def test_doctor_pass_single_provider_key(tmp_path, monkeypatch):
+    """BYOK: holding exactly one pool key → env check PASS, exit 0."""
+    cfg = _write_valid_config(tmp_path)
+
+    import ol_config.loader as loader_mod
+
+    monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
+    refs = _unset_all_pool_env(monkeypatch, cfg)
+    # Exactly one provider key — every other pool var stays unset.
+    monkeypatch.setenv(sorted(refs)[0], "sk-dummy")
+
+    result = runner.invoke(app, ["doctor", "--config", str(cfg)], env=ENV)
+    assert result.exit_code == ExitCode.SUCCESS, (
+        f"exit={result.exit_code}, out={result.output!r}"
+    )
+    assert "env vars resolve" in result.output
+    assert "[FAIL]" not in result.output
 
 
 def test_doctor_json_output(tmp_path):

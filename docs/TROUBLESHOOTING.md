@@ -64,6 +64,13 @@ export OMNI_TEST_FAKE_LLM=1
 
 The same applies to `AMD_API_KEY`. The default config uses AMD/Zhipu; replace the pool if you want a different provider.
 
+**CLI pre-check variant.** `ol translate-md` / `ol translate-xliff` run an earlier, faster key check (`precheck_api_keys`) before the config is even loaded. It passes when **at least one** provider key referenced by the config is set — one key is enough (BYOK). With **zero** keys it still fails closed, and its message distinguishes the two mistakes:
+
+- **Nothing configured** — no provider key is set at all; export one of the pool's keys (`AMD_API_KEY` or `ZHIPU_API_KEY`).
+- **Configured but not matching this pool** — keys are set, but none matches a `${VAR}` the pool references (e.g. `OPENAI_API_KEY` is exported while the pool expects `AMD_API_KEY` / `ZHIPU_API_KEY`); export a key the config actually uses, or edit the pool.
+
+`OMNI_RUN_REAL_LLM=1` skips this pre-check — an escape hatch, not a switch that enables real calls: it does **not** enable real LLM calls (`OMNI_TEST_FAKE_LLM=1` disables them). See `docs/real_llm_runbook.md`.
+
 ---
 
 ## 3. `litellm.RateLimitError` / HTTP 429
