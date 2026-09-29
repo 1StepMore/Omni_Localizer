@@ -603,6 +603,94 @@ class TestCheckSourceCopy:
         warnings = check_source_copy("", "")
         assert len(warnings) == 0
 
+    # ── Frontmatter / punctuation rewrite the gate used to miss ──────────────
+    # The CLI prepends YAML frontmatter to the target and rewrites its
+    # punctuation before this gate runs, so a real echo arrived with neither
+    # string matching the other. These pin the canonical-form comparison.
+
+    def test_echo_behind_default_frontmatter(self) -> None:
+        """Frontmatter on the target must not mask a source echo."""
+        target = (
+            "---\nsource_lang: en\ntarget_lang: zh\n"
+            "processor: \"OL\"\n---\n\nHello， world。"
+        )
+        warnings = check_source_copy("Hello, world.", target)
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_echo_with_punctuation_rewrite_only(self) -> None:
+        """Full-width punctuation rewrite alone must not mask an echo."""
+        warnings = check_source_copy("Hello, world.", "Hello， world。")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_echo_with_frontmatter_on_both_sides(self) -> None:
+        """A source that already carries frontmatter keeps its own.
+
+        Frontmatter is only prepended when the source has none, so both
+        sides must be stripped or a source-borne block never matches.
+        """
+        source = "---\ntitle: A\n---\n\nHello, world."
+        target = "---\nsource_lang: en\n---\n\nHello， world。"
+        warnings = check_source_copy(source, target)
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_echo_preserving_full_width_in_source(self) -> None:
+        """An echo of already-full-width text still fires."""
+        warnings = check_source_copy("Hello， world。", "Hello， world。")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_frontmatter_with_genuine_translation_stays_silent(self) -> None:
+        """Stripping must not loosen the check into always firing."""
+        target = (
+            "---\nsource_lang: zh\ntarget_lang: en\n---\n\n"
+            "This is a genuine translation of the source."
+        )
+        warnings = check_source_copy("这是一个真正的翻译。", target)
+        assert len(warnings) == 0
+
+    def test_frontmatter_only_difference_stays_silent(self) -> None:
+        """Frontmatter differing but bodies identical is still a real echo.
+
+        Documents the deliberate boundary: only the frontmatter block is
+        ignored, never the body.
+        """
+        target = "---\nsource_lang: en\ntarget_lang: zh\n---\n\nHello, world."
+        warnings = check_source_copy("Different body text.", target)
+        assert len(warnings) == 0
+
+    def test_proper_noun_retained_stays_silent(self) -> None:
+        """A retained product name with localised surroundings is a real translation."""
+        warnings = check_source_copy(
+            "The Acme Widget is installed.",
+            "Acme 小部件 已安装。",
+        )
+        assert len(warnings) == 0
+
+    def test_numbers_with_units_stay_silent(self) -> None:
+        """Short numeric content is suppressed by the translatable-text guard."""
+        warnings = check_source_copy("1,234.56", "1，234。56")
+        assert len(warnings) == 0
+
+    def test_code_fence_difference_stays_silent(self) -> None:
+        """Different fenced code must not read as an echo."""
+        source = "Run:\n\n```python\nprint('a')\n```"
+        target = "运行：\n\n```python\nprint('b')\n```"
+        warnings = check_source_copy(source, target)
+        assert len(warnings) == 0
+
+    def test_zhen_to_en_genuine_translation_stays_silent(self) -> None:
+        """zh→en direction: a real translation is not an echo."""
+        warnings = check_source_copy("这是一个真正的翻译。", "This is a real translation.")
+        assert len(warnings) == 0
+
+    def test_en_to_zh_genuine_translation_stays_silent(self) -> None:
+        """en→zh direction: a real translation is not an echo."""
+        warnings = check_source_copy("Hello, world.", "你好，世界。")
+        assert len(warnings) == 0
+
 
 # =========================================================================
 # Gate 6: check_source_script_fragments
