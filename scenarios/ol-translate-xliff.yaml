@@ -8,17 +8,16 @@ description: >-
 category: ol-translation
 tier: 2
 requires_env:
-  - AMD_API_KEY
-  - ZHIPU_API_KEY
   - MCP_ALLOWED_DIRECTORIES
+requires_env_any: [AMD_API_KEY, ZHIPU_API_KEY]
 instructions: |
   This scenario proves the XLIFF translation channel (the layout-preserving
   pipeline path) works as an agent would use it: the real
   ol_mcp.tools.translate_xliff MCP tool reads a source XLIFF, runs each
   trans-unit through the LLM model pool, writes translated <target>
   elements back, and returns structured JSON. It is gated on the LLM
-  provider keys from config/default.yaml — without them the run reports
-  unconfigured.
+  provider keys from config/default.yaml — any ONE of them satisfies the
+  OR gate; with none of them the run reports unconfigured.
 
   What to do:
   1. Step 1 copies the committed _fixtures/source.xlf into the

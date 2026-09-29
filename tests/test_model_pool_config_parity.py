@@ -6,9 +6,11 @@ test locks three invariants that drifted apart in OL#94:
 1. Every ``${VAR}`` referenced by the canonical default is declared in the
    OL ``.env.example`` — a user copying the example must be able to resolve
    every key the shipped config demands.
-2. Every OL in-repo scenario (``scenarios/*.yaml``) declares those canonical
-   ``${VAR}`` names in its ``requires_env`` — a tier-2 run must gate on the
-   real keys, not stale ones.
+2. Every OL in-repo scenario (``scenarios/*.yaml``) that gates on an LLM
+   provider key declares those canonical ``${VAR}`` names in its
+   ``requires_env_any`` OR group — a tier-2 run must gate on the real keys,
+   not stale ones. The AND-only ``requires_env`` list is reserved for
+   non-provider prerequisites such as ``MCP_ALLOWED_DIRECTORIES``.
 3. The ``ol init`` generated preset (``UNIFIED_POOL_PRESET`` +
    ``PRESET_ENV_VARS``) mirrors the canonical pool exactly: same roles, same
    models/providers/priorities/base URLs, and a declared env var for every
@@ -40,8 +42,10 @@ _SCENARIOS_DIR = _OL_ROOT / "scenarios"
 
 _ENV_REF_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
-# A scenario that gates on ANY of these is an LLM-keyed scenario and must gate
-# on the full canonical set (its config/default.yaml reads all three roles).
+# A scenario that gates on ANY of these is an LLM-keyed scenario and must
+# declare the full canonical set in its requires_env_any OR group (the pool
+# has two providers, and config/default.yaml reads both). Retired providers
+# stay listed so a scenario gating on a retired key is still flagged.
 _LLM_KEY_MARKERS = {
     "AMD_API_KEY",
     "ARK_API_KEY",
@@ -84,6 +88,43 @@ def _declared_env_vars(env_example_text: str) -> set[str]:
     return declared
 
 
+def _scenario_llm_vars(data: dict[str, Any]) -> set[str]:
+    """Every LLM provider key a scenario gates on: AND list ∪ OR group.
+
+    Detection must span both fields. A migrated scenario keeps its provider
+    keys only in ``requires_env_any``, so keying on ``requires_env`` alone
+    would silently skip it — the vacuity this guard exists to prevent.
+    """
+    requires = set(data.get("requires_env") or [])
+    requires_any = set(data.get("requires_env_any") or [])
+    return (requires | requires_any) & _LLM_KEY_MARKERS
+
+
+def _scenario_env_drift(data: dict[str, Any], canonical: set[str]) -> list[str]:
+    """Return drift messages for one LLM-keyed scenario (empty = clean).
+
+    A migrated LLM-keyed scenario declares the full canonical provider set in
+    its ``requires_env_any`` OR group. Two failure modes are named distinctly:
+    providers still left in the AND list (the pre-migration shape), and an OR
+    group missing a canonical key.
+    """
+    requires = set(data.get("requires_env") or [])
+    requires_any = set(data.get("requires_env_any") or [])
+    drift: list[str] = []
+    providers_in_and = sorted(requires & _LLM_KEY_MARKERS)
+    if providers_in_and:
+        drift.append(
+            "providers still in the AND list (requires_env): "
+            f"{providers_in_and} — move them to requires_env_any"
+        )
+    missing_or = sorted(canonical - requires_any)
+    if missing_or:
+        drift.append(
+            f"OR group (requires_env_any) missing canonical key(s): {missing_or}"
+        )
+    return drift
+
+
 # ---------------------------------------------------------------------------
 # 1. Canonical ${VAR}s are declared in the OL .env.example
 # ---------------------------------------------------------------------------
@@ -107,7 +148,8 @@ class TestEnvExampleParity:
 
 
 # ---------------------------------------------------------------------------
-# 2. Canonical ${VAR}s are declared in every OL scenario's requires_env
+# 2. Canonical ${VAR}s are declared in every LLM-keyed OL scenario's
+#    requires_env_any OR group
 # ---------------------------------------------------------------------------
 
 class TestScenarioEnvParity:
@@ -119,17 +161,37 @@ class TestScenarioEnvParity:
 
     def test_every_llm_keyed_scenario_declares_canonical_vars(self):
         canonical = _canonical_env_vars()
+        candidates = self._scenario_files()
         offenders: list[str] = []
-        for path in self._scenario_files():
+        examined = 0
+        for path in candidates:
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
-            requires = set(data.get("requires_env") or [])
-            if not requires & _LLM_KEY_MARKERS:
+            if not _scenario_llm_vars(data):
                 continue
-            missing = sorted(canonical - requires)
-            if missing:
-                offenders.append(f"{path.name}: missing {missing}")
+            examined += 1
+            drift = _scenario_env_drift(data, canonical)
+            if drift:
+                offenders.append(f"{path.name}: " + "; ".join(drift))
+
+        # Anti-vacuity: an LLM-keyed guard that examines zero files passes
+        # without verifying anything, so recompute the selected set
+        # independently and require a non-zero, matching count.
+        expected = sum(
+            1
+            for path in candidates
+            if _scenario_llm_vars(yaml.safe_load(path.read_text(encoding="utf-8")))
+        )
+        assert expected > 0, (
+            f"vacuous parity check: none of the {len(candidates)} file(s) in "
+            f"{_SCENARIOS_DIR} declare an LLM provider key in "
+            "requires_env ∪ requires_env_any"
+        )
+        assert examined == expected, (
+            f"parity check examined {examined} LLM-keyed scenario(s) but "
+            f"discovery selected {expected}"
+        )
         assert not offenders, (
-            "scenario requires_env drifted from config/default.yaml:\n  "
+            "scenario env gate drifted from config/default.yaml:\n  "
             + "\n  ".join(offenders)
         )
 
@@ -208,21 +270,45 @@ class TestSuiteSurfaceParity:
 
     def test_suite_ol_scenarios_declare_canonical_vars(self):
         canonical = _canonical_env_vars()
-        offenders: list[str] = []
+        candidates: list[Path] = []
         for directory in _SUITE_OL_SCENARIOS:
             if not directory.exists():
                 continue
-            for path in sorted(directory.glob("*.yaml")):
-                if not self._is_ol_driven(path):
-                    continue
-                data = yaml.safe_load(path.read_text(encoding="utf-8"))
-                requires = set(data.get("requires_env") or [])
-                if not requires & _LLM_KEY_MARKERS:
-                    continue
-                missing = sorted(canonical - requires)
-                if missing:
-                    offenders.append(f"{path.relative_to(_SUITE_ROOT)}: missing {missing}")
+            candidates.extend(sorted(directory.glob("*.yaml")))
+        ol_driven = [path for path in candidates if self._is_ol_driven(path)]
+
+        offenders: list[str] = []
+        examined = 0
+        for path in ol_driven:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if not _scenario_llm_vars(data):
+                continue
+            examined += 1
+            drift = _scenario_env_drift(data, canonical)
+            if drift:
+                offenders.append(
+                    f"{path.relative_to(_SUITE_ROOT)}: " + "; ".join(drift)
+                )
+
+        # Anti-vacuity: keying detection on requires_env alone skipped every
+        # migrated suite scenario (0 of them examined) while still passing.
+        # Recompute the selected set independently and require a match.
+        expected = sum(
+            1
+            for path in ol_driven
+            if _scenario_llm_vars(yaml.safe_load(path.read_text(encoding="utf-8")))
+        )
+        assert expected > 0, (
+            f"vacuous parity check: none of the {len(ol_driven)} OL-driven "
+            "suite scenario(s) under "
+            f"{[str(d.relative_to(_SUITE_ROOT)) for d in _SUITE_OL_SCENARIOS]} "
+            "declare an LLM provider key in requires_env ∪ requires_env_any"
+        )
+        assert examined == expected, (
+            f"parity check examined {examined} LLM-keyed suite scenario(s) "
+            f"but discovery selected {expected}"
+        )
         assert not offenders, (
-            "suite OL scenario requires_env drifted from config/default.yaml:\n  "
+            "suite OL scenario env gate drifted from config/default.yaml:\n  "
             + "\n  ".join(offenders)
         )
