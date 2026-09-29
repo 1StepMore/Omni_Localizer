@@ -18,6 +18,8 @@ import os
 import re
 from typing import Any
 
+from ol_post.punctuation import normalize_to_english
+
 _logger = logging.getLogger(__name__)
 
 # Patterns for inline tags (XLIFF inline codes)
@@ -472,26 +474,60 @@ def check_locale_conventions(
     return warnings
 
 
+# Leading YAML frontmatter block. Same pattern the MD channel uses to split
+# frontmatter from body (src/cli/translate_md.py) — reused rather than forked
+# so the two can never drift apart.
+_FRONTMATTER_RE = re.compile(r"^(---\s*\n.*?\n---\s*\n)", re.DOTALL)
+
+
+def _canonical_for_copy_check(text: str) -> str:
+    """Fold ``text`` into the form Gate 5 should compare.
+
+    By the time this gate runs on the CLI path the target has been altered
+    twice, so a raw ``source.strip() == target.strip()`` never matches:
+
+    1. a YAML frontmatter block is prepended to the target, and it is on by
+       default (``--no-frontmatter`` opts out);
+    2. punctuation post-processing mutates the same string that is passed in
+       as the target, so ``Hello, world.`` arrives as ``Hello， world。``.
+
+    Both sides are therefore reduced to a canonical form first:
+
+    * a leading frontmatter block is dropped. This is applied to **both**
+      sides: the MD channel only prepends frontmatter when the source has
+      none, so a source that already carries its own would otherwise be
+      compared against a stripped target and never match.
+    * full-width punctuation is folded to ASCII. Folding runs zh→en only —
+      the English→Chinese table covers eight characters and no quotes, so
+      normalizing the other way is not an identity and would be unsafe.
+
+    Stays a pure string transform: no I/O, no LLM call, no side effects.
+    """
+    return normalize_to_english(_FRONTMATTER_RE.sub("", text, count=1)).strip()
+
+
 def check_source_copy(source: str, target: str) -> list[str]:
     """Gate 5 — detect when LLM echoes the source text back unchanged.
 
-    Compares the stripped source and target.  When they are identical,
-    the LLM effectively skipped the translation request (common for
-    short input with inline formatting, proper nouns that look like
-    English, chapter numbers, etc.).
+    Compares source and target in a canonical form (see
+    :func:`_canonical_for_copy_check`) so that the frontmatter and
+    punctuation rewriting the pipeline applies cannot mask a real echo.
+    When the two canonical forms are identical, the LLM effectively skipped
+    the translation request (common for short input with inline formatting,
+    proper nouns that look like English, chapter numbers, etc.).
 
     Skips strings that contain no alphabetic characters (pure numbers,
     symbols, whitespace-only) — these should remain unchanged across
     translation and are not meaningful copy-echo signals.
 
     Returns:
-        List of ``OL_WARN: SOURCE_COPY`` strings (empty if source != target
-        or the text contains no translatable content).
+        List of ``OL_WARN: SOURCE_COPY`` strings (empty if the canonical
+        forms differ or the text contains no translatable content).
     """
-    if source.strip() == target.strip():
+    if _canonical_for_copy_check(source) == _canonical_for_copy_check(target):
         # Skip pure numeric/symbolic content — numbers and symbols should
         # remain unchanged across translation; flagging them is noise.
-        if not re.search(r"[a-zA-Z\u4e00-\u9fff]", source):
+        if not re.search(r"[a-zA-Z一-鿿]", source):
             return []
         return [
             "OL_WARN: SOURCE_COPY — target is identical to source, "
