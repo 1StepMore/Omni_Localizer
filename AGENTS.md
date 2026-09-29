@@ -242,12 +242,11 @@ Each model has:
 - `requests_per_minute` (default 500)
 
 **Unified pool (canonical)** — `config/default.yaml` is the source of truth;
-`ol init` writes `config/local.yaml` with the same single 3-provider pool
+`ol init` writes `config/local.yaml` with the same single 2-provider pool
 shared across all roles:
 
 - **DeepSeek-V4.1-Flash** → AMD Radeon (`AMD_API_KEY`, `https://developer.amd.com.cn/radeon/api/v1`) — priority-1 primary for translation/judging/restoration/profiling
 - **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-2 fallback
-- **minimaxai/minimax-m3** → NVIDIA NIM (`NVIDIA_NIM_API_KEY`, `https://integrate.api.nvidia.com/v1`) — priority-3 fallback
 
 Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
 never written. Each of `translation`, `judging`, and `restoration` must
@@ -257,17 +256,13 @@ litellm Router with `routing_strategy="simple-shuffle"` and
 `num_retries=2` picks a model within the role group. If it fails,
 the next model in priority is tried.
 
-**Free-tier note**: NVIDIA free models have `rpm=40`. If you have many
-concurrent large requests, you'll hit the provider's 429; the existing
-exponential backoff handles it.
-
 ## Env vars
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `AMD_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` | (none) | LLM provider API keys (DeepSeek-V4.1-Flash / glm-4.7-flash / minimaxai/minimax-m3). |
+| `AMD_API_KEY` / `ZHIPU_API_KEY` | (none) | LLM provider API keys (DeepSeek-V4.1-Flash / glm-4.7-flash). |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
@@ -439,8 +434,8 @@ OL ships its own validation scenario library **in this repo** at
 `scenarios/` — 5 tier-2 `ol-translation` scenarios (translate-md happy
 path, translate-xliff, judge-text quality, glossary + quality gates,
 empty-input edge) with their own `scenarios/STANDARDS.md` +
-`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 3
-canonical provider vars `AMD_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY`) and report `unconfigured` without them — never a fake
+`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 2
+canonical provider vars `AMD_API_KEY` / `ZHIPU_API_KEY`) and report `unconfigured` without them — never a fake
 green. The suite validation engine runs them via `--repo ol`. The suite's
 own `tool-ol-*` agent-surface scenarios + the HUMAN-QUALITY pipeline
 scenarios still live in the suite repo, covered by the suite-level

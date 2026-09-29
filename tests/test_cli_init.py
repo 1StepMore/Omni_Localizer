@@ -84,8 +84,8 @@ def test_init_yaml_has_only_env_refs(tmp_path):
     assert "OPENCODE_GO" not in text
     assert "AGNES" not in text
     # Canonical ${ENV_VAR} refs present.
+    assert "${AMD_API_KEY}" in text
     assert "${ZHIPU_API_KEY}" in text
-    assert "${NVIDIA_NIM_API_KEY}" in text
 
     # Every api_key is a ${ENV_VAR} ref (never a literal).
     data = yaml.safe_load(text)

@@ -50,7 +50,6 @@ Set the required environment variables in your shell:
 ```bash
 export AMD_API_KEY=your_amd_api_key
 export ZHIPU_API_KEY=your_zhipu_api_key
-export NVIDIA_NIM_API_KEY=your_nvidia_nim_api_key
 export PYTHONPATH=src
 ```
 
@@ -78,10 +77,10 @@ Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
 **Getting started:**
 1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool (mirroring `config/default.yaml`).
-2. Export the printed keys (AMD_API_KEY, ZHIPU_API_KEY, NVIDIA_NIM_API_KEY).
+2. Export the printed keys (AMD_API_KEY, ZHIPU_API_KEY).
 3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, env vars resolve).
 
-`config/default.yaml` — canonical unified LLM pool (the required roles; `ol init` also writes the optional `profiling:` role with the same three models):
+`config/default.yaml` — canonical unified LLM pool (the required roles; `ol init` also writes the optional `profiling:` role with the same two models):
 
 ```yaml
 llm_pool:
@@ -100,13 +99,6 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
-    - provider: "openai"
-      model: "minimaxai/minimax-m3"   # NVIDIA NIM — priority-3 fallback
-      priority: 3
-      role: "translation"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
 
   judging:
     - provider: "openai"
@@ -123,13 +115,6 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
-    - provider: "openai"
-      model: "minimaxai/minimax-m3"
-      priority: 3
-      role: "judging"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
-      timeout: 120.0
 
   restoration:
     - provider: "openai"
@@ -145,13 +130,6 @@ llm_pool:
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
-      timeout: 120.0
-    - provider: "openai"
-      model: "minimaxai/minimax-m3"
-      priority: 3
-      role: "restoration"
-      api_key: "${NVIDIA_NIM_API_KEY}"
-      base_url: "https://integrate.api.nvidia.com/v1"
       timeout: 120.0
 ```
 
@@ -489,9 +467,8 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `AMD_API_KEY` | (required) | API key for AMD Radeon (DeepSeek-V4.1-Flash) |
-| `ZHIPU_API_KEY` | (required) | API key for Zhipu AI (glm-4.7-flash) |
-| `NVIDIA_NIM_API_KEY` | (required) | API key for NVIDIA NIM (minimaxai/minimax-m3) |
+| `AMD_API_KEY` | (at least one required) | API key for AMD Radeon (DeepSeek-V4.1-Flash), priority-1 primary |
+| `ZHIPU_API_KEY` | (fallback) | API key for Zhipu AI (glm-4.7-flash), priority-2 fallback |
 | `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |

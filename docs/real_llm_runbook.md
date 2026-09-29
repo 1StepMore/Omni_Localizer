@@ -15,8 +15,8 @@ require explicit user authorization for ongoing spend.
 | Environment | Trigger | What happens |
 |---|---|---|
 | Normal CI (`.github/workflows/test.yml`) | every PR, every push to main | `OMNI_RUN_REAL_LLM` is unset → all 4 real-LLM tests SKIP. The 2 cost-estimator unit tests RUN (pure stdlib, no LLM). |
-| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `AMD_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` set → 4 real-LLM tests RUN against the real model pool. |
-| Local dev (you) | `OMNI_RUN_REAL_LLM=1 AMD_API_KEY=… ZHIPU_API_KEY=… NVIDIA_NIM_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
+| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `AMD_API_KEY` / `ZHIPU_API_KEY` set → 4 real-LLM tests RUN against the real model pool. |
+| Local dev (you) | `OMNI_RUN_REAL_LLM=1 AMD_API_KEY=… ZHIPU_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
 
 **Promote weekly → nightly** after 1 month of stable green runs (per
 plan A11 risk register). The cadence change is a one-line edit in
@@ -47,7 +47,7 @@ is well below the budget.
 
 ## API key rotation
 
-**Cadence**: quarterly. The AMD Radeon, Zhipu, and NVIDIA NIM API keys (the
+**Cadence**: quarterly. The AMD Radeon and Zhipu API keys (the
 providers in the canonical pool) must be rotated every 90 days. Set a calendar
 reminder when you rotate.
 
@@ -60,10 +60,9 @@ and the calendar reminder.
 1. Generate a new key in the provider's console:
    - AMD Radeon: provider dashboard → API keys → "Create new"
    - Zhipu AI: provider dashboard → API keys → "Create new"
-   - NVIDIA NIM: provider dashboard → API keys → "Create new"
 2. Update the GitHub secrets:
    - Repo → Settings → Secrets and variables → Actions
-   - `AMD_API_KEY` / `ZHIPU_API_KEY` / `NVIDIA_NIM_API_KEY` → "Update secret" → paste the new values
+   - `AMD_API_KEY` / `ZHIPU_API_KEY` → "Update secret" → paste the new values
 3. Trigger a manual nightly run to verify the new key works:
    ```bash
    gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer
@@ -98,7 +97,7 @@ is the signal — see "When the nightly job fails" below.
      provider or wait for the issue to clear.
      - **API key expired / auth error**: rotate the key (see above).
       If rotation doesn't fix it, check `secrets.AMD_API_KEY` /
-      `secrets.ZHIPU_API_KEY` / `secrets.NVIDIA_NIM_API_KEY` are still
+      `secrets.ZHIPU_API_KEY` are still
       set in repo settings.
    - **Cost overrun**: the pre-call gate should have prevented this.
      If it didn't, recalibrate the rates in `cost_estimator.py` (see
@@ -116,7 +115,7 @@ is the signal — see "When the nightly job fails" below.
 
 **Quarterly** (with the API key rotation). Refresh the `OL_REAL_LLM_RATES`
 JSON for every model in your `config/local.yaml` pool (canonical:
-`DeepSeek-V4.1-Flash`, `glm-4.7-flash`, `minimaxai/minimax-m3`).
+`DeepSeek-V4.1-Flash`, `glm-4.7-flash`).
 
 The harness ships no hardcoded prices: `cost_estimator.py` fails closed
 (`KeyError`) when a model has no rate, so a stale or missing entry stops the
@@ -124,14 +123,13 @@ run instead of mis-billing.
 
 To recalibrate:
 
-1. Check each provider's published rate card (AMD Radeon, Zhipu, NVIDIA NIM
+1. Check each provider's published rate card (AMD Radeon, Zhipu
    pricing pages).
 2. Set `OL_REAL_LLM_RATES` to the JSON object (USD per 1M tokens,
    `[input, output]` per model), e.g.:
    ```json
    {"DeepSeek-V4.1-Flash": [<in>, <out>],
-    "glm-4.7-flash": [<in>, <out>],
-    "minimaxai/minimax-m3": [<in>, <out>]}
+    "glm-4.7-flash": [<in>, <out>]}
    ```
    Locally, `export` it in your shell. In GitHub Actions, set it as a repo
    *variable* (Settings → Secrets and variables → Actions → Variables); the
@@ -155,8 +153,7 @@ cd Omni_Localizer
 export OMNI_RUN_REAL_LLM=1
 export AMD_API_KEY=…        # your own key
 export ZHIPU_API_KEY=…      # your own key
-export NVIDIA_NIM_API_KEY=… # your own key
-export OL_REAL_LLM_RATES='{"DeepSeek-V4.1-Flash": [<in>, <out>], "glm-4.7-flash": [<in>, <out>], "minimaxai/minimax-m3": [<in>, <out>]}'
+export OL_REAL_LLM_RATES='{"DeepSeek-V4.1-Flash": [<in>, <out>], "glm-4.7-flash": [<in>, <out>]}'
 export PYTHONPATH=src
 pytest tests/real_llm/ -v --tb=long --durations=10
 ```
@@ -167,7 +164,7 @@ LLM's actual response — useful for diagnosing provider degradation.
 
 **Do not commit your real API key** to the repo. The `.env` file (if
 you use one) is gitignored at the repo root, and GitHub secrets
-(`${{ secrets.AMD_API_KEY }}` / `${{ secrets.ZHIPU_API_KEY }}` / `${{ secrets.NVIDIA_NIM_API_KEY }}`)
+(`${{ secrets.AMD_API_KEY }}` / `${{ secrets.ZHIPU_API_KEY }}`)
 are the only path the workflow uses. See `.gitignore` for the full list.
 
 ## Adding a new real-LLM test
@@ -192,5 +189,5 @@ are the only path the workflow uses. See `.gitignore` for the full list.
 - **Conftest**: `tests/real_llm/conftest.py` — fixtures and marker
   → skipif wiring.
 - **Workflow**: `.github/workflows/real-llm-nightly.yml`.
-- **Provider pricing**: AMD Radeon, Zhipu, NVIDIA NIM pricing pages
+- **Provider pricing**: AMD Radeon, Zhipu pricing pages
   (re-verify quarterly).

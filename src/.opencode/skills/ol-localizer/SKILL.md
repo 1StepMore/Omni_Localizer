@@ -59,10 +59,9 @@ See the full decision tree in [OL AGENTS.md](https://github.com/1StepMore/Omni_L
 and the suite-level [Pipeline Selection Strategy](https://github.com/1StepMore/Omni_Suite/blob/main/README.md#pipeline-selection-strategy).
 
 ## Configuration
-Required environment variables (the canonical pool in `config/default.yaml`):
+Canonical pool providers (the pool in `config/default.yaml`; BYOK — set at least one):
 - `AMD_API_KEY` - AMD Radeon (`DeepSeek-V4.1-Flash`, priority-1 primary)
 - `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-2 fallback)
-- `NVIDIA_NIM_API_KEY` - NVIDIA NIM (`minimaxai/minimax-m3`, priority-3 fallback)
 
 Run `ol init` to generate `config/local.yaml` with this pool.
 

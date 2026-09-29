@@ -221,10 +221,6 @@ translation priority=2 (glm-4.7-flash)
        │
        │  fail / 429 / 5xx
        ▼
-translation priority=3 (minimaxai/minimax-m3)
-       │
-       │  fail
-       ▼
 restoration pool  (cross-role safety net, router.py:373-385)
        │
        │  fail
@@ -246,7 +242,7 @@ The breaker is per-process and per-role. Restarting the CLI resets it.
 
 Each `LLMModelConfig` has a `requests_per_minute` field (default 500). It's passed to the LiteLLM Router and enforced by `enforce_model_rate_limits`. When the cap is reached, the Router raises `litellm.RateLimitError` immediately rather than waiting on a provider 429 + backoff. This prevents one model's rate storm from starving siblings.
 
-Set the value to your provider's actual quota (e.g. NVIDIA free tier = 40). Hardcoding 500 for a free-tier account is a recipe for cascade failures.
+Set the value to your provider's actual quota (e.g. 40 for a free-tier account). Hardcoding 500 for a free-tier account is a recipe for cascade failures.
 
 ### 3.3 Cross-role safety net
 
