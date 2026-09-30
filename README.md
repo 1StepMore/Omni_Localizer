@@ -2,7 +2,7 @@
 
 AI-native localization pipeline that translates documents through intelligent LLM routing with built-in quality control.
 
-[![Test status](https://img.shields.io/badge/Test%20status-local%20(see%20below)-lightgrey.svg)](#test-status)
+[![Test status](https://github.com/1StepMore/Omni_Localizer/actions/workflows/test.yml/badge.svg)](https://github.com/1StepMore/Omni_Localizer/actions/workflows/test.yml)
 
 ## What It Does
 
@@ -15,16 +15,16 @@ AI-native localization pipeline that translates documents through intelligent LL
 
 ### Test status
 
-[![Test status](https://img.shields.io/badge/Test%20status-local%20(see%20below)-lightgrey.svg)](#test-status)
+[![Test status](https://github.com/1StepMore/Omni_Localizer/actions/workflows/test.yml/badge.svg)](https://github.com/1StepMore/Omni_Localizer/actions/workflows/test.yml)
 
-Test status is **local-only** — CI is suspended while the upstream
-[1StepMore](https://github.com/1StepMore) origin account is restricted, and the
-`renanzai40` backup mirrors do not run GitHub Actions. The workflows that exist
-in this repo (`.github/workflows/test.yml`, `.github/workflows/publish.yml`,
-`.github/workflows/real-llm-nightly.yml`) are not triggered during the
-suspension.
+CI runs on the upstream [1StepMore](https://github.com/1StepMore) repo and is
+currently green, driven by `.github/workflows/test.yml` (tests),
+`.github/workflows/publish.yml` (release), and
+`.github/workflows/real-llm-nightly.yml` (nightly real-LLM regression). The
+`renanzai40` backup mirrors still do not run GitHub Actions, so this badge
+reflects the upstream repo only.
 
-Run the tests locally (from this repo) — `OMNI_TEST_FAKE_LLM=1` mocks LLM
+Run the tests locally (from this repo). `OMNI_TEST_FAKE_LLM=1` mocks LLM
 calls so the suite runs without API keys:
 
 ```bash
