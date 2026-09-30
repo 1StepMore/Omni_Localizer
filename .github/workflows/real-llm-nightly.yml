@@ -66,6 +66,10 @@ jobs:
           PYTHONPATH: src
         run: |
           echo "Real-LLM nightly run starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # pipefail so the step fails when pytest fails (tee always exits 0);
+          # without it this nightly could never go red, and the upload step
+          # below (if: failure()) would never fire either.
+          set -o pipefail
           python -m pytest tests/real_llm/ -v --tb=short --durations=10 2>&1 | tee pytest-real-llm.log
           echo "Real-LLM nightly run finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
