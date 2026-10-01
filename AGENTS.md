@@ -191,6 +191,36 @@ OL's MD translation is a 4-stage pipeline:
    output.md (final)
 ```
 
+### Prompts are a first-class asset (OL#112)
+
+The core translation/judging prompts live in `src/ol_pool/prompts/*.txt`, not
+inline in `router.py`. **Changing a prompt touches only a file under
+`prompts/`.**
+
+| Prompt | Used by | Variables |
+|--------|---------|-----------|
+| `translate_system.txt` | `ModelPool.translate()` | `$source_lang`, `$target_lang` |
+| `translate_user.txt` | `ModelPool.translate()` | `$source_lang`, `$target_lang`, `$user_text` |
+| `judge_system.txt` | `ModelPool.judge()` | none |
+| `judge_user.txt` | `ModelPool.judge()` | `$source_lang`, `$source`, `$target_lang`, `$target`, `$terminology_section` |
+
+```python
+from ol_pool.prompts import load_prompt, render_prompt
+
+render_prompt("translate_system", source_lang="en", target_lang="zh")
+```
+
+Templates are stdlib `string.Template` (`$name`) — **not** `str.format`,
+because the prompts legitimately contain `{`/`}` (`{{_OL_XTAG_*_}}`, the judge
+JSON schema). A literal `$` must be written `$$`. Rendering **fails loud**
+(`PromptRenderError`) on a missing *or* an undeclared variable, so a renamed
+placeholder can never silently leave a hole in a prompt.
+
+`tests/test_prompt_store.py` pins the rendered bytes against digests captured
+before the extraction, and asserts each prompt is defined in exactly one place
+in `src/` — if you intentionally change a prompt, expect those digests to fail
+and update them deliberately.
+
 ### E2E-65: Prompt injection strip
 
 If the LLM echoes back `CRITICAL: Output ONLY the translation...` or
