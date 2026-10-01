@@ -29,7 +29,25 @@ jobs:
       - name: Install core deps
         run: python -m pip install litellm translate-toolkit markdown-it-py pydantic PyYAML pytest span-aligner typer jinja2 rich pytest-asyncio structlog opentelemetry-api opentelemetry-sdk
       - name: Run core tests
-        run: python -m pytest tests/test_format_guard.py tests/test_routing.py tests/test_config_loader.py tests/test_evaluation_result.py tests/test_llm_restorer_interface.py tests/test_retry.py tests/test_concurrent_engine.py --tb=short -v
+        run: |
+          # pipefail so the step fails when pytest fails (tee always exits 0);
+          # without it a red run is reported green and no artifact is left.
+          set -o pipefail
+          python -m pytest tests/test_format_guard.py tests/test_routing.py tests/test_config_loader.py tests/test_evaluation_result.py tests/test_llm_restorer_interface.py tests/test_retry.py tests/test_concurrent_engine.py --tb=short -v 2>&1 | tee test_output.log
+          exit_status=$?
+          exit ${exit_status}
+
+      # Full pytest output survives even when the test step fails and the
+      # job goes red - it stays downloadable regardless of the verdict.
+      - name: Upload pytest logs (full, untruncated)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs
+          path: |
+            test_output.log
+            **/junit*.xml
+          if-no-files-found: ignore
 
   lint:
     runs-on: ubuntu-latest
