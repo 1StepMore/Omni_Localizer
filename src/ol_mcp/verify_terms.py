@@ -11,8 +11,8 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.path_denials import denial_for
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
@@ -62,7 +62,7 @@ async def verify_terms(params: VerifyTermsInput) -> str:
         vresult = get_default_validator().validate_path(params.glossary_path)
         if not vresult.success:
             return json.dumps(
-                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+                _error_response(*denial_for(vresult)),
                 ensure_ascii=False,
             )
         try:

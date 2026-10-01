@@ -21,3 +21,18 @@ repos:
         stages: [pre-commit]
         pass_filenames: true
         require_serial: false
+
+      - id: ol-path-denial-routing
+        name: ol-path-denial-routing (validate_path must route through denial_for)
+        # The path-denial bug class: a tool validates a path, discards which
+        # branch rejected it, and re-emits one frozen containment message. A
+        # reviewer reading a call site cannot see that; the AST guard can. This
+        # hook runs only the ast_guard-marked tests, so it stays fast and never
+        # needs an LLM or a network. Same interpreter resolver rationale as
+        # check-secrets above — `language: system` + the resolver, never
+        # `language: python` (which would try to install this repo offline).
+        entry: bash scripts/pre_commit_python.sh -m pytest tests/test_path_denial_taxonomy.py -q -m ast_guard
+        language: system
+        stages: [pre-commit]
+        pass_filenames: false
+        require_serial: false

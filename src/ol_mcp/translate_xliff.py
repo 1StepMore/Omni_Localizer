@@ -10,7 +10,6 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.gates import run_gates, skip_gates
 from ol_mcp.tools import (
     _error_response,
@@ -23,6 +22,7 @@ from ol_mcp.tools import (
     mcp_error_boundary,
 )
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.path_denials import denial_for
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.status import get_translation_status as _get_translation_status_impl
@@ -63,16 +63,18 @@ async def _run_translate_xliff_async(
         _validator = get_default_validator()
         _iv = _validator.validate_path(input_path)
         if not _iv.success:
+            _iv_denial = denial_for(_iv)
             _task_tracker.update_progress(
                 request_id, TaskStatus.FAILED,
-                error={"code": OL_PATH_DENIED, "message": PATH_DENIED_MESSAGE},
+                error={"code": _iv_denial.code, "message": _iv_denial.message},
             )
             return
         _ov = _validator.validate_path(output_path, allow_missing=True)
         if not _ov.success:
+            _ov_denial = denial_for(_ov)
             _task_tracker.update_progress(
                 request_id, TaskStatus.FAILED,
-                error={"code": OL_PATH_DENIED, "message": PATH_DENIED_MESSAGE},
+                error={"code": _ov_denial.code, "message": _ov_denial.message},
             )
             return
 
@@ -89,7 +91,8 @@ async def _run_translate_xliff_async(
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
-                warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
+                _gv_denial = denial_for(_gv)
+                warnings.append(f"{_gv_denial.code}: {_gv.error}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -104,7 +107,8 @@ async def _run_translate_xliff_async(
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:
-                warnings.append(f"{OL_PATH_DENIED}: {_sg_v.error}")
+                _sg_denial = denial_for(_sg_v)
+                warnings.append(f"{_sg_denial.code}: {_sg_v.error}")
                 styleguide_section = None
 
         parser = XliffParser()
@@ -260,13 +264,13 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
     _iv = _validator.validate_path(params.input_path)
     if not _iv.success:
         return json.dumps(
-            _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+            _error_response(*denial_for(_iv)),
             ensure_ascii=False,
         )
     _ov = _validator.validate_path(output_path, allow_missing=True)
     if not _ov.success:
         return json.dumps(
-            _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+            _error_response(*denial_for(_ov)),
             ensure_ascii=False,
         )
 
@@ -284,7 +288,8 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     warnings.append(f"Glossary load failed: {e}")
                     glossary = None
             else:
-                warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
+                _gv_denial = denial_for(_gv)
+                warnings.append(f"{_gv_denial.code}: {_gv.error}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -299,7 +304,8 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     warnings.append(f"StyleGuide load failed: {e}")
                     styleguide_section = None
             else:
-                warnings.append(f"{OL_PATH_DENIED}: {_sg_v.error}")
+                _sg_denial = denial_for(_sg_v)
+                warnings.append(f"{_sg_denial.code}: {_sg_v.error}")
                 styleguide_section = None
 
         parser = XliffParser()

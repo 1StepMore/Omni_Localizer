@@ -51,10 +51,20 @@ class ValidationResult:
         success: True if path passed all validation checks.
         error: Error message if validation failed, None otherwise.
         resolved_path: The resolved Path object if successful, None otherwise.
+        reason: Stable snake_case id of the branch that rejected the path
+            (``"missing"``, ``"outside_allowed"``, ...), None on success.
+            ``error`` is a diagnostic string for humans and embeds raw
+            exception text on some branches; ``reason`` is the machine-readable
+            key tools hand to :func:`ol_mcp.path_denials.denial_for`, which
+            owns the agent-visible ``(code, message)`` pair. Every one of the
+            13 failure branches sets it — see
+            ``tests/test_path_denial_taxonomy.py``, which asserts the reason
+            set and the taxonomy entries are in exact correspondence.
     """
     success: bool
     error: Optional[str] = None
     resolved_path: Optional[Path] = None
+    reason: Optional[str] = None
 
 
 class PathValidator:
@@ -133,6 +143,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error=f"Invalid path format: {e}",
+                reason="invalid_format",
             )
 
         # Path traversal check
@@ -140,6 +151,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error="Path traversal detected (.. components are not allowed)",
+                reason="traversal",
             )
 
         # Resolve the path (follows symlinks)
@@ -149,6 +161,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error=f"Cannot resolve path: {e}",
+                reason="unresolvable",
             )
 
         # System directory check
@@ -164,6 +177,7 @@ class PathValidator:
                         return ValidationResult(
                             success=False,
                             error=f"Access to system directory not allowed: {sys_dir}",
+                            reason="system_dir",
                         )
             except ValueError:
                 pass
@@ -185,6 +199,7 @@ class PathValidator:
                     f"Path is not within allowed directories: "
                     f"{', '.join(str(d) for d in self.allowed_directories)}"
                 ),
+                reason="outside_allowed",
             )
 
         # Symlink check (re-validate the target is in allowed dirs)
@@ -203,11 +218,13 @@ class PathValidator:
                     return ValidationResult(
                         success=False,
                         error="Symlink points outside allowed directories",
+                        reason="symlink_escape",
                     )
             except (ValueError, OSError):
                 return ValidationResult(
                     success=False,
                     error="Symlink target is not accessible",
+                    reason="symlink_inaccessible",
                 )
 
         # Blocked extension check (executable blacklist)
@@ -215,6 +232,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error=f"File extension '{input_path.suffix}' is blocked",
+                reason="blocked_extension",
             )
 
         # Allowed extension check (document whitelist)
@@ -222,6 +240,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error=f"Extension '{input_path.suffix}' not in allowed set",
+                reason="extension_not_allowed",
             )
 
         # Existence check
@@ -231,6 +250,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error="File does not exist",
+                reason="missing",
             )
 
         # Must be a file, not a directory
@@ -238,6 +258,7 @@ class PathValidator:
             return ValidationResult(
                 success=False,
                 error="Path must be a file, not a directory",
+                reason="not_a_file",
             )
 
         # File size check
@@ -250,11 +271,13 @@ class PathValidator:
                         f"File size ({file_size} bytes) exceeds limit of "
                         f"{self.max_file_size_bytes} bytes"
                     ),
+                    reason="too_large",
                 )
         except OSError as e:
             return ValidationResult(
                 success=False,
                 error=f"Cannot access file to check size: {e}",
+                reason="stat_failed",
             )
 
         return ValidationResult(
