@@ -192,6 +192,12 @@ class TranslateInput(BaseModel):
         description="After translation, run a lightweight consistency pass "
                     "to fix cross-unit inconsistencies.",
     )
+    no_quality_gates: bool = Field(
+        default=False,
+        description="Deliberately skip the post-translation quality gates. The response "
+                    "reports quality_gates.status='skipped' so the skip is visible to the "
+                    "caller and distinguishable from the gates failing to run (issue #115).",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
     traceparent: str | None = Field(
         default=None,
@@ -272,6 +278,12 @@ class TranslateXliffInput(BaseModel):
                     "to fix cross-unit inconsistencies.",
     )
     config_path: str | None = Field(default=None, description="Path to LLM config")
+    no_quality_gates: bool = Field(
+        default=False,
+        description="Deliberately skip the post-translation quality gates. The response "
+                    "reports quality_gates.status='skipped' so the skip is visible to the "
+                    "caller and distinguishable from the gates failing to run (issue #115).",
+    )
     shared_secret: str | None = Field(default=None, description="Shared secret for MCP auth (required if MCP_SHARED_SECRET env var is set)")
     traceparent: str | None = Field(
         default=None,

@@ -13,6 +13,7 @@ from typing import Any
 _logger = logging.getLogger(__name__)
 
 from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
+from ol_mcp.gates import run_gates, skip_gates
 from ol_mcp.tools import (
     _error_response,
     _get_config_path,
@@ -29,7 +30,6 @@ from ol_mcp.task_tracker import TaskStatus
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_pool.router import ModelPool
-from ol_config.loader import load_config
 from ol_lqa.quality_gates import run_quality_gates
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
@@ -159,6 +159,7 @@ async def _run_translate_md_async(
     styleguide_path: str | None = None,
     no_styleguide: bool = False,
     polish: bool = False,
+    no_quality_gates: bool = False,
 ) -> None:
     """Background coroutine for async translate_md_text. Updates task tracker."""
     try:
@@ -187,24 +188,24 @@ async def _run_translate_md_async(
             polish=polish,
         )
 
-        # Post-translation quality gates (Issue #56)
-        try:
-            cfg, _ = load_config(resolved_config)
-            qg = cfg.quality_gates
-            gate_warnings = run_quality_gates(
-                content, result,
-                glossary=glossary,
-                inline_tags_enabled=qg.inline_tags,
-                terminology_enabled=qg.terminology and glossary is not None,
-                length_ratio_enabled=qg.length_ratio.enabled,
-                length_ratio_min=qg.length_ratio.min,
-                length_ratio_max=qg.length_ratio.max,
-                locale_enabled=qg.locale.enabled,
-                target_locale=qg.locale.target_locale,
+        # Post-translation quality gates (Issues #56, #115)
+        if no_quality_gates:
+            gate_outcome = skip_gates(warnings)
+        else:
+            gate_outcome = run_gates(
+                resolved_config, warnings,
+                lambda qg: warnings.extend(run_quality_gates(
+                    content, result,
+                    glossary=glossary,
+                    inline_tags_enabled=qg.inline_tags,
+                    terminology_enabled=qg.terminology and glossary is not None,
+                    length_ratio_enabled=qg.length_ratio.enabled,
+                    length_ratio_min=qg.length_ratio.min,
+                    length_ratio_max=qg.length_ratio.max,
+                    locale_enabled=qg.locale.enabled,
+                    target_locale=qg.locale.target_locale,
+                )),
             )
-            warnings.extend(gate_warnings)
-        except Exception as gate_err:
-            _logger.warning("Quality gates failed: %s", gate_err)
 
         if add_frontmatter:
             from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
@@ -221,6 +222,7 @@ async def _run_translate_md_async(
             "warnings": warnings,
             "source_lang": source_lang,
             "target_lang": target_lang,
+            "quality_gates": gate_outcome.as_response_field(),
         }
         _task_tracker.update_progress(request_id, TaskStatus.COMPLETED, progress=1.0, result=payload)
     except Exception as e:  # expected — background task failure, update tracker
@@ -262,6 +264,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             styleguide_path=params.styleguide_path,
             no_styleguide=params.no_styleguide,
             polish=params.polish,
+            no_quality_gates=params.no_quality_gates,
         ))
         return json.dumps(
             _success_response({"request_id": request_id, "status": "pending"}),
@@ -274,7 +277,8 @@ async def translate_md_text(params: TranslateInput) -> str:
     Handles code blocks, links, images automatically (preserved, not translated).
     Runs through shield → translate → repair → unshield pipeline.
 
-    Returns a JSON string with: success, translated, warnings, source_lang, target_lang
+    Returns a JSON string with: success, translated, warnings, source_lang,
+    target_lang, quality_gates
     """
 
     warnings: list[str] = []
@@ -321,24 +325,24 @@ async def translate_md_text(params: TranslateInput) -> str:
             polish=params.polish,
         )
 
-        # Post-translation quality gates (Issue #56)
-        try:
-            cfg, _ = load_config(config_path)
-            qg = cfg.quality_gates
-            gate_warnings = run_quality_gates(
-                params.content, result,
-                glossary=glossary,
-                inline_tags_enabled=qg.inline_tags,
-                terminology_enabled=qg.terminology and glossary is not None,
-                length_ratio_enabled=qg.length_ratio.enabled,
-                length_ratio_min=qg.length_ratio.min,
-                length_ratio_max=qg.length_ratio.max,
-                locale_enabled=qg.locale.enabled,
-                target_locale=qg.locale.target_locale,
+        # Post-translation quality gates (Issues #56, #115)
+        if params.no_quality_gates:
+            gate_outcome = skip_gates(warnings)
+        else:
+            gate_outcome = run_gates(
+                config_path, warnings,
+                lambda qg: warnings.extend(run_quality_gates(
+                    params.content, result,
+                    glossary=glossary,
+                    inline_tags_enabled=qg.inline_tags,
+                    terminology_enabled=qg.terminology and glossary is not None,
+                    length_ratio_enabled=qg.length_ratio.enabled,
+                    length_ratio_min=qg.length_ratio.min,
+                    length_ratio_max=qg.length_ratio.max,
+                    locale_enabled=qg.locale.enabled,
+                    target_locale=qg.locale.target_locale,
+                )),
             )
-            warnings.extend(gate_warnings)
-        except Exception as gate_err:
-            _logger.warning("Quality gates failed: %s", gate_err)
 
         from ol_cli import _generate_frontmatter, _validate_lang_code, _get_ol_version
 
@@ -358,6 +362,7 @@ async def translate_md_text(params: TranslateInput) -> str:
             "warnings": warnings,
             "source_lang": params.source_lang,
             "target_lang": params.target_lang,
+            "quality_gates": gate_outcome.as_response_field(),
         }
         resp = _success_response(content)
         resp["translated"] = result  # backward-compat alias (1 release)
