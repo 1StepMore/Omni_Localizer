@@ -16,6 +16,9 @@ recursive-include src/.hermes *
 # Jinja2 templates in ol_lqa
 recursive-include src/ol_lqa *.j2
 
+# Central prompt store (OL#112)
+recursive-include src/ol_pool/prompts *.txt
+
 # Exclude unnecessary files
 exclude .gitignore
 exclude .env

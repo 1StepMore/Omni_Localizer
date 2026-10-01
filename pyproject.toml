@@ -86,7 +86,8 @@ py-modules = ["ol_cli", "ol_review_extractor"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.md", "*.yaml", "*.j2"]
+# "*.txt" = the central prompt store (src/ol_pool/prompts/*.txt, OL#112)
+"*" = ["*.md", "*.yaml", "*.j2", "*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
