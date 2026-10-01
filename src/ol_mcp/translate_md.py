@@ -12,7 +12,6 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.gates import run_gates, skip_gates
 from ol_mcp.tools import (
     _error_response,
@@ -24,6 +23,7 @@ from ol_mcp.tools import (
     mcp_error_boundary,
 )
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.path_denials import denial_for
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.task_tracker import TaskStatus
@@ -289,14 +289,14 @@ async def translate_md_text(params: TranslateInput) -> str:
         _gv = _validator.validate_path(params.glossary_path)
         if not _gv.success:
             return json.dumps(
-                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+                _error_response(*denial_for(_gv)),
                 ensure_ascii=False,
             )
     if params.styleguide_path and not params.no_styleguide:
         _sv = _validator.validate_path(params.styleguide_path)
         if not _sv.success:
             return json.dumps(
-                _error_response(OL_PATH_DENIED, PATH_DENIED_MESSAGE),
+                _error_response(*denial_for(_sv)),
                 ensure_ascii=False,
             )
 

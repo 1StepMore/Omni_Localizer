@@ -28,8 +28,8 @@ import tempfile
 from pathlib import Path
 
 
-from ol_mcp._errors import OL_PATH_DENIED, PATH_DENIED_MESSAGE
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.path_denials import denial_for
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_mcp.tools import (
@@ -110,10 +110,9 @@ async def translate_file(params: TranslateFileInput) -> str:
 
     vresult = get_default_validator().validate_path(params.file_path, allow_missing=False, skip_extension_check=True)
     if not vresult.success:
-        return json.dumps(_error_response(
-            OL_PATH_DENIED,
-            PATH_DENIED_MESSAGE,
-        ), ensure_ascii=False)
+        return json.dumps(
+            _error_response(*denial_for(vresult)), ensure_ascii=False
+        )
 
     if params.output_format not in _VALID_OUTPUT_FORMATS:
         return json.dumps(_error_response(

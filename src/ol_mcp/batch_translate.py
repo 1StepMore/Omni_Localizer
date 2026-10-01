@@ -14,7 +14,6 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-from ol_mcp._errors import OL_PATH_DENIED
 from ol_mcp.tools import (
     _error_response,
     _get_config_path,
@@ -24,6 +23,7 @@ from ol_mcp.tools import (
     mcp_error_boundary,
 )
 from ol_mcp.auth import auth_failure_response, check_auth
+from ol_mcp.path_denials import denial_for
 from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 from ol_mcp.security import get_default_validator
 from ol_md.pipeline import MDRepairPipeline
@@ -64,7 +64,8 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
     if params.glossary_path:
         _gv = get_default_validator().validate_path(params.glossary_path)
         if not _gv.success:
-            warnings.append(f"{OL_PATH_DENIED}: {_gv.error}")
+            _denial = denial_for(_gv)
+            warnings.append(f"{_denial.code}: {_denial.message}")
         else:
             try:
                 glossary = load_glossary_from_path(params.glossary_path)

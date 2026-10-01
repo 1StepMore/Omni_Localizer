@@ -35,6 +35,19 @@ PATH_DENIED_MESSAGE = "Path is not within the allowed directories."
 # Do not change the string — clients switch on it.
 OL_MCP_NOT_CONFIGURED = "OL_MCP_NOT_CONFIGURED"
 
+# Stable error code for a path that cleared every policy gate (allowlist,
+# system dirs, traversal, extension rules) and then failed on the filesystem:
+# missing, not a file, over the size cap, or unreadable.
+#
+# Distinct from ``_ERROR_CODE_MAP``'s ``OL_FILE_NOT_FOUND``, which is derived
+# from a raised ``FileNotFoundError``. This one is emitted by the *validator*
+# through ``ol_mcp.path_denials``, which has a branch reason rather than an
+# exception, and it deliberately shares the bare name that ``translate_file``
+# already returns for a missing user-supplied input — so an agent sees one
+# code for "your file is not there" regardless of which layer noticed.
+# Do not change the string — clients switch on it.
+FILE_NOT_FOUND = "FILE_NOT_FOUND"
+
 
 class PathDeniedError(ValueError):
     """Raised when a path falls outside the MCP allowed-directories sandbox."""
@@ -91,6 +104,11 @@ RECOVERY_HINTS: dict[str, RecoveryHint] = {
         "fix_input",
         "Verify the glossary, TMX, or config file path exists, then re-issue.",
     ),
+    "FILE_NOT_FOUND": RecoveryHint(
+        "fix_input",
+        "The path passed every security policy check but is not a readable "
+        "file. Verify the file exists at that exact path, then re-issue.",
+    ),
     "OL_PERMISSION_DENIED": RecoveryHint(
         "fix_input",
         "Check file permissions for the server process, then re-issue.",
@@ -146,7 +164,13 @@ RECOVERY_HINTS: dict[str, RecoveryHint] = {
 #: rate-limit, and dispatch paths rather than by ``_ERROR_CODE_MAP``.
 DECLARED_ERROR_CODES: frozenset[str] = (
     frozenset(_ERROR_CODE_MAP.values())
-    | {"OL_INTERNAL_ERROR", "OL_UNKNOWN_TOOL", "AUTH_FAILED", "RATE_LIMITED"}
+    | {
+        "OL_INTERNAL_ERROR",
+        "OL_UNKNOWN_TOOL",
+        "AUTH_FAILED",
+        "RATE_LIMITED",
+        FILE_NOT_FOUND,
+    }
 )
 
 _FALLBACK_RECOVERY = RecoveryHint(
