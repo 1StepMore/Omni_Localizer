@@ -456,3 +456,265 @@ class TestTranslateXliffQualityGates:
                 os.unlink(output_path)
             except OSError:
                 pass
+
+
+# =========================================================================
+# Issue #115: a gate pass that never ran must not look like a clean one.
+# Before the fix, a missing/unloadable config was downgraded to one log line
+# and the caller got {"translated": ..., "warnings": []} — byte-identical to
+# "the gates ran and everything passed".
+# =========================================================================
+
+_NOT_RUN_PREFIX = "OL_GATES_NOT_RUN:"
+_SKIPPED_PREFIX = "OL_GATES_SKIPPED:"
+
+
+def _gate_markers(warnings):
+    """The non-run/skip markers in a warnings list, ignoring OL_WARN gate output."""
+    return [w for w in warnings if w.startswith((_NOT_RUN_PREFIX, _SKIPPED_PREFIX))]
+
+
+@pytest.fixture
+def missing_config_path(tmp_path):
+    """A config path that does not exist — config drift, the issue's repro."""
+    return str(tmp_path / "no_such_config.yaml")
+
+
+class TestTranslateMdGateOutcomeReporting:
+    """translate_md_text tells the caller whether the gates actually ran."""
+
+    @pytest.mark.asyncio
+    async def test_missing_config_is_reported_not_silently_skipped(self, missing_config_path):
+        """Repro for #115: a nonexistent config must surface, not vanish into a log."""
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=missing_config_path,
+        )
+        result = json.loads(await translate_md_text(params))
+
+        assert result["success"] is True, "A non-run is reported, not a translation failure"
+        gates = result["content"]["quality_gates"]
+        assert gates["status"] == "not_run"
+        assert gates["reason"].startswith("config_load_failed:"), gates
+        assert "Config file not found" in gates["reason"], gates
+
+        markers = _gate_markers(result["content"]["warnings"])
+        assert len(markers) == 1, result["content"]["warnings"]
+        assert markers[0].startswith(_NOT_RUN_PREFIX), markers
+
+    @pytest.mark.asyncio
+    async def test_gate_invocation_failure_is_reported(self, tight_config_path, monkeypatch):
+        """A raising gate invocation is a non-run, not a silently clean pass."""
+        from ol_mcp import translate_md as translate_md_mod
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("gate exploded")
+
+        monkeypatch.setattr(translate_md_mod, "run_quality_gates", _boom)
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=tight_config_path,
+        )
+        result = json.loads(await translate_md_text(params))
+
+        assert result["success"] is True
+        gates = result["content"]["quality_gates"]
+        assert gates["status"] == "not_run"
+        assert gates["reason"].startswith("gate_invocation_failed:"), gates
+        assert "gate exploded" in gates["reason"], gates
+        assert _gate_markers(result["content"]["warnings"]), result["content"]["warnings"]
+
+    @pytest.mark.asyncio
+    async def test_explicit_opt_out_is_visible_and_distinct(self, tight_config_path):
+        """no_quality_gates=true reads as skipped, never as the broken case."""
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=tight_config_path,
+            no_quality_gates=True,
+        )
+        result = json.loads(await translate_md_text(params))
+
+        gates = result["content"]["quality_gates"]
+        assert gates["status"] == "skipped"
+        assert "no_quality_gates=true" in gates["reason"], gates
+
+        markers = _gate_markers(result["content"]["warnings"])
+        assert len(markers) == 1 and markers[0].startswith(_SKIPPED_PREFIX), markers
+
+        # Tight bounds would fire LENGTH_RATIO had the gates run, so their
+        # absence proves the skip was real and not merely unreported.
+        assert not [w for w in result["content"]["warnings"] if w.startswith("OL_WARN:")], (
+            f"Gates were skipped, so no gate warnings expected: {result['content']['warnings']}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_opt_out_survives_a_missing_config(self, missing_config_path):
+        """An opted-out call never reports not_run — nothing was asked for."""
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=missing_config_path,
+            no_quality_gates=True,
+        )
+        result = json.loads(await translate_md_text(params))
+
+        assert result["content"]["quality_gates"]["status"] == "skipped"
+        assert not any(
+            w.startswith(_NOT_RUN_PREFIX) for w in result["content"]["warnings"]
+        ), result["content"]["warnings"]
+
+    @pytest.mark.asyncio
+    async def test_warnings_path_shape_is_unchanged(self, tight_config_path):
+        """#115 must be purely additive: gates-ran-with-warnings is untouched."""
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=tight_config_path,
+        )
+        content = json.loads(await translate_md_text(params))["content"]
+
+        assert content["quality_gates"] == {"status": "ran", "reason": ""}
+        assert [w for w in content["warnings"] if "OL_WARN: LENGTH_RATIO" in w]
+        assert _gate_markers(content["warnings"]) == [], content["warnings"]
+
+    @pytest.mark.asyncio
+    async def test_clean_pass_reports_ran_with_no_warnings(self, disabled_config_path):
+        """Gates ran and found nothing: 'ran', and warnings stay exactly []."""
+        from ol_mcp.tools import translate_md_text, TranslateInput
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=disabled_config_path,
+        )
+        content = json.loads(await translate_md_text(params))["content"]
+
+        assert content["quality_gates"] == {"status": "ran", "reason": ""}
+        assert content["warnings"] == []
+
+    @pytest.mark.asyncio
+    async def test_async_payload_reports_non_run(self, missing_config_path):
+        """async_mode delivers the same signal through the task tracker payload."""
+        import asyncio
+        import time
+
+        from ol_mcp.tools import translate_md_text, TranslateInput, _task_tracker
+        from ol_mcp.status import get_translation_status
+
+        params = TranslateInput(
+            content="A",
+            source_lang="en",
+            target_lang="zh",
+            config_path=missing_config_path,
+            async_mode=True,
+        )
+        request_id = json.loads(await translate_md_text(params))["content"]["request_id"]
+
+        deadline = time.time() + 60
+        final = None
+        while time.time() < deadline:
+            status = json.loads(get_translation_status(request_id, _task_tracker))
+            if status["content"]["status"] in ("completed", "failed"):
+                final = status
+                break
+            await asyncio.sleep(0.5)
+
+        assert final is not None, "Task did not complete"
+        assert final["content"]["status"] == "completed"
+        payload = final["content"]["result"]
+        assert payload["quality_gates"]["status"] == "not_run", payload
+        assert _gate_markers(payload["warnings"]), payload["warnings"]
+
+
+class TestTranslateXliffGateOutcomeReporting:
+    """translate_xliff tells the caller whether the gates actually ran."""
+
+    @pytest.mark.asyncio
+    async def test_missing_config_is_reported_not_silently_skipped(
+        self, missing_config_path, xliff_file, tmp_path,
+    ):
+        """Repro for #115 on the XLIFF path; translation still lands on disk."""
+        from ol_mcp.tools import translate_xliff, TranslateXliffInput
+
+        output_path = str(tmp_path / "out.xlf")
+        params = TranslateXliffInput(
+            input_path=xliff_file,
+            output_path=output_path,
+            source_lang="en",
+            target_lang="zh",
+            config_path=missing_config_path,
+        )
+        result = json.loads(await translate_xliff(params))
+
+        assert result["success"] is True
+        content = result["content"]
+        assert content["units_processed"] == 2
+        gates = content["quality_gates"]
+        assert gates["status"] == "not_run"
+        assert gates["reason"].startswith("config_load_failed:"), gates
+        markers = _gate_markers(content["warnings"])
+        assert len(markers) == 1 and markers[0].startswith(_NOT_RUN_PREFIX), markers
+        assert "<target>" in Path(output_path).read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_explicit_opt_out_is_visible_and_distinct(
+        self, tight_config_path, xliff_file, tmp_path,
+    ):
+        """no_quality_gates=true skips the per-unit gates and says so."""
+        from ol_mcp.tools import translate_xliff, TranslateXliffInput
+
+        output_path = str(tmp_path / "out.xlf")
+        params = TranslateXliffInput(
+            input_path=xliff_file,
+            output_path=output_path,
+            source_lang="en",
+            target_lang="zh",
+            config_path=tight_config_path,
+            no_quality_gates=True,
+        )
+        content = json.loads(await translate_xliff(params))["content"]
+
+        assert content["quality_gates"]["status"] == "skipped"
+        markers = _gate_markers(content["warnings"])
+        assert len(markers) == 1 and markers[0].startswith(_SKIPPED_PREFIX), markers
+        assert "OL_WARN" not in Path(output_path).read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_warnings_path_shape_is_unchanged(
+        self, tight_config_path, xliff_file, tmp_path,
+    ):
+        """Gates ran and warned: 'ran', notes in the XLIFF, no extra marker."""
+        from ol_mcp.tools import translate_xliff, TranslateXliffInput
+
+        output_path = str(tmp_path / "out.xlf")
+        params = TranslateXliffInput(
+            input_path=xliff_file,
+            output_path=output_path,
+            source_lang="en",
+            target_lang="zh",
+            config_path=tight_config_path,
+        )
+        content = json.loads(await translate_xliff(params))["content"]
+
+        assert content["quality_gates"] == {"status": "ran", "reason": ""}
+        assert _gate_markers(content["warnings"]) == [], content["warnings"]
+        assert "OL_WARN: LENGTH_RATIO" in Path(output_path).read_text(encoding="utf-8")

@@ -147,6 +147,7 @@ Translate a Markdown string end-to-end. **Text in, text out** — no file I/O.
 | `glossary_max_terms` | int (1–50) | no | Top-N glossary terms. Default: `5`. |
 | `no_glossary` | bool | no | Disable glossary injection. |
 | `no_restoration` | bool | no | Skip A12.4 placeholder restoration. |
+| `no_quality_gates` | bool | no | Deliberately skip the post-translation quality gates. Default: `false`. The response reports `quality_gates.status: "skipped"`. |
 | `shared_secret` | string \| null | no | Required if `MCP_SHARED_SECRET` env var is set. |
 
 Returns:
@@ -154,12 +155,36 @@ Returns:
 ```json
 {
   "success": true,
-  "translated": "# 你好世界\n这是一个测试。",
-  "warnings": [],
-  "source_lang": "en",
-  "target_lang": "zh"
+  "content": {
+    "translated": "# 你好世界\n这是一个测试。",
+    "warnings": [],
+    "source_lang": "en",
+    "target_lang": "zh",
+    "quality_gates": {"status": "ran", "reason": ""}
+  },
+  "translated": "# 你好世界\n这是一个测试。"
 }
 ```
+
+`translated` is duplicated at the top level as a backward-compat alias.
+
+`quality_gates.status` reports whether the 8 gates (§ OL#56 in `AGENTS.md`) actually
+executed, so a caller never has to guess (issue #115):
+
+| `status` | Meaning | `reason` |
+|---|---|---|
+| `ran` | The gates ran. Any findings are in `warnings` as `OL_WARN: <CODE>`; a clean pass gives `warnings: []`. | `""` |
+| `not_run` | Gates were requested but never ran: the config is missing or failed to load, or the gate invocation raised. **The translation is still returned** — this is not a failure, but it is not a clean pass either. | starts with `config_load_failed:` or `gate_invocation_failed:` |
+| `skipped` | The caller set `no_quality_gates: true`. | `disabled by caller (no_quality_gates=true)` |
+
+Any non-`ran` status also appends exactly one namespaced entry to `warnings`, so
+callers that only read `warnings` still see it:
+
+- `OL_GATES_NOT_RUN: <reason>`
+- `OL_GATES_SKIPPED: disabled by caller (no_quality_gates=true)`
+
+Gate *warnings* remain non-blocking in every case — `not_run` never turns into a
+failed response.
 
 ### 2.2 `translate_xliff`
 
@@ -173,13 +198,20 @@ Translate an XLIFF file. **File in, file out** — unlike `translate_md_text`, t
 | `target_lang` | string | no | Default: `en`. |
 | `glossary_path` | string \| null | no | JSON glossary. |
 | `config_path` | string \| null | no | LLM config YAML. |
+| `no_quality_gates` | bool | no | Deliberately skip the post-translation quality gates. Default: `false`. The response reports `quality_gates.status: "skipped"`. |
 | `shared_secret` | string \| null | no | MCP auth. |
 
 Returns:
 
 ```json
-{"success": true, "output_path": "/tmp/doc_translated.xlf", "units_processed": 42, "warnings": []}
+{"success": true, "content": {"output_path": "/tmp/doc_translated.xlf", "units_processed": 42,
+ "warnings": [], "quality_gates": {"status": "ran", "reason": ""}}}
 ```
+
+Per-unit gate findings are written to `<note from="OL">` elements in the output
+file, not to `warnings`. `warnings` carries run-level conditions only — glossary
+load failures, path denials, and the `OL_GATES_NOT_RUN` / `OL_GATES_SKIPPED`
+markers. `quality_gates.status` means exactly what it does in § 2.1.
 
 ### 2.3 `judge_text`
 

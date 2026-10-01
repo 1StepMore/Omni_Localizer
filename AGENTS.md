@@ -105,8 +105,8 @@ src/ol/
 
 | Tool | Purpose |
 |------|---------|
-| `translate_md_text` | Translate markdown text (text-in/text-out). Returns optional `warnings` field with post-translation quality gate results. The primary Agent tool. |
-| `translate_xliff` | Translate an XLIFF file (text-in/text-out). Per-unit quality gate notes written to `<note>` elements in output. |
+| `translate_md_text` | Translate markdown text (text-in/text-out). Returns optional `warnings` field with post-translation quality gate results, plus a `quality_gates` field reporting whether the gates actually ran (`ran` / `not_run` / `skipped`); see issue #115 and `docs/API.md` § 2.1. The primary Agent tool. |
+| `translate_xliff` | Translate an XLIFF file (text-in/text-out). Per-unit quality gate notes written to `<note>` elements in output; run-level `quality_gates` field as above (`docs/API.md` § 2.2). |
 | `judge_text` | Evaluate translation quality (returns adequacy/fluency/terminology/format scores) |
 | `load_glossary` | Load a JSON glossary file |
 | `get_relevant_terms` | Extract top-k relevant glossary terms for a source text |
@@ -367,6 +367,16 @@ Warnings are collected and returned in the `warnings` output field
 elements (CLI). Configure via `quality_gates:` in `config/default.yaml`
 or override with `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, and
 `OL_TARGET_LOCALE` env vars.
+
+On the MCP channel (`translate_md_text`, `translate_xliff`) a gate pass that
+never ran is reported, not downgraded to a log line (issue #115). The response
+carries `quality_gates: {"status": "ran" | "not_run" | "skipped", "reason": …}`;
+`not_run` means the config was missing/unloadable or the gate invocation
+raised, and it also appends `OL_GATES_NOT_RUN: <reason>` to `warnings`. Callers
+opt out deliberately with `no_quality_gates: true`, which reports `skipped` plus
+`OL_GATES_SKIPPED: …`. Gate *warnings* stay non-blocking in all three cases.
+The CLI channel always passes a real config (`-c config/default.yaml`) and is
+unchanged. See `src/ol_mcp/gates.py` and `docs/API.md` § 2.1–2.2.
 
 ### FAKE_LLM decision matrix
 
