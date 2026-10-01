@@ -65,7 +65,7 @@ async def batch_translate_texts(params: BatchTranslateInput) -> str:
         _gv = get_default_validator().validate_path(params.glossary_path)
         if not _gv.success:
             _denial = denial_for(_gv)
-            warnings.append(f"{_denial.code}: {_gv.error}")
+            warnings.append(f"{_denial.code}: {_denial.message}")
         else:
             try:
                 glossary = load_glossary_from_path(params.glossary_path)

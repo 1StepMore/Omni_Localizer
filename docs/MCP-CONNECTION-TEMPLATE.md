@@ -377,6 +377,8 @@ All three MCP servers return errors in a uniform shape:
 | Code | Meaning | Caller Action |
 |------|---------|---------------|
 | `OL_FILE_NOT_FOUND` | Glossary, TMX, or config path not found. | Verify the file path. |
+| `FILE_NOT_FOUND` | The path cleared every security policy gate (allowlist, system dirs, traversal, extension rules) and then failed on the filesystem: missing, not a file, over the 100 MB cap, or unreadable. Distinct from `OL_FILE_NOT_FOUND`, which is derived from a raised `FileNotFoundError`. | Verify the file exists and is readable at that exact path. Do NOT widen `MCP_ALLOWED_DIRECTORIES` — the allowlist already accepted this path. |
+| `OL_PATH_DENIED` | A path-*policy* gate rejected the path. The `message` now names the branch that fired (invalid format, traversal, unresolvable, system directory, allowlist containment, symlink escape, symlink inaccessible, blocked extension, extension not in the allowed set) instead of always claiming containment. | Read the `message` first — it selects the fix. Widen the allowlist only for a containment message; for a system-directory or extension message, change the path, not the allowlist. |
 | `OL_MCP_NOT_CONFIGURED` | Server has no allowed-directories allowlist (fail-CLOSED). This is a server-side misconfiguration, not bad input. | Set `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) to a comma-separated allowlist before starting the server, then re-issue. Do NOT change the request input. |
 | `OL_INVALID_INPUT` | Bad input or LLM returned unparseable output. | Validate input; retry may succeed if LLM transient. |
 | `OL_TIMEOUT` | LLM call exceeded timeout. | Retry with backoff; consider increasing timeout for large batches. |

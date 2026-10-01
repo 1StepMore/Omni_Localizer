@@ -92,7 +92,7 @@ async def _run_translate_xliff_async(
                     glossary = None
             else:
                 _gv_denial = denial_for(_gv)
-                warnings.append(f"{_gv_denial.code}: {_gv.error}")
+                warnings.append(f"{_gv_denial.code}: {_gv_denial.message}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -108,7 +108,7 @@ async def _run_translate_xliff_async(
                     styleguide_section = None
             else:
                 _sg_denial = denial_for(_sg_v)
-                warnings.append(f"{_sg_denial.code}: {_sg_v.error}")
+                warnings.append(f"{_sg_denial.code}: {_sg_denial.message}")
                 styleguide_section = None
 
         parser = XliffParser()
@@ -289,7 +289,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     glossary = None
             else:
                 _gv_denial = denial_for(_gv)
-                warnings.append(f"{_gv_denial.code}: {_gv.error}")
+                warnings.append(f"{_gv_denial.code}: {_gv_denial.message}")
                 glossary = None
 
         styleguide_section: str | None = None
@@ -305,7 +305,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                     styleguide_section = None
             else:
                 _sg_denial = denial_for(_sg_v)
-                warnings.append(f"{_sg_denial.code}: {_sg_v.error}")
+                warnings.append(f"{_sg_denial.code}: {_sg_denial.message}")
                 styleguide_section = None
 
         parser = XliffParser()

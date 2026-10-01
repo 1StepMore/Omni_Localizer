@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterator, Optional
 
-from ol_mcp._errors import OL_PATH_DENIED
+from ol_mcp._errors import FILE_NOT_FOUND, OL_PATH_DENIED
 from ol_mcp.security import ValidationResult
 
 #: Frozen containment wording. Module-private on purpose: tool modules must
@@ -80,20 +80,59 @@ class PathDenial:
 #: hits them.  Every one of the 13 branches is present; the exhaustiveness
 #: test asserts that set equality, so adding a validator branch without
 #: adding a row here fails the suite.
+#:
+#: Two policies decide the ``message`` column:
+#:
+#: * **Reasons 1-9** are path-*policy* denials — the allowlist, the system-dir
+#:   blacklist, the traversal rule, the extension rules. They keep the
+#:   byte-identical ``OL_PATH_DENIED`` code (clients switch on that string) and
+#:   gain a message that names the branch, so an agent can tell a traversal
+#:   from a system-dir hit from a blacklisted extension.
+#: * **Reasons 10-13** are not policy denials at all — the path cleared every
+#:   policy gate and then failed on the filesystem. Reporting them as
+#:   ``OL_PATH_DENIED`` told the agent to widen an allowlist that was already
+#:   correct, which is exactly the misdiagnosis this module exists to end. They
+#:   get ``FILE_NOT_FOUND``, mirroring ``omni_mcp.orchestrator`` and OL's own
+#:   ``translate_file`` (``FILE_NOT_FOUND`` for a missing user-supplied input).
+#:
+#: Four reasons deliberately keep the frozen containment sentence:
+#: ``outside_allowed``, ``traversal`` and ``symlink_escape`` are the three the
+#: design froze, and ``extension_not_allowed`` is a **fourth, forced by shipped
+#: evidence**: ``scenarios/agent-surface/tool-ol-generate_report.yaml`` asserts
+#: the literal ``Path is not within the allowed directories.`` for
+#: ``output_dir="/tmp/omni-agent-surface"``, and that path is denied by the
+#: extension whitelist (a suffixless directory), not by containment. Widening
+#: the frozen set to match reality was preferred over editing that scenario.
+#: The cost is recorded honestly: ``generate_report`` keeps reporting a
+#: containment message for an extension-policy denial.
 _REASON_MAP: Dict[str, PathDenial] = {
-    "invalid_format": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
+    # ── path-policy denials: keep OL_PATH_DENIED, name the branch ──
+    "invalid_format": PathDenial(
+        OL_PATH_DENIED, "Path format is invalid and cannot be parsed."
+    ),
     "traversal": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "unresolvable": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "system_dir": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
+    "unresolvable": PathDenial(
+        OL_PATH_DENIED, "Path could not be resolved to a real location."
+    ),
+    "system_dir": PathDenial(
+        OL_PATH_DENIED, "Path targets a protected system directory."
+    ),
     "outside_allowed": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
     "symlink_escape": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "symlink_inaccessible": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "blocked_extension": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
+    "symlink_inaccessible": PathDenial(
+        OL_PATH_DENIED, "Symlink target could not be read or resolved."
+    ),
+    "blocked_extension": PathDenial(
+        OL_PATH_DENIED, "File extension is on the blocked executable blacklist."
+    ),
     "extension_not_allowed": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "missing": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "not_a_file": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "too_large": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
-    "stat_failed": PathDenial(OL_PATH_DENIED, _CONTAINMENT_MESSAGE),
+    # ── filesystem failures: not an allowlist problem ──
+    "missing": PathDenial(FILE_NOT_FOUND, "File does not exist."),
+    "not_a_file": PathDenial(FILE_NOT_FOUND, "Path must be a file, not a directory."),
+    "too_large": PathDenial(FILE_NOT_FOUND, "File exceeds the maximum allowed size."),
+    "stat_failed": PathDenial(
+        FILE_NOT_FOUND, "File could not be read to verify its size."
+    ),
 }
 
 
