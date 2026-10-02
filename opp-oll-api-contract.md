@@ -1,5 +1,39 @@
 # OPP-OLL API 契约文档
 
+> ## ⚠️ 实现状态抬头（2026-10-02 加 · 独立交叉审查后核实）
+>
+> **本文档描述的是"规划中的 REST 接口"，不是当前已实现的接口。**
+> 请勿据此编写客户端——**当前没有任何服务端实现它**。
+>
+> ### 核实结论（全部为实跑/实查结果）
+>
+> | 检查 | 结果 |
+> |:---|:---|
+> | OPP/OL 源码里的 HTTP 框架（fastapi / flask / uvicorn / starlette / aiohttp） | **0 个** → **REST 服务端不存在** |
+> | 端点 `chunk` / `chunk_quality` / `check_incremental` 在源码中的实现 | **0 个 py 文件** |
+> | 端点 `glossary` | 能力存在（42 个 py 文件），**但不是以本文档描述的 REST 端点形式暴露** |
+> | 端点 `health` | ✅ 存在（`opp/mcp/health.py` 的健康服务），**但它是 MCP 侧的，不是本文档的 `/api/v1/health`** |
+> | **OL 是否调用 OPP** | **`import opp` / `from opp` = 0 个文件** → **OL 对 OPP 零耦合，任何传输层都没有客户端** |
+>
+> ### 当前真实的集成路径是 **MCP，不是 REST**
+>
+> `opp/mcp/server.py`（`mcp.server.Server` + stdio transport）暴露 **9 个工具**：
+> ```
+> ping · detect_format_tool · save_skeleton · generate_markdown · generate_xliff
+> extract_document · batch_extract · validate_xliff · get_capabilities
+> ```
+> 安全层：`@mcp_error_boundary` · 令牌桶限流 · 共享密钥鉴权 · `PathValidator`（白名单/大小/穿越/符号链接）
+>
+> ### 本文档的定位
+>
+> - **保留**：作为**未来若要拆成两个独立服务**时的接口设计草案，有参考价值
+> - **不得**：当成"接口已定稿"的依据；不得据此假设存在可调用的服务端
+> - 若本文档原本描述的是 `Omni_Suite` 那个**未随本包交付的上层仓库**，请在交付时注明——**对交付包而言，没实现就是没实现**
+>
+> ---
+>
+> 以下为原文（未改动）
+
 > 本文档定义 OPP (Omni Pre-Processor) 与 OLL (Omni Localizer) 之间的接口契约。
 > 两个模块独立部署，通过 REST API 通信。
 
