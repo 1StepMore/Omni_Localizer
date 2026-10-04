@@ -220,7 +220,7 @@ class TestInspectConfigRedaction:
     def test_inspect_config_real_config_redacts_secrets(self, tmp_path):
         """End-to-end test with a synthetic config that has hardcoded api_key."""
         pytest.importorskip("ol_config")
-        pytest.importorskip("ol_mcp")
+        pytest.importorskip("ol_mcp.tools")
 
         from ol_config.schema import LLMModelConfig, LLMModelRole
         from ol_mcp.inspect_config import _redact_secret, _looks_safe_base_url
