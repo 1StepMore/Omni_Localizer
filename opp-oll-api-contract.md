@@ -1,5 +1,67 @@
 # OPP-OLL API 契约文档
 
+> ## ⚠️ 实现状态抬头（2026-10-02 加 · 独立交叉审查后核实）
+>
+> **本文档描述的是"规划中的 REST 接口"，不是当前已实现的接口。**
+> 请勿据此编写客户端——**当前没有任何服务端实现它**。
+>
+> ### 核实结论（全部为实跑/实查结果）
+>
+> | 检查 | 结果 |
+> |:---|:---|
+> | OPP/OL 源码里的 HTTP 框架（fastapi / flask / uvicorn / starlette / aiohttp） | **0 个** → **REST 服务端不存在** |
+> | 端点 `chunk` / `chunk_quality` / `check_incremental` 在源码中的实现 | **0 个 py 文件** |
+> | 端点 `glossary` | **OPP 侧不存在**（`grep glossary` 在 OPP `src/` = **0 个文件**）。OL 侧确有 glossary 能力（132 个文件），但那是**OL 自己的术语表功能，与本文档描述的 OPP 端点无关** |
+> | 端点 `health` | ✅ 存在（`opp/mcp/health.py` 的健康服务），**但它是 MCP 侧的，不是本文档的 `/api/v1/health`** |
+> | **OL 是否调用 OPP** | **OL `src/` = 0 个文件** → OL 运行时零耦合，没有任何传输层客户端。⚠️ 但 OL 的**测试** import 了 `opp.mcp._errors`（`tests/test_ol_mcp_error_boundary.py:125,140`），即**开发/CI 存在单向耦合**，仅此一处 |
+>
+> 补充一项核实：仓库里唯一的 HTTP 是**标准库健康探针**（`http.server`，见 `health.py:31,101`，
+> 需 `OMNI_HEALTH_ENABLED=1`），只服务单个 health JSON，**不是 REST 服务端**。
+> 上表「HTTP 框架 0 个」说的是 fastapi/flask 一类，故此条单列，避免读者以为"连 HTTP 都没有"。
+>
+> ### 当前真实的集成路径：**CLI 子进程传文件**，MCP 是并行的 agent 入口
+>
+> 阶段衔接（谁调谁）实际由**上层编排器以 CLI 子进程 + 磁盘文件**完成，不存在 OPP↔OL 的运行时调用：
+>
+> ```
+> omni_suite/cli.py:241  opp … --output-dir <opp_dir>
+> omni_suite/cli.py:244  ol translate-md <opp_dir>/<stem>.md -o <ol_dir>
+> ```
+>
+> MCP（`opp/mcp/server.py`、`ol_mcp/server.py`，stdio transport）是**各模块自己的 agent 入口**，
+> 与上述文件式衔接**并行存在**，不是它的替代品。
+>
+> MCP 侧 `opp/mcp/server.py`（`mcp.server.Server` + stdio transport）暴露 **9 个工具**：
+> ```
+> ping · detect_format_tool · save_skeleton · generate_markdown · generate_xliff
+> extract_document · batch_extract · validate_xliff · get_capabilities
+> ```
+> 安全层：`@mcp_error_boundary` · 令牌桶限流 · 共享密钥鉴权 · `PathValidator`（白名单/大小/穿越/符号链接）
+>
+> ### 原文未标注之处（读者易被误导的位置）
+>
+> 下方正文是**原文、未改动**，其中以下位置仍以既定事实的口吻描述 REST，请勿照搬：
+>
+> - 正文开头：「两个模块独立部署，通过 REST API 通信」
+> - §1 部署关系：「OLL 按需调用 OPP API」
+> - §2 基础 URL：`http://{OPP_HOST}:{OPP_PORT}`
+> - §4.2 调用示例：`from opp_client import OPPClient`（**该模块在任何仓里都不存在**）
+> - §5 错误码：以 HTTP 状态码（404/422/500）描述
+> - §6 配置：`server: port 8080`
+> - §8 变更历史：「v1.0.0 初始版本」——读者可能误以为该接口已交付
+>
+> 若从目录或搜索直接跳到这些章节（跳过本抬头），仍会得到"REST 已实现"的错误印象。
+>
+> ### 本文档的定位
+>
+> - **保留**：作为**未来若要拆成两个独立服务**时的接口设计草案，有参考价值
+> - **不得**：当成"接口已定稿"的依据；不得据此假设存在可调用的服务端
+> - 若本文档原本描述的是 `Omni_Suite` 那个**未随本包交付的上层仓库**，请在交付时注明——**对交付包而言，没实现就是没实现**
+>
+> ---
+>
+> 以下为原文（未改动）
+
 > 本文档定义 OPP (Omni Pre-Processor) 与 OLL (Omni Localizer) 之间的接口契约。
 > 两个模块独立部署，通过 REST API 通信。
 
