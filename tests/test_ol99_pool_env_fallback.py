@@ -73,7 +73,16 @@ class TestPoolSurvivesPartialCredentials:
         assert "openai/absent" not in names
         assert len(names) == 6
 
-    def test_skipped_model_is_absent_from_fallbacks_too(self):
+    def test_skipped_model_never_reaches_a_fallback(self):
+        """The env filter must hold for fallbacks too (e2e-test-suite#141).
+
+        Since #141, fallback values are litellm model GROUP names, not
+        `provider/model` ids, so the shape of this assertion changed: what
+        must never appear is a role whose every model was skipped, because
+        _build_model_list registered no group for it and the Router could
+        never resolve it. The partially-filtered `translation` role keeps its
+        survivors, so it stays registered and stays a legal target.
+        """
         pool = LLMPoolConfig(
             translation=[
                 _absent(_TRANSLATION, 1),
@@ -84,10 +93,40 @@ class TestPoolSurvivesPartialCredentials:
             restoration=_working(_RESTORATION),
         )
         built = _build(pool)
-        fallbacks = built._build_fallbacks(pool, usable=built._usable_by_role)
-        flat = [mid for entry in fallbacks for mids in entry.values() for mid in mids]
-        assert "openai/absent" not in flat
-        assert "openai/third-provider" in flat
+        registered = {
+            entry["model_name"]
+            for entry in built._build_model_list(pool, usable=built._usable_by_role)
+        }
+        assert [m.model for m in built._usable_by_role["translation"]] == [
+            "translation-primary", "third-provider",
+        ]
+
+        # A role that loses EVERY model is unregistered -> never named at all.
+        starved = dict(built._usable_by_role, restoration=[])
+        for entry in built._build_fallbacks(pool, usable=starved):
+            for group, targets in entry.items():
+                assert group in registered
+                assert "restoration" not in targets, (
+                    f"starved role named as fallback target in {entry}"
+                )
+
+        healthy = built._build_fallbacks(pool, usable=built._usable_by_role)
+        assert healthy, f"liveness net must not be empty; got {healthy}"
+        for entry in healthy:
+            for group, targets in entry.items():
+                assert group in registered, f"unregistered key {group!r}"
+                for target in targets:
+                    assert target in registered, (
+                        f"{target!r} is not a registered model_group; "
+                        f"registered={sorted(registered)}; entry={entry}"
+                    )
+        judging_chain = next(
+            entry["judging"] for entry in healthy if "judging" in entry
+        )
+        assert judging_chain[0] == "translation", (
+            f"translation is the liveness role and must lead the chain; "
+            f"got {judging_chain}"
+        )
 
     def test_warns_once_per_skipped_model(self, caplog):
         pool = LLMPoolConfig(

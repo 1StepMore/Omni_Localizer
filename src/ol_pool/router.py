@@ -577,50 +577,63 @@ class ModelPool:
         pool: LLMPoolConfig,
         usable: dict[str, list] | None = None,
     ) -> list[dict]:
-        """Build fallbacks list per role based on priority ordering.
+        """Build cross-role fallbacks whose TARGETS are litellm group names.
 
-        litellm Router fallbacks format: [{"model_group_name": ["fallback_model_id", ...]}]
-        key must be the model_name (role) passed to acompletion(), not the actual model ID.
+        litellm Router fallbacks format:
+        ``[{"model_group_name": ["fallback_model_group", ...]}]``.
+        Both the key AND every value must be names of groups registered in
+        ``model_list``. litellm resolves a failing group's fallback with
+        ``get_fallback_model_group()``, which returns the entry's VALUE list,
+        and then routes the retry to those values *as model groups*. The key
+        is the ``model=`` argument passed to ``acompletion()`` (always a role
+        name in this pool).
 
-        POST_MORTEM OL-8: when a role has only one configured model (or all
-        fail), we add a cross-role fallback: judging/restoration calls can
-        fall back to a translation-tier model rather than crashing. The
-        translation role keeps its own fallbacks for primary translation.
+        _build_model_list registers every model under ``model_name = role``
+        (translation / judging / restoration / profiling), so the registered
+        group name is the ROLE, never ``provider/model``.
 
-        2026-06-17 round 6 (FIX-#17): skip models with requests_per_minute
-        <= 0 from fallback chains — they'd be dead-on-arrival. The
-        Pydantic schema already enforces ge=1, this is belt-and-suspenders
-        for manually-constructed configs that bypass validation.
+        e2e-test-suite#141: this used to emit ``provider/model`` ids as values,
+        naming no registered group. A provider rate limit then produced
+        ``No fallback model group found for original model_group=...`` and the
+        fallback never engaged — a hard failure where a reroute was intended.
+
+        Intra-role fallback is inexpressible under this scheme: every model of
+        a role is registered under the SAME single group name, so there is
+        nothing to fall back to *within* a role (Router(num_retries=2) already
+        retries inside the group). The only expressible fallback is CROSS-ROLE.
+
+        POST_MORTEM OL-8: keep the liveness net — a non-translation role
+        (judging / restoration / profiling) whose models are all unusable (e.g.
+        provider 429s, or rpm-0 entries) reroutes onto translation, trading
+        quality for liveness. ``translation`` is the designated liveness role
+        and therefore gets no entry of its own: it is the rescue *target*, and
+        silently serving a translation request from a judge-tier model is worse
+        than a clear error.
+
+        2026-06-17 round 6 (FIX-#17): a role only qualifies as a TARGET when it
+        has at least one model with requests_per_minute > 0 — zero-RPM models
+        are dead-on-arrival. The Pydantic schema already enforces ge=1, this is
+        belt-and-suspenders for manually-constructed configs that bypass
+        validation. A role with no usable target gets no entry at all.
 
         OL#99: `usable` must be the same filtered mapping _build_model_list
-        used, or a fallback would name a model the Router never received.
+        used, or a fallback would name a group the Router never received.
         """
         usable = usable if usable is not None else partition_usable_models(pool)[0]
-        fallbacks = []
-        for role in ("translation", "judging", "restoration", "profiling"):
-            models = [m for m in usable.get(role, []) if m.requests_per_minute > 0]
-            sorted_models = sorted(models, key=lambda m: m.priority)
-            if len(sorted_models) > 1:
-                fallback_models = [
-                    f"{m.provider}/{m.model}" for m in sorted_models[1:]
-                ]
-                fallbacks.append({role: fallback_models})
-
-        # Cross-role safety net: if judging/restoration both fail, fall back
-        # to the translation role's models. This trades quality for liveness.
-        translation_models = [
-            m for m in usable.get("translation", [])
-            if m.requests_per_minute > 0
+        # translation first: it is the highest-priority fallback TARGET.
+        roles = ("translation", "judging", "restoration", "profiling")
+        registered = [role for role in roles if usable.get(role)]
+        targets = [
+            role for role in registered
+            if any(m.requests_per_minute > 0 for m in usable.get(role, []))
         ]
-        if translation_models:
-            translation_fallback_ids = [
-                f"{m.provider}/{m.model}"
-                for m in sorted(translation_models, key=lambda m: m.priority)
-            ]
-            for role in ("judging", "restoration"):
-                if not usable.get(role, []):
-                    fallbacks.append({role: translation_fallback_ids})
-
+        fallbacks = []
+        for role in registered:
+            if role == "translation":
+                continue  # designated liveness role: rescue target, not a source
+            candidates = [target for target in targets if target != role]
+            if candidates:
+                fallbacks.append({role: candidates})
         return fallbacks
 
     async def translate(

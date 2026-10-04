@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ol_config.schema import LLMModelConfig, LLMModelRole, LLMPoolConfig
-from ol_pool.router import ModelPool
+from ol_pool.router import ModelPool, partition_usable_models
 
 
 class TestModelPool:
@@ -261,46 +261,152 @@ class TestModelPool:
 
     @patch("src.ol_pool.router.load_config")
     def test_build_fallbacks_skips_zero_rpm_models(self, mock_load_config):
-        """FIX-#17: models with requests_per_minute <= 0 are excluded from
-        fallback chains. Pydantic ge=1 prevents this at config load, but
+        """FIX-#17: a role whose only usable model has requests_per_minute <= 0
+        must never be named as a fallback TARGET — such a model is
+        dead-on-arrival, and rerouting onto it converts a real retry into a
+        guaranteed failure. Pydantic ge=1 prevents this at config load, but
         attribute mutation after construction (e.g. test setup) can bypass
         validation. The filter is belt-and-suspenders.
+
+        The assertion is role-level, not model-id-level: since e2e#141
+        fallback values are litellm model GROUP names (roles), not
+        `provider/model` ids, so a dead model can only be excluded by
+        disqualifying its whole role.
         """
         from ol_pool.router import _pool_cache as router_cache
         router_cache.clear()
-        alive = LLMModelConfig(
-            provider="openai", model="alive", priority=1,
-            role=LLMModelRole.TRANSLATION, requests_per_minute=40,
-        )
+        # Bypass Pydantic ge=1 by mutating after construction; both models of
+        # the role must be dead for the role to lose target eligibility
+        # (LLMPoolConfig itself requires >= 2 models per role).
         dead = LLMModelConfig(
-            provider="openai", model="dead", priority=2,
-            role=LLMModelRole.TRANSLATION, requests_per_minute=10,
+            provider="openai", model="dead-1", priority=1,
+            role=LLMModelRole.RESTORATION, requests_per_minute=40,
         )
-        # Bypass Pydantic ge=1 by mutating after construction
         dead.requests_per_minute = 0
+        dead2 = LLMModelConfig(
+            provider="openai", model="dead-2", priority=2,
+            role=LLMModelRole.RESTORATION, requests_per_minute=40,
+        )
+        dead2.requests_per_minute = 0
         pool = LLMPoolConfig(
-            translation=[alive, dead],
+            translation=[
+                LLMModelConfig(provider="openai", model="t1", priority=1,
+                               role=LLMModelRole.TRANSLATION),
+                LLMModelConfig(provider="openai", model="t2", priority=2,
+                               role=LLMModelRole.TRANSLATION),
+            ],
             judging=[
                 LLMModelConfig(provider="openai", model="j1", priority=1,
                                role=LLMModelRole.JUDGING),
                 LLMModelConfig(provider="openai", model="j2", priority=2,
                                role=LLMModelRole.JUDGING),
             ],
-            restoration=[
-                LLMModelConfig(provider="openai", model="r1", priority=1,
-                               role=LLMModelRole.RESTORATION),
-                LLMModelConfig(provider="openai", model="r2", priority=2,
-                               role=LLMModelRole.RESTORATION),
-            ],
+            restoration=[dead, dead2],
         )
         cfg = MagicMock(llm_pool=pool)
         mock_load_config.return_value = cfg
         mp = ModelPool()
+        registered = {
+            entry["model_name"] for entry in mp._build_model_list(pool)
+        }
+        assert "restoration" in registered, (
+            f"restoration must stay a registered group (only its TARGET "
+            f"eligibility is in question); registered={sorted(registered)}"
+        )
         fallbacks = mp._build_fallbacks(pool)
+        targets = [t for entry in fallbacks for ts in entry.values() for t in ts]
+        assert "restoration" not in targets, (
+            f"rpm=0-only role must not be a fallback target; got {fallbacks}"
+        )
+        assert "translation" in targets, (
+            f"a role with a live model must stay a usable target, else the "
+            f"liveness net is empty; got {fallbacks}"
+        )
+
+    @patch("src.ol_pool.router.load_config")
+    def test_fallback_keys_and_targets_are_registered_model_group_names(
+        self, mock_load_config, mock_config,
+    ):
+        """e2e-test-suite#141: BOTH the key and every value of a litellm
+        `fallbacks` entry must be names of groups registered in `model_list`.
+
+        `_build_model_list` registers `model_name = role`, so the only legal
+        fallback key/value is a ROLE name. The pre-fix `_build_fallbacks`
+        emitted `{role: ["provider/model", ...]}`, which named no registered
+        group: litellm logged `No fallback model group found for original
+        model_group=...` and the rate-limit fallback never engaged, so a
+        provider 429 became a hard failure instead of a reroute.
+        """
+        mock_load_config.return_value = mock_config
+        mp = ModelPool()
+        registered = {
+            entry["model_name"]
+            for entry in mp._build_model_list(mock_config.llm_pool)
+        }
+        assert registered, "fixture must register at least one model group"
+
+        fallbacks = mp._build_fallbacks(mock_config.llm_pool)
+        assert fallbacks, "the cross-role liveness net must not be empty"
         for entry in fallbacks:
-            if "translation" in entry:
-                assert "openai/dead" not in entry["translation"], (
-                    f"rpm=0 model should be excluded; got {entry}"
+            assert len(entry) == 1, f"one group per entry, got {entry}"
+            for group, targets in entry.items():
+                assert group in registered, (
+                    f"fallback KEY {group!r} is not a registered model_group "
+                    f"in _build_model_list; registered={sorted(registered)}; "
+                    f"entry={entry}"
+                )
+                assert targets, f"empty target list for {group!r}: {entry}"
+                for target in targets:
+                    assert target in registered, (
+                        f"fallback TARGET {target!r} is not a registered "
+                        f"model_group — litellm routes fallback values AS "
+                        f"model groups, so a provider/model id can never "
+                        f"resolve. registered={sorted(registered)}; "
+                        f"entry={entry}"
+                    )
+
+    @patch("src.ol_pool.router.load_config")
+    def test_fallback_never_names_a_role_the_router_never_received(
+        self, mock_load_config, mock_config,
+    ):
+        """OL#99 provenance, restated for group names: a role that lost every
+        model to the env filter is unregistered, so it must appear neither as a
+        fallback key nor as a fallback target. Combined with FIX-#17 (a
+        zero-RPM-only role may not be a target), the fallback list may only
+        name groups that are registered AND have a live model.
+        """
+        mock_load_config.return_value = mock_config
+        mp = ModelPool()
+        pool = mock_config.llm_pool
+        # Same filtered mapping __init__ hands to _build_model_list (OL#99).
+        # Read via partition_usable_models rather than mp._usable_by_role:
+        # OMNI_TEST_FAKE_LLM=1 short-circuits __init__ before that attr exists.
+        usable, _skipped = partition_usable_models(pool)
+
+        starved = dict(usable, judging=[])
+        registered = {
+            entry["model_name"]
+            for entry in mp._build_model_list(pool, usable=starved)
+        }
+        assert "judging" not in registered, "judging must be starved for this test"
+        for entry in mp._build_fallbacks(pool, usable=starved):
+            for group, targets in entry.items():
+                assert group in registered, f"unregistered key {group!r} in {entry}"
+                assert "judging" not in targets, (
+                    f"starved role named as fallback target in {entry}"
+                )
+
+        rpm_dead = {
+            role: [
+                model.model_copy(update={"requests_per_minute": 0})
+                for model in models
+            ]
+            for role, models in usable.items()
+        }
+        for entry in mp._build_fallbacks(pool, usable=rpm_dead):
+            for targets in entry.values():
+                assert "restoration" not in targets, (
+                    f"rpm=0-only role named as fallback target in {entry}"
                 )
 
     def test_litellm_local_model_cost_map_env_set(self):
