@@ -44,6 +44,7 @@ from cli._shared import (
     validate_input_file,
     warn_fake_llm_mode,
 )
+from ol_config.resolver import resolve_config_path
 from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
@@ -125,9 +126,7 @@ def _build_restoration_pool(config_path: str | None) -> 'ModelPool | None':
     """Build a ModelPool for the restoration step; returns ``None`` on failure."""
     try:
         from ol_pool.router import ModelPool
-        return ModelPool.get_instance(
-            config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"),
-        )
+        return ModelPool.get_instance(str(resolve_config_path(config_path)))
     except Exception:
         logger = get_logger("cli")
         logger.exception("ModelPool init failed")
@@ -507,6 +506,10 @@ async def _translate_md_async(
     # The glossary param may be None (no glossary configured).
     warn_fake_llm_mode()
 
+    # Hoisted above the FAKE_LLM branch on purpose: the pool and load_config
+    # below must never disagree about which YAML is in play.
+    resolved_config = resolve_config_path(config_path)
+
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
         # triggering litellm's heavy import chain.
@@ -515,10 +518,10 @@ async def _translate_md_async(
         _apply_fake_llm_seam()
     else:
         from ol_pool.router import ModelPool
-        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+        pool = ModelPool.get_instance(str(resolved_config))
 
     from ol_config.loader import load_config
-    cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
+    cfg, _ = load_config(resolved_config)
     src_lang = src_lang or cfg.source_lang
     tgt_lang = tgt_lang or cfg.target_lang
 
@@ -810,7 +813,8 @@ async def _translate_md_by_paragraph(
 
     _CHUNK_CONCURRENCY = 5
     sem = asyncio.Semaphore(_CHUNK_CONCURRENCY)
-    pool = ModelPool.get_instance(config) if config else ModelPool.get_instance()
+    resolved_config = resolve_config_path(config)
+    pool = ModelPool.get_instance(str(resolved_config))
     total = len(paragraphs)
 
     _para_count = [0]
@@ -890,9 +894,7 @@ async def _translate_md_by_paragraph(
     # Issue #56: Post-translation quality gates (advisory, never raises).
     from ol_config.loader import load_config as _load_cfg
 
-    _cfg_by_para, _ = _load_cfg(
-        config or os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
-    )
+    _cfg_by_para, _ = _load_cfg(resolved_config)
     if hasattr(_cfg_by_para, "quality_gates") and (
         _cfg_by_para.quality_gates.inline_tags
         or _cfg_by_para.quality_gates.terminology

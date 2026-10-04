@@ -7,18 +7,19 @@ API keys and unsafe base URLs are redacted in the output. Pass
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Optional
 
 import typer
 
 from cli._shared import ExitCode
+from ol_config.resolver import resolve_config_path
 
 
 def inspect_config(
     config_path: Optional[str] = typer.Option(
         None, "--config", "-c",
-        help="Path to YAML config file (defaults to OL_CONFIG_PATH or config/default.yaml)"
+        help="Path to YAML config file (default: config/local.yaml → "
+             "OL_CONFIG_PATH → config/default.yaml)"
     ),
     raw: bool = typer.Option(
         False, "--raw", help="Show unredacted values (CAUTION: prints API keys)"
@@ -31,7 +32,7 @@ def inspect_config(
         _redact_secret,
     )
 
-    cfg_path = config_path or Path("config/default.yaml")
+    cfg_path = resolve_config_path(config_path)
     try:
         config, glossary = load_config(str(cfg_path))
     except Exception as e:  # expected

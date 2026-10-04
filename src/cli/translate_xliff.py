@@ -48,6 +48,7 @@ from cli._shared import (
     validate_input_file,
     warn_fake_llm_mode,
 )
+from ol_config.resolver import resolve_config_path
 from ol_logging.core import get_logger
 from ol_lqa.quality_gates import run_quality_gates
 from ol_xliff.pipeline import XLIFFRepairPipeline
@@ -328,6 +329,8 @@ async def _translate_xliff_async(
     # not via concurrency-unsafe module-level globals.
     warn_fake_llm_mode()
 
+    resolved_config = resolve_config_path(config_path)
+
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
         # B1: Import from ol_pool.fake (not ol_pool.router) to avoid
         # triggering litellm's heavy import chain.
@@ -335,14 +338,14 @@ async def _translate_xliff_async(
         pool = cast(object, _FakeModelPool())
     else:
         from ol_pool.router import ModelPool
-        pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+        pool = ModelPool.get_instance(str(resolved_config))
 
     from ol_config.loader import load_config
     from ol_xliff.parser import XliffParser
     from ol_buses.xliff_bus import check_cross_unit_uniqueness, write_target_back, _ensure_target_tags
     from ol_core.dataclass import TranslationContext, ChannelType
 
-    cfg, _ = load_config(config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml"))
+    cfg, _ = load_config(resolved_config)
     src_lang = src_lang or cfg.source_lang
     tgt_lang = tgt_lang or cfg.target_lang
 
