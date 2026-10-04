@@ -11,12 +11,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from pathlib import Path
 from typing import Optional
 
 import typer
 
 from cli._shared import ExitCode, hint_init_suggestion
+from ol_config.resolver import resolve_config_path
 from ol_logging.core import get_logger
 
 logger = get_logger("cli")
@@ -40,19 +40,6 @@ _JSON_KEYS: tuple[str, ...] = (
 )
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
-
-
-def _resolve_config_path(config_path: str | None) -> Path:
-    """Resolve the config to validate: --config → local.yaml → OL_CONFIG_PATH → default.yaml."""
-    if config_path:
-        return Path(config_path)
-    local = Path("config/local.yaml")
-    if local.is_file():
-        return local
-    env_path = os.environ.get("OL_CONFIG_PATH")
-    if env_path:
-        return Path(env_path)
-    return Path("config/default.yaml")
 
 
 def _unresolved_refs(model) -> list[str]:
@@ -112,7 +99,7 @@ def doctor(
     import yaml
     from ol_config.loader import SecurityError, load_config
 
-    target = _resolve_config_path(config_path)
+    target = resolve_config_path(config_path)
 
     results: dict[str, bool] = {key: False for key in _JSON_KEYS}
 

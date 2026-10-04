@@ -151,10 +151,13 @@ def precheck_api_keys(config_path: str | None) -> None:
 
     The pre-check is intentionally a lightweight regex scan on the
     raw YAML text — it must NOT import ``ol_pool.router`` (which
-    takes ~30s on cold start via ``import litellm``) and must not
-    import ``ol_config.schema`` (which would load pydantic). The
-    whole point is to give the user a fast, clear error instead
-    of a multi-minute hang followed by silent garbage output.
+    takes ~30s on cold start via ``import litellm``). The only OL
+    import it needs is ``ol_config.resolver`` (the shared config-path
+    resolver), and it is function-level so the FAKE_LLM fast path above
+    never pays for it; on the real path ``load_config`` loads the same
+    package's pydantic schema moments later anyway. The whole point is
+    to give the user a fast, clear error instead of a multi-minute
+    hang followed by silent garbage output.
 
     Skipped when:
       - ``OMNI_TEST_FAKE_LLM=1`` (test seam — no real keys needed)
@@ -168,8 +171,9 @@ def precheck_api_keys(config_path: str | None) -> None:
     if os.environ.get("OMNI_RUN_REAL_LLM") == "1":
         return
 
-    resolved = config_path or os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
-    cfg_file = Path(resolved)
+    from ol_config.resolver import resolve_config_path
+
+    cfg_file = resolve_config_path(config_path)
     if not cfg_file.is_file():
         return
 

@@ -11,6 +11,7 @@ from typing import Optional
 import typer
 
 from cli._shared import ExitCode, warn_fake_llm_mode
+from ol_config.resolver import resolve_config_path
 
 
 def judge_text(
@@ -24,7 +25,8 @@ def judge_text(
     ),
     config: Optional[str] = typer.Option(
         None, "--config", "-c",
-        help="Path to OL YAML config (overrides OL_CONFIG_PATH env and cwd-default)"
+        help="Path to OL YAML config (default: config/local.yaml → "
+             "OL_CONFIG_PATH → config/default.yaml)"
     ),
 ) -> None:
     """Evaluate translation quality using LLM judge (OL#8 rubric).
@@ -48,9 +50,8 @@ def judge_text(
     try:
         import asyncio
         from ol_pool.router import ModelPool
-        from ol_mcp.tools import _get_config_path
         warn_fake_llm_mode()
-        pool = ModelPool.get_instance(_get_config_path(config))
+        pool = ModelPool.get_instance(str(resolve_config_path(config)))
         result = asyncio.run(pool.judge(
             source, target, source_lang, target_lang, glossary_dict,
         ))
@@ -58,6 +59,8 @@ def judge_text(
         typer.echo(
             f"Error: config file not found: {e}\n"
             f"  Use --config <path> or set OL_CONFIG_PATH to point to your OL YAML config.\n"
+            f"  Or run 'ol init' to generate a valid config/local.yaml "
+            f"(picked up automatically from the current directory).\n"
             f"  Or run from the OL project root (the directory containing config/default.yaml).",
             err=True,
         )

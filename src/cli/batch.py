@@ -19,6 +19,7 @@ from cli._shared import (
     validate_input_file,
     warn_fake_llm_mode,
 )
+from ol_config.resolver import resolve_config_path
 from ol_logging.core import get_logger
 
 logger = get_logger("cli")
@@ -60,11 +61,12 @@ async def _translate_batch_async(
 
     batch_config = BatchConfig(max_concurrent=max_concurrent)
     warn_fake_llm_mode()
-    pool = ModelPool.get_instance(config_path) if config_path else ModelPool.get_instance()
+    resolved_config = resolve_config_path(config_path)
+    pool = ModelPool.get_instance(str(resolved_config))
 
     # POST_MORTEM OL-1: surface LQA knobs to the batch path.
     from ol_config.loader import load_config
-    cfg, _ = load_config(config_path or "config/default.yaml")
+    cfg, _ = load_config(resolved_config)
     enable_lqa = getattr(cfg, "enable_lqa", False)
     lqa_threshold = getattr(cfg, "lqa_threshold", 7.0)
     lqa_max_retries = getattr(cfg, "lqa_max_retries", 2)
