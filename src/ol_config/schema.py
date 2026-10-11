@@ -55,9 +55,22 @@ class LLMModelConfig(BaseModel):
             "Per-deployment requests-per-minute cap forwarded to litellm Router. "
             "Used as a routing weight by default; for hard 429 enforcement, "
             "the Router must be initialized with enforce_model_rate_limits=True. "
-            "Set this to your provider's actual RPM (e.g. NVIDIA free tier = 40) "
-            "to avoid burning quota on retry storms. Default 500 preserves the "
-            "legacy hardcoded value."
+            "Default 500 preserves the legacy hardcoded value. "
+            "Not the knob for concurrency-capped providers — see "
+            "max_parallel_requests."
+        ),
+    )
+    max_parallel_requests: int | None = Field(
+        None, ge=1,
+        description=(
+            "Per-deployment cap on SIMULTANEOUS in-flight requests, forwarded "
+            "to litellm_params['max_parallel_requests'] and enforced by a "
+            "per-deployment semaphore. Leave unset (the default) to impose no "
+            "client-side concurrency cap. Set it when the provider's real "
+            "ceiling is concurrency rather than rate: AMD Radeon returns 429 "
+            "'model_concurrency_rate_limit_exceeded' naming a concurrency "
+            "number, Zhipu returns 'code 1305 该模型当前访问量过大'. requests_per_minute "
+            "cannot prevent either."
         ),
     )
 

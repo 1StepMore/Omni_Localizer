@@ -238,11 +238,15 @@ A `pybreaker.CircuitBreaker` is created per role (router.py:237-245):
 
 The breaker is per-process and per-role. Restarting the CLI resets it.
 
-### 3.2 RPM enforcement
+### 3.2 Rate limiting: rpm vs concurrency
 
-Each `LLMModelConfig` has a `requests_per_minute` field (default 500). It's passed to the LiteLLM Router and enforced by `enforce_model_rate_limits`. When the cap is reached, the Router raises `litellm.RateLimitError` immediately rather than waiting on a provider 429 + backoff. This prevents one model's rate storm from starving siblings.
+Two independent ceilings exist, and they are not interchangeable.
 
-Set the value to your provider's actual quota (e.g. 40 for a free-tier account). Hardcoding 500 for a free-tier account is a recipe for cascade failures.
+**`requests_per_minute`** (default 500) reaches LiteLLM as `litellm_params['rpm']`. It is a **routing weight and cooldown input only** — not hard-enforced. E2E-83 removed `enforce_model_rate_limits` from the Router: its in-process token bucket rejected large requests the provider would have accepted, then the `translate()` retry loop sat on 10/20/40 s backoffs the bucket could not recover from. Rejection now comes from the provider's own HTTP 429.
+
+**`max_parallel_requests`** (default unset) reaches LiteLLM as `litellm_params['max_parallel_requests']` and **is** enforced, by a per-deployment semaphore — no Router flag needed. Unset means no client-side cap; the key is omitted rather than defaulted.
+
+Use rpm for rate-capped providers. Use `max_parallel_requests` when the cap is on **simultaneous** requests — which is what both pool providers actually do: AMD Radeon returns `429 model_concurrency_rate_limit_exceeded` naming a concurrency number, Zhipu returns `code 1305该模型当前访问量过大`. No rpm value prevents either.
 
 ### 3.3 Cross-role safety net
 

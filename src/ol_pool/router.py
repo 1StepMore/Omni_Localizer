@@ -464,15 +464,21 @@ class ModelPool:
                 # seconds (cumulative ~70s) on backoffs the in-memory
                 # bucket could not recover from in time.
                 #
-                # Per-model RPM is still enforced via each model's
-                # litellm_params['rpm'] entry; rejection now comes from
-                # the provider's HTTP 429 (handled correctly with
-                # exponential backoff in the translate() retry loop)
-                # instead of from litellm's in-process token bucket.
+                # Per-model RPM is NOT hard-enforced any more — it reaches
+                # litellm only as a routing weight / cooldown input. Rejection
+                # comes from the provider's HTTP 429, handled by the
+                # translate() backoff loop instead of an in-process bucket.
                 #
-                # To re-enable the aggressive pre-call check (e.g.
-                # for a setup with very low RPM quotas that want local
-                # fast-fail), pass
+                # Do not try to tune 429s via rpm: AMD Radeon answers with
+                # `model_concurrency_rate_limit_exceeded` (a CONCURRENCY
+                # number) and Zhipu with `code 1305 该模型当前访问量过大`, so
+                # for both the ceiling is simultaneous requests, not
+                # requests-per-minute. Set `max_parallel_requests` on such a
+                # model instead — it maps to
+                # litellm_params['max_parallel_requests'], enforced by a
+                # per-deployment semaphore.
+                #
+                # To re-enable the aggressive pre-call rpm check, pass
                 #   optional_pre_call_checks=['enforce_model_rate_limits']
                 # directly to the Router here.
             )
@@ -547,6 +553,12 @@ class ModelPool:
                 # 2026-06-17 round 5 (FIX-#7): canonical rpm location
                 # (litellm_params, per litellm/types/router.py:201-203).
                 litellm_params["rpm"] = model.requests_per_minute
+                # Same updateLiteLLMParams dict as rpm. Omitted when unset so
+                # existing configs keep imposing no client-side cap.
+                if model.max_parallel_requests is not None:
+                    litellm_params["max_parallel_requests"] = (
+                        model.max_parallel_requests
+                    )
                 model_list.append(
                     {
                         "model_name": role,

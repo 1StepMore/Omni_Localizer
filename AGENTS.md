@@ -269,7 +269,8 @@ Each model has:
 - `api_key` (use `${ENV_VAR}` syntax)
 - `base_url` (for non-OpenAI providers)
 - `timeout` (per-request, default 120s)
-- `requests_per_minute` (default 500)
+- `requests_per_minute` (default 500) — routing weight only, NOT hard-enforced (E5E-83 removed `enforce_model_rate_limits`)
+- `max_parallel_requests` (default unset) — enforced cap on simultaneous in-flight requests; use it when the provider 429s on concurrency (AMD `model_concurrency_rate_limit_exceeded`, Zhipu `code 1305`)
 
 **Unified pool (canonical)** — `config/default.yaml` is the source of truth;
 `ol init` writes `config/local.yaml` with the same single 2-provider pool

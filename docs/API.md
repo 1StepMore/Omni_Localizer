@@ -316,7 +316,8 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"   # env-var reference recommended
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
-      requests_per_minute: 500      # hard RPM cap; set to provider's real value
+      requests_per_minute: 500      # routing weight; NOT a hard cap
+      max_parallel_requests: null   # enforced cap on concurrent in-flight requests
 ```
 
 Provider strings map 1:1 to LiteLLM. Validated providers in production: `openai`, `anthropic`, `zhipu`, `nvidia_nim`. Pool validity rules:
