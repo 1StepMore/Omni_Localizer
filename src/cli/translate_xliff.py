@@ -257,7 +257,11 @@ async def _translate_xliff_pipelined(
                 f"OL_WARN: TRANSLATION_FAILED "
                 f"({type(exc).__name__}: {str(exc)[:200]})"
             )
-            translated = unit.source_text
+            # Must bind `final_translation`: the repair stage reads that name
+            # for every unit. A different name here made it unbound on the
+            # first-unit-failure path and stale on later ones — see the
+            # regression in tests/test_xliff_failed_unit_translation_binding.py.
+            final_translation = unit.source_text
             status = "transport_error"
             attempts = 1
             error_msg = f"{type(exc).__name__}: {str(exc)[:200]}"
@@ -267,7 +271,8 @@ async def _translate_xliff_pipelined(
                 f"OL_WARN: LQA_SKIPPED "
                 f"({type(exc).__name__}: {str(exc)[:200]})"
             )
-            translated = first_pass_translations[i] or unit.source_text
+            # Same binding requirement as the branch above.
+            final_translation = first_pass_translations[i] or unit.source_text
             status = "ok"
             attempts = 1
             error_msg = None
