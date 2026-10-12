@@ -12,6 +12,7 @@ import re
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock as _SeamMagicMock
 
 import typer
@@ -82,9 +83,10 @@ def output_json(
     source_lang: str | None = None,
     target_lang: str | None = None,
     error: str | None = None,
+    untranslated_units: int | None = None,
 ) -> None:
     """Output structured JSON to stdout."""
-    result = {
+    result: dict[str, Any] = {
         "success": success,
         "input_file": input_file,
     }
@@ -94,6 +96,8 @@ def output_json(
         result["source_lang"] = source_lang
     if target_lang:
         result["target_lang"] = target_lang
+    if untranslated_units is not None:
+        result["untranslated_units"] = untranslated_units
     if error:
         result["error"] = error
     typer.echo(json.dumps(result, ensure_ascii=False))

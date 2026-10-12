@@ -48,6 +48,7 @@ Defined at `src/ol_cli.py:1541`.
 | `--no-glossary` | `false` | Skip glossary injection even if `--glossary` or config sets one. |
 | `--no-restoration` | `false` | Skip the A12.4 post-translate placeholder restoration. |
 | `--glossary-max-terms N` | `5` | Top-N terms to inject per trans-unit (1 ≤ N). |
+| `--fail-on-untranslated` | `false` | Exit `3` when any trans-unit came back untranslated (see below). |
 
 Exit codes (see `src/ol_cli.py:ExitCode`):
 
@@ -55,10 +56,36 @@ Exit codes (see `src/ol_cli.py:ExitCode`):
 - `2` — usage error (bad args, missing file, missing `--output-dir`)
 - `3` — pipeline error (LLM call, repair failure, etc.)
 
+#### Untranslated units
+
+When a trans-unit's LLM call fails (provider 429/5xx, retry budget exhausted,
+empty output), OL degrades gracefully and emits the **source** text for that
+unit rather than dropping it. That content is delivered, but it is *not*
+translated, so it is always reported:
+
+- `--json` gains `"untranslated_units": <N>`
+- the output frontmatter gains `untranslated_units: <N>` (omitted when `0`)
+- one `<!-- OL_WARN: UNTRANSLATED_UNITS — N of M unit(s) ... -->` line is appended
+
+Detection is per-unit and compares each unit's own output against its own source
+through the canonical Gate 5 comparator, so it catches every fallback path
+(exception, empty output, retry exhaustion) with one check. Units whose source
+carries no alphabetic characters (pure numbers, symbols) are never counted.
+
+By default a degraded run still exits `0` — the content is present, and turning
+a partial result into a hard failure would break callers that deliberately accept
+degraded output. Pass `--fail-on-untranslated` to make it exit `3` instead; use
+it in CI and batch pipelines where an untranslated unit is unacceptable.
+
 Example:
 
 ```bash
 ol translate-md chapter1.md -o ./out/ -s en -t zh --glossary terms.json
+```
+
+```bash
+# strict: fail the run if any unit came back untranslated
+ol translate-md chapter1.md -o ./out/ -s en -t zh --json --fail-on-untranslated
 ```
 
 ### 1.2 `ol translate-batch`
