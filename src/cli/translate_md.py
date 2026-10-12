@@ -50,7 +50,7 @@ from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_core.dataclass import TranslationUnit
-from ol_lqa.quality_gates import run_quality_gates
+from ol_lqa.quality_gates import check_source_copy, run_quality_gates
 
 logger = get_logger("cli")
 
@@ -252,6 +252,16 @@ def _forward_images_json(
     return dest
 
 
+def _read_untranslated_units(output_file: Path) -> int:
+    """Read ``untranslated_units:`` back out of a produced MD file (0 if absent)."""
+    try:
+        text = output_file.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    match = re.search(r"^untranslated_units:\s*(\d+)\s*$", text, re.MULTILINE)
+    return int(match.group(1)) if match else 0
+
+
 @dataclass
 class _UnitTranslationResult:
     """Pure-data result of translating a single trans-unit.
@@ -271,6 +281,27 @@ class _UnitTranslationResult:
     latency_ms: float = 0.0
     status: str = "ok"
     error: str | None = None
+    # True when the pipeline fell back to the OPP source text for this unit
+    # (LLM call raised, retry manager exhausted attempts, or the LLM echoed
+    # the source back unchanged). Surfaced per-unit so the document-level
+    # count is a pure aggregation — see ``_translate_one_unit``.
+    untranslated: bool = False
+
+
+class _MdText(str):
+    """A ``str`` (translated markdown / output path) that carries MD stats.
+
+    ``_translate_md_async`` historically returned the output-file path as a
+    plain ``str`` and existing callers/fakes depend on that
+    (``isinstance(result, str)``). Subclassing ``str`` lets the function keep
+    its return *shape* while attaching the untranslated-unit count via
+    attributes, instead of restructuring the return contract into a tuple.
+    ``translate_md`` reads the attributes and falls back to ``0`` for the
+    plain-string returns produced by test fakes.
+    """
+
+    untranslated_units: int = 0
+    total_units: int = 0
 
 
 async def _translate_one_unit(
@@ -389,6 +420,16 @@ async def _translate_one_unit(
         repaired = translated
         repair_warnings = []
 
+    untranslated = False
+    copy_warnings = check_source_copy(unit.source_text, repaired)
+    if copy_warnings:
+        untranslated = True
+        copy_note = copy_warnings[0]
+        if warning is None:
+            warning = copy_note
+        elif "SOURCE_COPY" not in warning:
+            warning = f"{warning}; {copy_note}"
+
     return _UnitTranslationResult(
         unit_id=unit.unit_id,
         translated=repaired,
@@ -398,6 +439,7 @@ async def _translate_one_unit(
         latency_ms=latency_ms,
         status=status,
         error=error_msg,
+        untranslated=untranslated,
     )
 
 
@@ -478,6 +520,7 @@ async def _translate_units_concurrent(
                 warning=warning,
                 status="exception",
                 error=f"{type(result).__name__}: {str(result)[:200]}",
+                untranslated=True,
             ))
             logger.error(
                 f"Unit {unit.unit_id} unexpected exception in gather: {result}"
@@ -564,15 +607,19 @@ async def _translate_md_async(
     if max_concurrent > 1:
         from ol_concurrency.scheduler import ConcurrencyLimiter
         limiter = ConcurrencyLimiter(max_translation=max_concurrent)
-        repaired = await _translate_md_units_concurrent(
+        _conc_result = await _translate_md_units_concurrent(
             original_text, pool, judge, retry_mgr,
             src_lang, tgt_lang, limiter.md_semaphore, cfg,
             glossary=glossary,
             styleguide=styleguide,
             polish=polish,
         )
+        repaired = _conc_result
+        untranslated_count = getattr(_conc_result, "untranslated_units", 0)
+        total_units = getattr(_conc_result, "total_units", 0)
     else:
         shielded, shield_map = shield_markdown(original_text)
+        sequential_fallback = False
 
         styleguide_context: str | None = None
         if styleguide:
@@ -609,6 +656,7 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
+                sequential_fallback = True
         else:
             try:
                 translated = await pool.translate(
@@ -621,6 +669,7 @@ async def _translate_md_async(
                     f"Falling back to source text."
                 )
                 translated = original_text
+                sequential_fallback = True
 
         if shield_map:
             repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
@@ -632,13 +681,23 @@ async def _translate_md_async(
         from ol_xliff.polish import polish_md_text
         repaired = await polish_md_text(repaired, src_lang, tgt_lang, pool)
 
+    if max_concurrent <= 1:
+        total_units = 1
+        untranslated_count = (
+            1 if (sequential_fallback or check_source_copy(original_text, repaired))
+            else 0
+        )
+
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)
         safe_tgt_lang = _validate_lang_code(tgt_lang)
         opp_meta = _extract_opp_metadata(input_path)
         rid = opp_meta["request_id"]
         email_headers = opp_meta["email_headers"]
-        extra_fm = {"email_headers": email_headers} if email_headers else None
+        extra_fm = {"email_headers": email_headers} if email_headers else {}
+        if untranslated_count > 0:
+            extra_fm["untranslated_units"] = untranslated_count
+        extra_fm = extra_fm or None
 
         frontmatter = _generate_frontmatter(
             source_lang=safe_src_lang,
@@ -673,6 +732,13 @@ async def _translate_md_async(
     elif tgt_lang.startswith("ja"):
         output_content = normalize(output_content, "en", "ja")
     # Other languages: no normalization (fr/de/ru/ko etc use ASCII punctuation)
+
+    if untranslated_count > 0:
+        output_content += (
+            f"\n\n<!-- OL_WARN: UNTRANSLATED_UNITS — {untranslated_count} of "
+            f"{total_units} unit(s) were returned untranslated (LLM call failed "
+            f"or was rate-limited); those units carry the source text verbatim -->\n"
+        )
 
     output_file = output_path / input_path.name
     output_file.write_text(output_content, encoding="utf-8")
@@ -728,7 +794,10 @@ async def _translate_md_async(
                 encoding="utf-8",
             )
 
-    return str(output_file)
+    result_path = _MdText(str(output_file))
+    result_path.untranslated_units = untranslated_count
+    result_path.total_units = total_units
+    return result_path
 
 
 async def _translate_md_units_concurrent(
@@ -779,7 +848,10 @@ async def _translate_md_units_concurrent(
     from ol_md.token_stream import TokenPositionTracker
     tokens = parse_md_to_tokens(md_text)
     tracker = TokenPositionTracker(tokens)
-    return tracker.rebuild(tokens, units)
+    rebuilt = _MdText(tracker.rebuild(tokens, units))
+    rebuilt.untranslated_units = sum(1 for r in results if r.untranslated)
+    rebuilt.total_units = len(units)
+    return rebuilt
 
 
 async def _translate_md_by_paragraph(
@@ -1058,6 +1130,12 @@ def translate_md(
         help="Path to images.json file (e.g., from OPP extraction). "
              "Copied to output directory alongside translated .md.",
     ),
+    fail_on_untranslated: bool = typer.Option(
+        False, "--fail-on-untranslated",
+        help="Exit with a pipeline error (exit code 1) when any trans-unit "
+             "was returned untranslated (LLM call failed or was rate-limited). "
+             "Off by default: degraded output is still written and reported.",
+    ),
 ) -> int:
     try:
         if log_format:
@@ -1165,13 +1243,19 @@ def translate_md(
         ):
             cached_output = output_path / input_path.name
             _forward_images_json(input_path, images_json, output_path)
+            _cached_untranslated = _read_untranslated_units(cached_output)
             if json_output:
-                output_json(True, str(input_path), str(cached_output), src, tgt)
+                output_json(
+                    True, str(input_path), str(cached_output), src, tgt,
+                    untranslated_units=_cached_untranslated,
+                )
             else:
                 typer.echo(
                     f"Translated (cached): {input_path.name} -> {cached_output} ({src} -> {tgt})"
                 )
             logger.info(f"Completed: translate_md {input} (cache hit)")
+            if fail_on_untranslated and _cached_untranslated > 0:
+                raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
             raise typer.Exit(code=ExitCode.SUCCESS)
 
         if chunk_by_paragraph:
@@ -1199,6 +1283,8 @@ def translate_md(
         # A12.4: post-translate restoration runs after the async pipeline
         # so pre-existing test fakes for ``_translate_md_async`` still
         # observe this step.
+        _untranslated_units = getattr(output_file, "untranslated_units", 0)
+        _total_units = getattr(output_file, "total_units", 0)
         if not no_restoration:
             try:
                 _original_text = input_path.read_text(encoding="utf-8")
@@ -1266,10 +1352,27 @@ def translate_md(
 
         if json_output:
             actual_output = output_path / input_path.name
-            output_json(True, str(input_path), str(actual_output), src, tgt)
+            output_json(
+                True, str(input_path), str(actual_output), src, tgt,
+                untranslated_units=_untranslated_units,
+            )
         else:
             typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+            if _untranslated_units > 0:
+                typer.echo(
+                    f"WARNING: {_untranslated_units} of {_total_units} unit(s) "
+                    f"were returned untranslated; those units carry the source "
+                    f"text verbatim. Re-run or use --fail-on-untranslated to "
+                    f"make this fatal.",
+                    err=True,
+                )
         logger.info(f"Completed: translate_md {input}")
+        if fail_on_untranslated and _untranslated_units > 0:
+            logger.error(
+                f"translate_md: {_untranslated_units} of {_total_units} unit(s) "
+                f"untranslated - failing due to --fail-on-untranslated"
+            )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         raise typer.Exit(code=ExitCode.SUCCESS)
 
     except typer.Exit:

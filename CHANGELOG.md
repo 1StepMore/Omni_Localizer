@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **OL#57 + OL#71 — `ol translate-md` shipped untranslated source as a successful translation, invisibly.** When a trans-unit's LLM call failed (provider 429/5xx, exhausted retry budget, empty output), OL degraded gracefully by emitting the unit's **source** text and exited `0`. Nothing distinguished that from a real translation. Proven live by the suite's own human-quality bar: the 2026-10-12 scheduled run failed `pipeline-docx-md-docx` (CJK **8.46%**) and `pipeline-docx-md-epub` (**5.45%**) against `STANDARDS.md#cjk-density` (<5%), with the first paragraph reproduced verbatim in the output — carrying ASCII punctuation, which proved OL's punctuation normaliser had run over text that was never translated.
+
+  The safety net that should have caught it was structurally blind. Gate 5 `check_source_copy` is a **per-unit** equality check, but the MD CLI called `run_quality_gates` **once per document** (`translate_md.py`), so for any partially-fallen-back document source and target necessarily differed and the gate returned `[]`. Demonstrated both directions: `check_source_copy(unit_src, unit_tgt)` → `['OL_WARN: SOURCE_COPY — …']`, `check_source_copy(full_src, full_tgt)` → `[]`. The XLIFF path already did it correctly, per unit.
+
+  Detection is now **per unit**, comparing each unit's own output against its own source through the canonical Gate 5 comparator, which catches every fallback path — the exception handler, the whitespace-only-output path, both sequential `except` branches, and retry-manager exhaustion — with one check instead of instrumenting five sites. The degradation is retained (content is delivered, not dropped) but is no longer silent: `--json` gains `untranslated_units`, the output frontmatter gains `untranslated_units`, and one `OL_WARN: UNTRANSLATED_UNITS — N of M unit(s) …` line is appended. New opt-in `--fail-on-untranslated` exits `3` for callers that cannot accept a degraded result; the default exit code is unchanged so no existing caller breaks.
+
+  OL#71's earlier fix for this (commit `c9a5818`, a module-level failure flag consulted by the CLI handlers) was deleted wholesale by `12679b1` — *`wip(ol): July uncommitted refactor`*, an unrelated working-tree commit — and the issue stayed closed for three months. This fix deliberately does not use module-level mutable state; `tests/test_md_untranslated_unit_reporting.py` pins the behaviour so a future refactor cannot silently drop it again.
 
 ### Changed
 
