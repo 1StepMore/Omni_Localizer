@@ -40,16 +40,20 @@ def _build(pool):
 
 
 class TestMaxParallelRequestsWiring:
-    def test_absent_by_default_so_existing_configs_get_no_cap(self):
+    def test_absent_unless_declared(self):
+        """The key is omitted, never defaulted — an absent cap ≠ a cap of 0."""
         model_list = _build(load_config(str(_DEFAULT_YAML))[0].llm_pool)
 
         assert model_list, "canonical pool produced no deployments"
         for entry in model_list:
-            assert "max_parallel_requests" not in entry["litellm_params"], (
-                f"{entry['litellm_params']['model']}: the key must be omitted "
-                f"when unset, not emitted with a default — an absent cap and a "
-                f"cap of 0 are different things"
-            )
+            configured = self._configured_for(entry)
+            if configured is None:
+                assert "max_parallel_requests" not in entry["litellm_params"], (
+                    f"{entry['litellm_params']['model']}: unset must mean the "
+                    f"key is absent, not emitted with a default"
+                )
+            else:
+                assert entry["litellm_params"]["max_parallel_requests"] == configured
 
     def test_declared_value_reaches_only_that_deployment(self):
         pool = load_config(str(_DEFAULT_YAML))[0].llm_pool
@@ -58,17 +62,79 @@ class TestMaxParallelRequestsWiring:
         target = f"{pool.translation[0].provider}/{pool.translation[0].model}"
 
         model_list = _build(pool)
+        # Both providers share the model id `openai/DeepSeek-V4.1-Flash` in
+        # different roles, so match on the role too.
         capped = [
             e for e in model_list
-            if "max_parallel_requests" in e["litellm_params"]
+            if e["litellm_params"]["model"] == target
+            and e["model_name"] == "translation"
         ]
 
         assert len(capped) == 1, (
             f"expected exactly 1 capped deployment, got {len(capped)}"
         )
         assert capped[0]["litellm_params"]["max_parallel_requests"] == 4
-        assert capped[0]["litellm_params"]["model"] == target
         assert capped[0]["model_name"] == "translation"
+
+    def test_raises_a_single_deployment_cap_without_touching_siblings(self):
+        """One declared value caps one deployment; others keep their own."""
+        pool = load_config(str(_DEFAULT_YAML))[0].llm_pool
+        before = {
+            (e["model_name"], e["litellm_params"]["model"]):
+                e["litellm_params"].get("max_parallel_requests")
+            for e in _build(pool)
+        }
+        pool.judging[0].max_parallel_requests = 3
+
+        after = {
+            (e["model_name"], e["litellm_params"]["model"]):
+                e["litellm_params"].get("max_parallel_requests")
+            for e in _build(pool)
+        }
+
+        changed = [k for k in before if before[k] != after[k]]
+        assert changed == [("judging", "openai/DeepSeek-V4.1-Flash")], (
+            f"only the targeted deployment should change, got {changed}"
+        )
+        assert after[("judging", "openai/DeepSeek-V4.1-Flash")] == 3
+
+    def test_canonical_pool_caps_only_the_account_limited_provider(self):
+        """AMD is capped at its account limit; Zhipu is left uncapped on purpose.
+
+        AMD Radeon answers 429 `model_concurrency_rate_limit_exceeded` naming
+        a concurrency number — an ACCOUNT-level ceiling that
+        max_parallel_requests can hold us under.
+
+        Zhipu answers `code 1305 该模型当前访问量过大`, which its own docs
+        classify as platform overload ("模型在当前时段整体访问压力较高，平台
+        触发了全局保护"), distinct from 1302 "账户已达到速率限制". Capping
+        locally cannot help against platform-side overload — it would only
+        slow us down — so Zhipu carries no cap.
+        """
+        pool = load_config(str(_DEFAULT_YAML))[0].llm_pool
+
+        for role in ("translation", "judging", "restoration", "profiling"):
+            for model in getattr(pool, role, []):
+                is_amd = "amd.com.cn" in (model.base_url or "")
+                if is_amd:
+                    assert model.max_parallel_requests == 16, (
+                        f"{role}/{model.model}: AMD is account-capped and "
+                        f"must declare its ceiling"
+                    )
+                elif "bigmodel.cn" in (model.base_url or ""):
+                    assert model.max_parallel_requests is None, (
+                        f"{role}/{model.model}: Zhipu 1305 is platform "
+                        f"overload, not an account cap — do not declare one"
+                    )
+
+    @staticmethod
+    def _configured_for(entry):
+        pool = load_config(str(_DEFAULT_YAML))[0].llm_pool
+        for role in ("translation", "judging", "restoration", "profiling"):
+            for m in getattr(pool, role, []):
+                if f"{m.provider}/{m.model}" == entry["litellm_params"]["model"]:
+                    return m.max_parallel_requests
+        return None
 
     def test_sits_next_to_rpm_in_the_same_dict(self):
         """rpm and max_parallel_requests are both updateLiteLLMParams fields."""

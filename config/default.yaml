@@ -13,6 +13,7 @@ llm_pool:
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
+    max_parallel_requests: 16
     priority: 1
     role: translation
   - provider: openai
@@ -28,6 +29,7 @@ llm_pool:
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
+    max_parallel_requests: 16
     priority: 1
     role: judging
   - provider: openai
@@ -43,6 +45,7 @@ llm_pool:
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
+    max_parallel_requests: 16
     priority: 1
     role: restoration
   - provider: openai
@@ -58,6 +61,7 @@ llm_pool:
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
+    max_parallel_requests: 16
     priority: 1
     role: profiling
   - provider: openai
