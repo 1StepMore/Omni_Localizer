@@ -21,6 +21,7 @@ from ol_pool.router import ModelPool
 
 
 _LOCAL_YAML_PATH = Path(__file__).resolve().parents[1] / "config" / "local.yaml"
+_DEFAULT_YAML_PATH = Path(__file__).resolve().parents[1] / "config" / "default.yaml"
 
 
 @pytest.mark.skipif(
@@ -28,7 +29,14 @@ _LOCAL_YAML_PATH = Path(__file__).resolve().parents[1] / "config" / "local.yaml"
     reason="config/local.yaml is a gitignored local-only config; not present in CI",
 )
 class TestMaxXliffConcurrentE2E:
-    """FIX-#13: max_xliff_concurrent flows from YAML to ConcurrencyLimiter."""
+    """FIX-#13: max_xliff_concurrent flows from YAML to ConcurrencyLimiter.
+
+    Scoped to `config/local.yaml` only. Assertions about the *tracked* pool
+    live in `TestCanonicalPool` below, which runs in CI — they used to sit
+    here under this class-level skipif, so a check reading the tracked
+    `default.yaml` was silently skipped everywhere except a maintainer's
+    machine.
+    """
 
     def test_local_yaml_has_max_xliff_5(self):
         """local.yaml must set max_xliff_concurrent: 5 (round 3 fix)."""
@@ -38,95 +46,78 @@ class TestMaxXliffConcurrentE2E:
             f"got {cfg.max_xliff_concurrent}"
         )
 
+
+class TestCanonicalPool:
+    """Assertions about `config/default.yaml` — tracked, so these run in CI.
+
+    Three tests that used to live under the local.yaml skipif were removed
+    2026-10-12. They asserted that NVIDIA carried `rpm=40` and that
+    OPENCODE_GO carried a low rpm, against the canonical `translation` /
+    `judging` pools. Both providers are gone: NVIDIA NIM returned HTTP 410
+    (recorded in CHANGELOG), and OPENCODE_GO no longer appears anywhere in
+    the product. They could only ever fail, and only on a machine that has a
+    `config/local.yaml`.
+
+    Nothing real was lost with them: the mechanism they policed — rpm acting
+    as *hard* 429 enforcement — was deliberately removed in E2E-83, which
+    dropped `enforce_model_rate_limits` from the Router. `rpm` is now a
+    routing weight only. `test_modelpool_rpm_per_deployment` below still
+    locks the surviving half of the FIX-#7 contract.
+    """
+
     def test_default_yaml_has_max_xliff_5(self):
-        """local.yaml must set max_xliff_concurrent: 5 (round 3 fix)."""
-        # 2026-06-17 round 8 (#24): local.yaml has real keys; opt-out needed.
-        import os
-        os.environ["OL_ALLOW_HARDCODED_KEYS"] = "1"
-        try:
-            cfg, _ = load_config(str(_LOCAL_YAML_PATH))
-        except Exception as e:
-            if "ZHIPU_API_KEY" in str(e) or "AGNES_API_KEY" in str(e):
-                pytest.skip(f"default.yaml env vars not set: {e}")
-            raise
+        """default.yaml must set max_xliff_concurrent: 5 (round 3 fix).
+
+        This test was named for default.yaml but loaded _LOCAL_YAML_PATH;
+        it now actually reads the tracked file. No OL_ALLOW_HARDCODED_KEYS
+        dance is needed: `load_config` only warns on unset ${VAR}
+        (`schema.py:_check_env_vars`), and resolution failure is raised
+        later, per-model, when a model is actually invoked.
+        """
+        cfg, _ = load_config(str(_DEFAULT_YAML_PATH))
         assert cfg.max_xliff_concurrent == 5, (
-            f"Expected max_xliff_concurrent=5 in local.yaml; "
+            f"Expected max_xliff_concurrent=5 in default.yaml; "
             f"got {cfg.max_xliff_concurrent}"
         )
 
-    def test_local_yaml_nvidia_models_have_rpm_40(self):
-        """OPT-11/OPT-13: NVIDIA models must declare rpm=40 (40 RPM shared tier)."""
-        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
-        nvidia_models = [
-            m for m in cfg.llm_pool.translation
-            if "nvidia" in (m.base_url or "")
-        ]
-        assert len(nvidia_models) == 2, (
-            f"Expected 2 NVIDIA models in translation; got {len(nvidia_models)}"
-        )
-        for m in nvidia_models:
-            assert m.requests_per_minute == 40, (
-                f"NVIDIA model {m.model} should have rpm=40; got {m.requests_per_minute}"
-            )
-
-    def test_local_yaml_opencode_go_models_have_rpm_40(self):
-        """FIX-#5: OPENCODE_GO models must declare rpm (was using default 500).
-
-        base_url is stored as ${OPENCODE_GO_BASE_URL} before env-var
-        resolution (which happens inside _build_model_list). Check via
-        the env-var reference pattern instead of substring on URL.
-        """
-        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
-        ocg_models = [
-            m for m in cfg.llm_pool.translation
-            if m.base_url and "OPENCODE_GO" in m.base_url
-        ]
-        assert len(ocg_models) >= 1, (
-            "Expected at least 1 OPENCODE_GO model in translation"
-        )
-        for m in ocg_models:
-            assert m.requests_per_minute <= 100, (
-                f"OPENCODE_GO model {m.model} should have low rpm; got {m.requests_per_minute}"
-            )
-
-    def test_local_yaml_judge_models_have_rpm_40(self):
-        """FIX-#6: judge model on OPENCODE_GO must declare rpm (judge calls also consume quota)."""
-        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
-        ocg_judge = [
-            m for m in cfg.llm_pool.judging
-            if m.base_url and "OPENCODE_GO" in m.base_url
-        ]
-        assert len(ocg_judge) >= 1
-        for m in ocg_judge:
-            assert m.requests_per_minute <= 100, (
-                f"Judge OPENCODE_GO model {m.model} should have low rpm; got {m.requests_per_minute}"
-            )
-
     def test_modelpool_rpm_per_deployment(self):
-        """FIX-#7: per-deployment rpm in litellm_params (canonical location)."""
-        cfg, _ = load_config(str(_LOCAL_YAML_PATH))
-        # Use the same path the ModelPool uses to build the list
-        from ol_pool.router import ModelPool as MP
+        """FIX-#7: per-deployment rpm in litellm_params (canonical location).
+
+        Provider-agnostic: it asserts the wiring (rpm lands in
+        litellm_params, never top-level, and mirrors the config value), not
+        any particular provider's quota. The previous form keyed off NVIDIA
+        model ids (`deepseek-ai` / `kimi` / `k2.6`) and is therefore
+        provider-agnostic only by accident of the rename.
+        """
+        cfg, _ = load_config(str(_DEFAULT_YAML_PATH))
         from unittest.mock import patch
+
         with patch("ol_pool.router.load_config", return_value=(cfg, None)):
-            mp = MP()
+            mp = ModelPool()
             model_list = mp._build_model_list(cfg.llm_pool)
-        # Every entry should have rpm inside litellm_params, NOT at top-level
+
+        assert model_list, "canonical pool produced no deployments"
         for entry in model_list:
             assert "rpm" not in entry, (
                 f"Top-level rpm should be removed (FIX-#7). Got: {entry}"
             )
-            assert "rpm" in entry["litellm_params"]
-        # And the values should match config
-        rpm_seen = {
-            entry["litellm_params"]["model"]: entry["litellm_params"]["rpm"]
-            for entry in model_list
-            if entry["model_name"] == "translation"
+            assert "rpm" in entry["litellm_params"], (
+                f"rpm must live in litellm_params for {entry.get('model_name')}"
+            )
+
+        # The old NVIDIA block keyed off provider model ids; this is the same
+        # invariant generalised to whatever the canonical pool actually holds.
+        configured = {
+            f"{m.provider}/{m.model}": m.requests_per_minute
+            for role in ("translation", "judging", "restoration", "profiling")
+            for m in getattr(cfg.llm_pool, role, [])
         }
-        # NVIDIA entries should be 40
-        for model_id, rpm in rpm_seen.items():
-            if "deepseek-ai" in model_id or "kimi" in model_id or "k2.6" in model_id:
-                assert rpm == 40, f"NVIDIA model {model_id} should be 40; got {rpm}"
+        for entry in model_list:
+            model_id = entry["litellm_params"]["model"]
+            assert entry["litellm_params"]["rpm"] == configured[model_id], (
+                f"{model_id}: litellm rpm {entry['litellm_params']['rpm']} "
+                f"!= configured {configured[model_id]}"
+            )
 
 
 class TestRateLimitMetrics:

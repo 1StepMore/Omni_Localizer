@@ -95,13 +95,32 @@ ol translate-batch ./docs/ -o ./out/ -s en -t zh -j 2
 
 **Fix (long term)**
 
-Set `requests_per_minute` to the provider's actual cap in `config/default.yaml`:
+First work out which kind of limit you are actually hitting — the two need
+different knobs:
 
-```yaml
-- provider: "openai"
-  model: "glm-4.7-flash"
-  requests_per_minute: 40   # your provider's actual cap
-```
+- **Concurrency** — the provider caps requests *in flight at once*. Zhipu says
+  `code 1305该模型当前访问量过大`; AMD Radeon says
+  `model_concurrency_rate_limit_exceeded` and names a number. Set
+  `max_parallel_requests` in `config/default.yaml`:
+
+  ```yaml
+  - provider: "openai"
+    model: "glm-4.7-flash"
+    max_parallel_requests: 8   # enforced via a per-deployment semaphore
+  ```
+
+- **Rate** — the provider caps requests *per minute*. Set `requests_per_minute`:
+
+  ```yaml
+  - provider: "openai"
+    model: "glm-4.7-flash"
+    requests_per_minute: 40   # routing weight only
+  ```
+
+`requests_per_minute` cannot prevent a concurrency 429, and lowering it does
+not raise your concurrency ceiling — it only biases routing. Note it is no
+longer hard-enforced at all (E5E-83 removed `enforce_model_rate_limits`); see
+`ARCHITECTURE.md` §3.2.
 
 The `pybreaker`-backed circuit breaker (router.py:237-245) opens the role for 60 s after 5 consecutive failures, preventing a retry storm — let it cool.
 
