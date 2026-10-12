@@ -105,7 +105,6 @@ def init(
             "terminology": True,
             "source_script_check": True,
             "protocol_artifact_check": True,
-            "block_on_source_script_fragment": True,
             "length_ratio": {"enabled": True, "min": 0.5, "max": 2.0},
             "locale": {"enabled": True, "target_locale": "en-US"},
         },
