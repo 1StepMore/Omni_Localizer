@@ -76,7 +76,11 @@ quality_gates:
   terminology: true
   source_script_check: true
   protocol_artifact_check: true
-  block_on_source_script_fragment: true
+  # block_on_source_script_fragment is deliberately UNSET (= schema default
+  # false). Gate 6 warns on a SINGLE residual CJK char, but this project's own
+  # bar (suite STANDARDS.md#cjk-density) tolerates 5% for brand names and
+  # proper nouns — blocking here would reject documents that pass the standard.
+  # Use `ol translate-md --fail-on-untranslated` for strictness instead.
   length_ratio:
     enabled: true
     min: 0.5

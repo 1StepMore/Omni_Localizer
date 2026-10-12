@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **`block_on_source_script_fragment` is no longer set to `true` in `config/default.yaml`, and `ol init` no longer writes it.** The flag makes Gate 6 (`SOURCE_SCRIPT_FRAGMENT`) raise `OLQualityGateBlockedError` on the XLIFF path instead of only warning — a behaviour change shipped to every user by default, while being **inert on the MD path**, which never passed the kwarg. Two paths, one config, different meanings.
+
+  It should not be on by default because Gate 6 fires on a **single** residual CJK character (zero threshold), while this project's own citable bar deliberately tolerates more: `scenarios/STANDARDS.md#cjk-density` specifies a ratio `< 0.05` and states outright that *"up to 5% is tolerated for brand names and proper nouns that legitimately preserve source characters."* Blocking on the stricter of the two would reject documents that pass the documented standard — an 800-word English translation with one brand name left in Chinese (0.5%) would fail outright.
+
+  Gate 6 is **not** disabled by this: `source_script_check: true` remains, so every residual CJK codepoint is still reported as an `OL_WARN: SOURCE_SCRIPT_FRAGMENT` note (verified: 28 warnings on the untranslated fixture). Only the hard block is removed. Set the flag back to `true` explicitly to restore blocking — `run_quality_gates` still honours it. For strictness prefer `ol translate-md --fail-on-untranslated`, which keys off a per-unit whole-text comparison rather than a single-character match.
+
+  Previously the only evidence of the conflict was indirect: `tests/test_e2e_path_xliff_cli.py` had to switch from the 海尔 zh→en fixture to the English Meridian fixture because a FAKE_LLM-echoed Chinese source was *correctly blocked*, i.e. the test worked around the gate rather than the gate being correct. That docstring is updated.
+
 ### Fixed
 
 - **OL#57 + OL#71 — `ol translate-md` shipped untranslated source as a successful translation, invisibly.** When a trans-unit's LLM call failed (provider 429/5xx, exhausted retry budget, empty output), OL degraded gracefully by emitting the unit's **source** text and exited `0`. Nothing distinguished that from a real translation. Proven live by the suite's own human-quality bar: the 2026-10-12 scheduled run failed `pipeline-docx-md-docx` (CJK **8.46%**) and `pipeline-docx-md-epub` (**5.45%**) against `STANDARDS.md#cjk-density` (<5%), with the first paragraph reproduced verbatim in the output — carrying ASCII punctuation, which proved OL's punctuation normaliser had run over text that was never translated.
