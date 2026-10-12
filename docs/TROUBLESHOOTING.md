@@ -95,19 +95,37 @@ ol translate-batch ./docs/ -o ./out/ -s en -t zh -j 2
 
 **Fix (long term)**
 
-First work out which kind of limit you are actually hitting — the two need
-different knobs:
+First read the error code, then pick the knob. Zhipu distinguishes two codes
+that look alike and need opposite responses:
 
-- **Concurrency** — the provider caps requests *in flight at once*. Zhipu says
-  `code 1305该模型当前访问量过大`; AMD Radeon says
-  `model_concurrency_rate_limit_exceeded` and names a number. Set
-  `max_parallel_requests` in `config/default.yaml`:
+| Code | Zhipu's meaning | Whose limit | Response |
+|---|---|---|---|
+| `1302` | 触发**用户**速率限制 — "并发请求数已达到**账户上限**" | yours | cap it: `max_parallel_requests` |
+| `1305` | **平台服务过载** — "模型在当前时段整体访问压力较高，平台触发了**全局保护**" | theirs | back off and retry; **lowering your concurrency does nothing** |
+
+`config/default.yaml` therefore caps **AMD only** (its
+`model_concurrency_rate_limit_exceeded` names an account ceiling, 16) and
+leaves **Zhipu uncapped** — against platform-side overload a local cap would
+only make OL slower, since the bottleneck is not ours. Zhipu's own guidance
+for 1305 is to lengthen the retry interval, which is what OL's 10/20/40 s
+`translate()` backoff already does.
+
+So, matching the knob to the error:
+
+- **Account-level concurrency** (AMD `model_concurrency_rate_limit_exceeded`,
+  Zhipu `1302`) — set `max_parallel_requests` in `config/default.yaml`:
 
   ```yaml
   - provider: "openai"
-    model: "glm-4.7-flash"
-    max_parallel_requests: 8   # enforced via a per-deployment semaphore
+    model: "DeepSeek-V4.1-Flash"
+    base_url: https://developer.amd.com.cn/radeon/api/v1
+    max_parallel_requests: 16   # enforced via a per-deployment semaphore
   ```
+
+- **Platform overload** (Zhipu `1305`) — no local knob exists. Rely on the
+  retry backoff plus fallback to the other provider. If both providers fail
+  this way at once (as the 2026-10-06…11 nightlies did), no configuration
+  change rescues the run; only waiting does.
 
 - **Rate** — the provider caps requests *per minute*. Set `requests_per_minute`:
 
