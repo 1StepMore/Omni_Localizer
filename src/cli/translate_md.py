@@ -1357,7 +1357,10 @@ def translate_md(
                 untranslated_units=_untranslated_units,
             )
         else:
-            typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+            typer.echo(
+                f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt}) "
+                f"[untranslated: {_untranslated_units}/{_total_units}]"
+            )
             if _untranslated_units > 0:
                 typer.echo(
                     f"WARNING: {_untranslated_units} of {_total_units} unit(s) "
@@ -1371,6 +1374,18 @@ def translate_md(
             logger.error(
                 f"translate_md: {_untranslated_units} of {_total_units} unit(s) "
                 f"untranslated - failing due to --fail-on-untranslated"
+            )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+        if _total_units > 0 and _untranslated_units >= _total_units:
+            typer.echo(
+                f"ERROR: all {_total_units} unit(s) were returned untranslated "
+                f"- nothing was translated (LLM calls failed or were "
+                f"rate-limited).",
+                err=True,
+            )
+            logger.error(
+                f"translate_md: all {_total_units} unit(s) untranslated "
+                f"- nothing was translated"
             )
             raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         raise typer.Exit(code=ExitCode.SUCCESS)
