@@ -61,7 +61,15 @@ def _cache_key(
     ``src_lang`` and ``tgt_lang`` are included so that translating the same
     input to two different target languages does not produce a cache
     collision (OL#8).
+
+    The LLM mode (``fake`` when the ``OMNI_TEST_FAKE_LLM=1`` test seam is
+    active, else ``real``) is mixed in too (Issue #135): fake-mode output is
+    not a real translation, so a real run must never hit a fake entry (and
+    vice versa). The env var is read here at call-time (not at import-time),
+    mirroring ``_cache_root``; the predicate is identical to the one in
+    ``translate_md.py``.
     """
+    llm_mode = "fake" if os.environ.get("OMNI_TEST_FAKE_LLM") == "1" else "real"
     h = hashlib.sha256()
     h.update(input_path.read_bytes())
     if config_path:
@@ -81,6 +89,7 @@ def _cache_key(
     h.update(f"|sty={styleguide or ''}".encode())
     h.update(f"|nosty={int(no_styleguide)}".encode())
     h.update(f"|pol={int(polish)}".encode())
+    h.update(f"|llm={llm_mode}".encode())
     return h.hexdigest()
 
 
