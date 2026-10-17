@@ -1228,7 +1228,7 @@ def translate_md(
         scorer_type = "none" if no_scorer else scorer
 
         # A6: cache check before any expensive LLM work.
-        if _check_cache(
+        _cache_hit = _check_cache(
             input_path, output_path, config, no_cache=no_cache,
             add_frontmatter=add_frontmatter,
             no_restoration=no_restoration,
@@ -1240,7 +1240,22 @@ def translate_md(
             styleguide=styleguide,
             no_styleguide=no_styleguide,
             polish=polish,
-        ):
+        )
+        # Issue #132: a cache entry written by a run where the LLM failed
+        # carries source fallback. Its frontmatter records untranslated
+        # units, so treat such a poisoned hit as a miss and re-translate
+        # instead of serving the untranslated bytes as a successful result.
+        if _cache_hit:
+            _cached_output = output_path / input_path.name
+            _cached_untranslated = _read_untranslated_units(_cached_output)
+            if _cached_untranslated > 0:
+                logger.debug(
+                    f"Cache entry for {input_path.name} records "
+                    f"{_cached_untranslated} untranslated unit(s); "
+                    f"treating as a miss and re-translating (Issue #132)"
+                )
+                _cache_hit = False
+        if _cache_hit:
             cached_output = output_path / input_path.name
             _forward_images_json(input_path, images_json, output_path)
             _cached_untranslated = _read_untranslated_units(cached_output)
@@ -1296,19 +1311,30 @@ def translate_md(
             )
 
         # A6: cache the produced output so the next run is a cache hit.
-        _write_cache(
-            input_path, output_path, config, no_cache=no_cache,
-            add_frontmatter=add_frontmatter,
-            no_restoration=no_restoration,
-            no_glossary=no_glossary,
-            glossary=glossary,
-            glossary_max_terms=glossary_max_terms,
-            src_lang=src,
-            tgt_lang=tgt,
-            styleguide=styleguide,
-            no_styleguide=no_styleguide,
-            polish=polish,
-        )
+        # Issue #132: never cache a run that produced untranslated units —
+        # the output carries source fallback, and caching it would make the
+        # degradation sticky (a later run would serve it as a cache hit).
+        # This must precede every exit path so a failed run never poisons
+        # the cache; the exit-code semantics below are unchanged.
+        if _untranslated_units > 0:
+            logger.debug(
+                f"Skipping cache write for {input_path.name}: "
+                f"{_untranslated_units} untranslated unit(s) (Issue #132)"
+            )
+        else:
+            _write_cache(
+                input_path, output_path, config, no_cache=no_cache,
+                add_frontmatter=add_frontmatter,
+                no_restoration=no_restoration,
+                no_glossary=no_glossary,
+                glossary=glossary,
+                glossary_max_terms=glossary_max_terms,
+                src_lang=src,
+                tgt_lang=tgt,
+                styleguide=styleguide,
+                no_styleguide=no_styleguide,
+                polish=polish,
+            )
 
         # OL#73: forward the images manifest next to the translated MD.
         _forward_images_json(input_path, images_json, output_path)
@@ -1357,7 +1383,10 @@ def translate_md(
                 untranslated_units=_untranslated_units,
             )
         else:
-            typer.echo(f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt})")
+            typer.echo(
+                f"Translated: {input_path.name} -> {output_file} ({src} -> {tgt}) "
+                f"[untranslated: {_untranslated_units}/{_total_units}]"
+            )
             if _untranslated_units > 0:
                 typer.echo(
                     f"WARNING: {_untranslated_units} of {_total_units} unit(s) "
@@ -1371,6 +1400,18 @@ def translate_md(
             logger.error(
                 f"translate_md: {_untranslated_units} of {_total_units} unit(s) "
                 f"untranslated - failing due to --fail-on-untranslated"
+            )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+        if _total_units > 0 and _untranslated_units >= _total_units:
+            typer.echo(
+                f"ERROR: all {_total_units} unit(s) were returned untranslated "
+                f"- nothing was translated (LLM calls failed or were "
+                f"rate-limited).",
+                err=True,
+            )
+            logger.error(
+                f"translate_md: all {_total_units} unit(s) untranslated "
+                f"- nothing was translated"
             )
             raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         raise typer.Exit(code=ExitCode.SUCCESS)

@@ -131,7 +131,11 @@ def _runner_and_fake(untranslated_units: int):
         output_file.write_text("translated body\n", encoding="utf-8")
         result = _MdText(str(output_file))
         result.untranslated_units = untranslated_units
-        result.total_units = untranslated_units or 1
+        # One more unit than untranslated keeps these cases *partial*
+        # (0 < untranslated < total) so the default exit stays 0; the
+        # all-untranslated → non-zero rule is covered by
+        # tests/test_e2e_133_untranslated_visible.py.
+        result.total_units = untranslated_units + 1
         return result
 
     return CliRunner(), app, fake_translate_md_async
