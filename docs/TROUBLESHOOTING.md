@@ -48,11 +48,11 @@ ValueError: Environment variable 'ZHIPU_API_KEY' referenced in api_key but not s
 
 **Cause**
 
-`config/default.yaml` references `${ZHIPU_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py:17` walks every `${VAR}` in the loaded config and raises if the env var is unset.
+`config/default.yaml` references `${ZHIPU_API_KEY}` in the `api_key` field. The schema validator in `src/ol_config/schema.py` walks every `${VAR}` in the loaded config and raises if the env var is unset.
 
 **Fix**
 
-Either set the key, or run in fake-LLM mode (which short-circuits the check, see `schema.py:23`):
+Either set the key, or run in fake-LLM mode (which short-circuits the check, see `src/ol_config/schema.py`):
 
 ```bash
 # Option A — real key
@@ -140,7 +140,7 @@ not raise your concurrency ceiling — it only biases routing. Note it is no
 longer hard-enforced at all (E5E-83 removed `enforce_model_rate_limits`); see
 `ARCHITECTURE.md` §3.2.
 
-The `pybreaker`-backed circuit breaker (router.py:237-245) opens the role for 60 s after 5 consecutive failures, preventing a retry storm — let it cool.
+The `pybreaker`-backed circuit breaker (`src/ol_pool/router.py`) opens the role for 60 s after 5 consecutive failures, preventing a retry storm — let it cool.
 
 ---
 
@@ -216,7 +216,7 @@ The CLI resolves relative paths from `Path.cwd()`, not from `--config`'s directo
 
 **Cause**
 
-The MCP server enforces a `PathValidator` whitelist (`src/ol_mcp/security.py`). By default only paths inside the server's CWD are accepted. The CLI does **not** apply this restriction; it has full filesystem access.
+The MCP server enforces a `PathValidator` whitelist (`src/ol_mcp/security.py`). It is **fail-CLOSED**: paths are accepted only inside the directories named by `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS` / the deprecated `OL_ALLOWED_DIRECTORIES`); when none is set, `get_default_validator()` raises `MCPNotConfiguredError` (`OL_MCP_NOT_CONFIGURED`) rather than defaulting to the server's CWD. The CLI does **not** apply this restriction; it has full filesystem access.
 
 **Fix**
 
@@ -234,7 +234,7 @@ pybreaker.CircuitBreakerError: Circuit breaker 'translation' is open
 
 **Cause**
 
-Five consecutive LLM failures on the translation role (router.py:237-245) tripped the breaker. It auto-resets after 60 s.
+Five consecutive LLM failures on the translation role (`src/ol_pool/router.py`) tripped the breaker. It auto-resets after 60 s.
 
 **Fix**
 
@@ -374,7 +374,7 @@ The full set of constraints lives in `src/ol_mcp/tools.py` (one `*Input` class p
 >
 > ```bash
 > export MCP_ALLOWED_DIRECTORIES=/data/documents,/tmp/ol-work
-> ol mcp   # restart
+> ol-mcp   # restart
 > ```
 >
 > The server never silently falls back to `cwd` + `/tmp` — this refusal is intentional.

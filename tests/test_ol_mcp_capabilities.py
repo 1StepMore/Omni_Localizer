@@ -45,3 +45,21 @@ def test_get_capabilities_reports_all_live_tools():
 
     assert len(envelope["content"]["tools"]) == len(TOOL_REGISTRY)
     assert len(envelope["content"]["tools"]) == 21
+
+
+def test_get_capabilities_reports_four_llm_roles():
+    """The capabilities envelope must report all four configured roles.
+
+    Regression for the drift where `_ROLES` hardcoded the pre-profiling
+    three-role list while `config/default.yaml` and the schema define a
+    fourth `profiling` role.
+    """
+    envelope = _capability_envelope()
+
+    assert envelope["content"]["roles"] == [
+        "translation",
+        "judging",
+        "restoration",
+        "profiling",
+    ]
+    assert len(envelope["content"]["roles"]) == 4

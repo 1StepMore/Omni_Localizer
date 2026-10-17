@@ -55,7 +55,8 @@ When `--json` is used, output is:
   "input_file": "input.md",
   "output_file": "output/input.md",
   "source_lang": "en",
-  "target_lang": "zh"
+  "target_lang": "zh",
+  "untranslated_units": 0
 }
 ```
 
@@ -129,6 +130,19 @@ llm_pool:
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "restoration"
+  profiling:
+    - provider: "openai"
+      model: "DeepSeek-V4.1-Flash"
+      priority: 1
+      api_key: "${AMD_API_KEY}"
+      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      role: "profiling"
+    - provider: "openai"
+      model: "glm-4.7-flash"
+      priority: 2
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      role: "profiling"
 ```
 
 ---
