@@ -983,59 +983,132 @@ class ModelPool:
                 "reason": f"judge_response_invalid: {resp_err}",
                 "transport_error": True,
             }
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError:
-            # Regex fallback: extract numeric values from malformed JSON like
-            # {"accuracy": 95, "fluency":.io98, "adequacy": 99, "score": 98}
-            # or {"accuracy": 100, "fluency": directly as per ...: 100, ...}
+        # Issue #130: centralised text-level + field-level JSON tolerance.
+        from ol_pool.json_tolerance import (
+            repair_json_once,
+            repair_json_text,
+            salvage_fields,
+        )
+
+        _judge_expectations = {
+            "accuracy": float,
+            "fluency": float,
+            "adequacy": float,
+            "score": float,
+        }
+        _judge_fields = ("accuracy", "fluency", "adequacy", "score")
+
+        def _judge_all_valid(parsed: dict) -> bool:
+            for field in _judge_fields:
+                value = parsed.get(field)
+                if value is None or isinstance(value, bool):
+                    return False
+                if not isinstance(value, (int, float)):
+                    return False
+            return True
+
+        def _parse_judge_text(text: str):
+            """Return ``(result, invalid_fields)`` or ``(None, [])``.
+
+            ``result`` is a dict (possibly with ``None`` fields) when the text
+            was at least structurally recoverable; ``None`` means no dict
+            could be recovered at all.
+            """
+            try:
+                parsed = json.loads(repair_json_text(text))
+            except (json.JSONDecodeError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict):
+                salvaged, invalid = salvage_fields(parsed, _judge_expectations)
+                for field in _judge_fields:
+                    if salvaged.get(field) is None and field not in invalid:
+                        invalid.append(field)
+                return salvaged, invalid
+            # Regex fallback (kept for callers/tests depending on the keys):
+            # scrape numeric values from malformed JSON that even the
+            # syntactic repair cannot save, e.g.
+            # {"accuracy": 100, "fluency": directly as per ...: 100, ...}
             import re as _re
-            def _extract_numeric(content: str, field: str) -> int | None:
-                m = _re.search(rf'"{field}"\s*:\s*[^,}}\d]*(\d+)', content)
+            def _extract_numeric(text: str, field: str) -> int | None:
+                m = _re.search(rf'"{field}"\s*:\s*[^,}}\d]*(\d+)', text)
                 return int(m.group(1)) if m else None
-            acc = _extract_numeric(content, "accuracy")
-            flu = _extract_numeric(content, "fluency")
-            ade = _extract_numeric(content, "adequacy")
-            sco = _extract_numeric(content, "score")
-            if acc is not None and flu is not None and ade is not None and sco is not None:
+            acc = _extract_numeric(text, "accuracy")
+            flu = _extract_numeric(text, "fluency")
+            ade = _extract_numeric(text, "adequacy")
+            sco = _extract_numeric(text, "score")
+            if None not in (acc, flu, ade, sco):
                 _logger.warning(
-                    f"Judge JSON parse recovered via regex. Raw: {content[:200]}"
+                    f"Judge JSON parse recovered via regex. Raw: {text[:200]}"
                 )
                 return {
                     "accuracy": acc, "fluency": flu, "adequacy": ade, "score": sco,
-                    "reason": content[:200] if content else "regex-recovered",
+                    "reason": text[:200] if text else "regex-recovered",
                     "parse_failed": True,
                     "regex_recovered": True,
-                }
-            _logger.error(
-                f"Judge parse failed, returning score=0 (fail-closed). Raw response: {content[:300]}"
+                }, []
+            return None, []
+
+        result, invalid_fields = _parse_judge_text(content)
+        if result is not None and _judge_all_valid(result):
+            if self._cache_enabled and temperature == 0.0:
+                self._cache.put(cache_key, result)
+            return result
+
+        # Field-level failure or unparseable text → exactly ONE repair attempt.
+        if result is None:
+            parse_error: Exception = ValueError("judge response was not valid JSON")
+        else:
+            parse_error = ValueError(
+                f"judge fields invalid: {', '.join(invalid_fields)}"
             )
-            return {
-                "accuracy": 0,
-                "fluency": 0,
-                "adequacy": 0,
-                "score": 0,
-                "reason": content[:200] if content else "Parse failed",
-                "parse_failed": True,
-            }
-        for required in ("accuracy", "fluency", "adequacy", "score"):
-            if required not in result:
-                _logger.error(
-                    f"Judge response missing required field '{required}': {result}"
-                )
-                return {
-                    "accuracy": 0,
-                    "fluency": 0,
-                    "adequacy": 0,
-                    "score": 0,
-                    "reason": f"Missing field: {required}",
-                    "incomplete": True,
-                }
-        if self._cache_enabled and temperature == 0.0:
-            self._cache.put(cache_key, result)
-        return result
+
+        async def _repair_call(prompt: str) -> str:
+            _resp = await self._call_with_breaker(
+                "judging",
+                self._router.acompletion,
+                model="judging",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=2048,
+            )
+            try:
+                return _resp.choices[0].message.content or ""
+            except (AttributeError, IndexError):
+                return ""
+
+        try:
+            repaired = await repair_json_once(content, parse_error, _repair_call)
+        except Exception as repair_err:  # expected — fall through to fail-closed
+            _logger.error(
+                f"Judge JSON second-pass repair failed: "
+                f"{type(repair_err).__name__}: {repair_err}"
+            )
+            repaired = None
+
+        if isinstance(repaired, dict):
+            salvaged, invalid_fields = salvage_fields(repaired, _judge_expectations)
+            for field in _judge_fields:
+                if salvaged.get(field) is None and field not in invalid_fields:
+                    invalid_fields.append(field)
+            if _judge_all_valid(salvaged):
+                if self._cache_enabled and temperature == 0.0:
+                    self._cache.put(cache_key, salvaged)
+                return salvaged
+            result = salvaged
+
+        # Fail-CLOSED: bad values are never treated as valid scores.
+        _logger.error(
+            f"Judge parse failed, returning score=0 (fail-closed). Raw response: {content[:300]}"
+        )
+        return {
+            "accuracy": 0,
+            "fluency": 0,
+            "adequacy": 0,
+            "score": 0,
+            "reason": content[:200] if content else "Parse failed",
+            "parse_failed": True,
+            "invalid_fields": invalid_fields,
+        }
 
     async def profile(
         self, content: str, source_lang: str = "", **kwargs: Any,
@@ -1138,28 +1211,55 @@ class ModelPool:
             )
             return {"error": f"profile_response_invalid: {resp_err}", "transport_error": True}
 
-        # Issue #36: strip markdown code fences before JSON parsing.
-        # LLMs commonly wrap JSON output in ```json ... ``` fences.
-        _stripped = raw_text.strip()
-        if _stripped.startswith("```"):
-            # Remove opening fence (```json, ```, etc.) and closing fence
-            _stripped = re.sub(r"^```\w*\s*", "", _stripped)
-            _stripped = re.sub(r"\s*```$", "", _stripped)
-            _stripped = _stripped.strip()
+        # Issue #36 / #130: strip fences then apply the shared syntactic
+        # repair. Parse the LLM JSON response into a dict; on failure, make
+        # exactly one LLM-assisted repair attempt. _parse_profile_response in
+        # ol_style.doc_profiler accepts both str and dict; returning a parsed
+        # dict hits the fast path. On total failure, wrap the raw text under
+        # "raw_response" so downstream parsing still has a chance.
+        from ol_pool.json_tolerance import repair_json_once, repair_json_text
 
-        # Parse the LLM JSON response into a dict. _parse_profile_response
-        # in ol_style.doc_profiler accepts both str and dict; returning a
-        # parsed dict hits the fast path and gives callers a structured
-        # result they can inspect. On JSON failure, wrap the raw text
-        # under "raw_response" so downstream parsing still has a chance.
-        try:
-            parsed = json.loads(_stripped)
-            if isinstance(parsed, dict):
-                if self._cache_enabled:
-                    self._cache.put(cache_key, parsed)
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
+        def _parse_profile_text(text: str):
+            try:
+                parsed_obj = json.loads(repair_json_text(text))
+            except (json.JSONDecodeError, ValueError):
+                return None
+            return parsed_obj if isinstance(parsed_obj, dict) else None
+
+        parsed = _parse_profile_text(raw_text)
+        if parsed is None:
+            async def _repair_call(prompt: str) -> str:
+                _resp = await self._call_with_breaker(
+                    "profiling",
+                    self._router.acompletion,
+                    model="profiling",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=2048,
+                )
+                try:
+                    return _resp.choices[0].message.content or ""
+                except (AttributeError, IndexError):
+                    return ""
+
+            try:
+                repaired = await repair_json_once(
+                    raw_text,
+                    ValueError("profile response was not valid JSON"),
+                    _repair_call,
+                )
+                if isinstance(repaired, dict):
+                    parsed = repaired
+            except Exception as repair_err:  # expected — fall back to raw text
+                _logger.warning(
+                    f"Profile JSON second-pass repair failed: "
+                    f"{type(repair_err).__name__}: {repair_err}"
+                )
+
+        if parsed is not None:
+            if self._cache_enabled:
+                self._cache.put(cache_key, parsed)
+            return parsed
 
         _logger.warning(
             f"Profile response not valid JSON, returning raw text. Head: {raw_text[:120]!r}"
