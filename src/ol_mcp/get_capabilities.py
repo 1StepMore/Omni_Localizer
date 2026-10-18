@@ -14,8 +14,8 @@ from ol_mcp.rate_limiter import check_rate_limit, rate_limit_failure_response
 # Documented language pairs (en↔zh, en↔ja + reverse)
 _LANGUAGE_PAIRS = ["en-zh", "zh-en", "en-ja", "ja-en", "en-ko", "ko-en"]
 
-# LLM roles
-_ROLES = ["translation", "judging", "restoration"]
+# LLM roles (must match the four role buckets in config/default.yaml)
+_ROLES = ["translation", "judging", "restoration", "profiling"]
 
 
 def get_capabilities() -> str:
@@ -24,7 +24,7 @@ def get_capabilities() -> str:
     Returns a JSON string with:
         module (str): "ol"
         version (str | None): OL version (best-effort)
-        roles (list[str]): 3 LLM roles
+        roles (list[str]): 4 LLM roles
         language_pairs (list[str]): documented language pair directions
         tools (list[str]): available MCP tool names, derived from the live
             registry at call time (never a hardcoded list)

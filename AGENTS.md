@@ -29,7 +29,7 @@ ol translate-batch ./docs/ -s en -t zh -o ./translated/
 ol translate-xliff doc.xlf -s en -t zh -o ./translated/
 
 # MCP server (stdio)
-ol mcp            # or: python -m ol_mcp
+ol-mcp            # or: python -m ol_mcp
 
 # Tests (must set OMNI_TEST_FAKE_LLM=1 to avoid real LLM calls)
 make test
@@ -39,41 +39,59 @@ make test
 ## Source layout
 
 ```
-src/ol/
-├── __init__.py              # __version__
-├── cli.py                   # `ol` CLI entry (Typer)
-├── config/                  # YAML config + Pydantic schema
+src/
+├── ol_cli.py                # `ol` CLI entry (Typer) — builds the app, registers 21 sub-commands
+├── cli/                     # CLI sub-command implementations
+│   ├── _shared.py           # ExitCode, precheck_api_keys, signal handling
+│   ├── cache.py             # content-addressed cache (root ~/.omni_cache/ol)
+│   ├── translate_md.py      # `translate-md` + _load_env_for_cli
+│   ├── translate_xliff.py   # `translate-xliff`
+│   ├── batch.py             # `translate-batch` + `extract-warnings`
+│   └── …                    # one module per other sub-command
+├── ol/                      # package marker; src/ol/__init__.py holds __version__
+├── ol_config/               # YAML config + Pydantic schema
 │   ├── schema.py            # LLMPoolConfig, ProjectConfig
-│   └── loader.py            # load_config() with ${ENV_VAR} resolution
-├── pool/                    # ModelPool (litellm Router wrapper)
-│   ├── __init__.py          # exports has_source_language_residual()
-│   └── router.py            # E2E-83: pre-call check removed
-├── md/                      # MD translation channel
+│   ├── loader.py            # load_config() with ${ENV_VAR} resolution
+│   └── resolver.py          # ${VAR} resolution helpers
+├── ol_pool/                 # ModelPool (litellm Router wrapper)
+│   ├── router.py            # E2E-83: pre-call check removed
+│   ├── prompts/             # OL#112: prompt store (*.txt)
+│   ├── fake.py              # _FakeModelPool test seam
+│   └── json_tolerance.py    # LLM JSON tolerance
+├── ol_md/                   # MD translation channel
 │   ├── shield.py            # E2E-77/78: math regex + [OL:...] markers
 │   ├── repair/              # 4-layer repair (regex → span → LLM → fallback)
 │   ├── extractor.py         # Tokenize MD into translatable units
 │   ├── pipeline.py          # MDRepairPipeline
-│   └── shield/              # Lower-level shield utilities
-├── xliff/                   # XLIFF translation channel
+│   └── token_stream.py
+├── ol_xliff/                # XLIFF translation channel
 │   ├── repair/              # E2E-64: is_complete() checks actual XML
-│   ├── bus.py               # XLIFF write_target_back
-│   └── parser.py            # trans-unit iteration
-├── buses/                   # Shared translation bus (md_bus, xliff_bus)
-├── batch/                   # BatchProcessor
-├── terminology/             # RAG-based prompt injection
+│   ├── parser.py            # trans-unit iteration
+│   ├── shield.py            # inline-tag shielding
+│   ├── polish.py
+│   └── pipeline.py
+├── ol_buses/                # Shared translation bus (md_bus, xliff_bus, xliff_shield)
+├── ol_batch/                # BatchProcessor
+├── ol_terminology/          # RAG-based prompt injection
 │   ├── rag_injector.py      # build_translate_prompt with TM/glossary
 │   ├── extractor.py         # YAKE term extraction
 │   └── disambiguator.py     # LLM-based polysemy resolution
-├── lqa/                     # Linguistic Quality Assurance
+├── ol_lqa/                  # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
-│   ├── scoring.py           # LQA rules
+│   ├── qa_rules.py          # LQA rules
 │   └── quality_gates.py     # OL#56: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, terms_audit)
-├── restoration/             # Post-translate placeholder restoration
-├── concurrency/             # ConcurrencyLimiter (semaphores)
-├── retry/                   # RetryManager
-├── logging/                 # Structured JSON + console logger
-├── checkpoint/              # Translation checkpointing
-└── mcp_tools/               # MCP server (the Agent-facing surface)
+├── ol_restoration/          # Post-translate placeholder restoration
+├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
+├── ol_retry/                # RetryManager
+├── ol_logging/              # Structured JSON + console logger
+├── ol_checkpoint/           # Translation checkpointing (distinct from cli/cache.py)
+├── ol_post/                 # zh↔en punctuation normalization
+├── ol_tm/                   # TMX translation memory service
+├── ol_style/                # StyleGuide profiling + cache
+├── ol_core/                 # TranslationContext, TranslationUnit, ChannelType
+├── ol_routing/              # routing helpers
+├── ol_review_extractor.py
+└── ol_mcp/                  # MCP server (the Agent-facing surface)
 ```
 
 ## CLI reference
@@ -88,15 +106,25 @@ src/ol/
 | `ol extract-warnings <file>` | Extract placeholder restoration warnings from an output |
 | `ol init [--config -c PATH] [--non-interactive] [--force]` | Interactive wizard generating `config/local.yaml` with the unified model pool |
 | `ol doctor [--config -c PATH] [--json]` | Validate model-pool config (5 checks) and print a pass/fail checklist; the env check passes when every role has at least one usable (keyed) model |
-| `ol mcp` | Start the MCP server (stdio) |
+| `ol-mcp` | Start the MCP server (stdio) |
 
 ### Common flags
 
 - `--config <path>` — path to YAML config (default `config/default.yaml`)
+- `--json` — emit a one-line JSON status/summary (for agent parsing)
 - `--glossary <path>` — glossary JSON file (overrides config)
 - `--no-glossary` — disable glossary injection even if config has one
+- `--glossary-max-terms <N>` — top-N terms to inject per unit (default `5`)
 - `--chunk-by-paragraph` — split by blank lines, translate each separately
+- `--styleguide <path>` — inject a StyleGuide JSON (output of `profile-doc`)
+- `--polish` — post-translation cross-unit consistency pass
+- `--scorer <bleu|comet|none>` — LQA scorer backend
+- `--report-coverage` / `--coverage-threshold <pct>` — glossary coverage report + warning threshold
+- `--images-json <path>` — copy an OPP `images.json` alongside the output
 - `--concurrency <N>` — max concurrent translations
+- `--no-cache` — bypass the content-addressed cache and force a fresh translation
+- `--clear-cache` — remove all cached OL outputs and exit
+- `--fail-on-untranslated` — exit `1` if any unit came back untranslated
 - `--no-frontmatter` — skip YAML frontmatter injection
 - `--no-restoration` — skip post-translate placeholder restoration (Level 3 LLM)
 - `--log-format console|json` — log output format
@@ -272,9 +300,12 @@ Each model has:
 - `requests_per_minute` (default 500) — routing weight only, NOT hard-enforced (E5E-83 removed `enforce_model_rate_limits`)
 - `max_parallel_requests` (default unset) — enforced cap on simultaneous in-flight requests; use it when the provider 429s on concurrency (AMD `model_concurrency_rate_limit_exceeded`, Zhipu `code 1305`)
 
-**Unified pool (canonical)** — `config/default.yaml` is the source of truth;
-`ol init` writes `config/local.yaml` with the same single 2-provider pool
-shared across all roles:
+**Unified pool (canonical)** — `config/default.yaml` is the committed source of
+truth (2 tiers × 4 roles); `ol init` writes `config/local.yaml`. `local.yaml` is
+a **gitignored operator override**, not a byte-for-byte mirror: it may legitimately
+differ in tier count, rate limits, and timeouts (the operator config on this
+machine adds a third free `stealth/cat-jam:free` tier per role, keyed by
+`OL_COMMANDCODE_API_KEY`).
 
 - **DeepSeek-V4.1-Flash** → AMD Radeon (`AMD_API_KEY`, `https://developer.amd.com.cn/radeon/api/v1`) — priority-1 primary for translation/judging/restoration/profiling
 - **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-2 fallback
@@ -295,13 +326,15 @@ the next model in priority is tried.
 | `OMNI_RUN_REAL_LLM=1` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
 | `AMD_API_KEY` / `ZHIPU_API_KEY` | (none) | LLM provider API keys (DeepSeek-V4.1-Flash / glm-4.7-flash). |
+| `OL_COMMANDCODE_API_KEY` | (none) | Key for the optional third tier (`stealth/cat-jam:free`) in an operator's gitignored `config/local.yaml`. |
+| `OMNI_CACHE_DIR` | `~/.omni_cache` | Cache root; OL stores content-addressed entries under `<root>/ol/`. Read at call-time. |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
 | `OPP_LOG_LEVEL` | `INFO` | Log level. |
 | `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
 | `OL_LENGTH_RATIO_MIN` | 0.5 | Minimum acceptable translated/source length ratio (quality gates). |
 | `OL_LENGTH_RATIO_MAX` | 3.0 | Maximum acceptable translated/source length ratio (quality gates). |
 | `OL_TARGET_LOCALE` | (unset) | Target locale override for locale-specific quality gates (e.g. `en-US`, `en-GB`, `fr-FR`). Falls back to `locale.target_locale` in config. |
-| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **REQUIRED for the MCP server** (`ol mcp` / `ol-mcp`). Comma-separated allowlist of directories the MCP may read/write. **Fail-CLOSED:** if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, `get_default_validator()` raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`; a `ValueError` subclass) — the server refuses to serve (no silent `cwd` + `/tmp` default). The MCP error envelope reports `OL_MCP_NOT_CONFIGURED` with recovery strategy `configure_environment`, NOT `OL_INVALID_INPUT`/`fix_input`. `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
+| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **REQUIRED for the MCP server** (`ol-mcp`). Comma-separated allowlist of directories the MCP may read/write. **Fail-CLOSED:** if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, `get_default_validator()` raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`; a `ValueError` subclass) — the server refuses to serve (no silent `cwd` + `/tmp` default). The MCP error envelope reports `OL_MCP_NOT_CONFIGURED` with recovery strategy `configure_environment`, NOT `OL_INVALID_INPUT`/`fix_input`. `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
 | `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset; (2) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. **BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** referenced provider key is set — you do not need every provider. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys configured but none referenced by this pool". `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**. |
 
 The MCP server is configured separately in `src/ol_mcp/config.py` —

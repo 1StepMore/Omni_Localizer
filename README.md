@@ -78,7 +78,7 @@ Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 **BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** provider key referenced in the config is set — you do not need every provider, which is exactly what "providers you actually use" above means. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys are configured but none is referenced by this pool" (e.g. `OPENAI_API_KEY` exported while the pool expects `AMD_API_KEY` / `ZHIPU_API_KEY`). `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**.
 
 **Getting started:**
-1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool (mirroring `config/default.yaml`).
+1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool. `config/local.yaml` is a **gitignored operator override** of `config/default.yaml` (2 tiers × 4 roles), not a byte-for-byte mirror: it may legitimately differ in tier count, rate limits, and timeouts.
 2. Export the printed keys (AMD_API_KEY, ZHIPU_API_KEY).
 3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, every role has at least one usable (keyed) model).
 
@@ -465,7 +465,7 @@ For detailed usage, see `src/.hermes/skills/ol-localizer/SKILL.md`
 
 ### Environment Variables
 
-Configure your LLM provider API keys and quality gate overrides in your shell environment. The MCP server (`ol mcp` / `ol-mcp`) additionally **requires** `MCP_ALLOWED_DIRECTORIES` (fail-CLOSED — see the table below).
+Configure your LLM provider API keys and quality gate overrides in your shell environment. The MCP server (`ol-mcp`) additionally **requires** `MCP_ALLOWED_DIRECTORIES` (fail-CLOSED — see the table below).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -477,7 +477,7 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 | `OL_LENGTH_RATIO_MIN` | `0.5` | Minimum length ratio for Gate 3 (source/target) |
 | `OL_LENGTH_RATIO_MAX` | `3.0` | Maximum length ratio for Gate 3 (source/target) |
 | `OL_TARGET_LOCALE` | `en-US` | Expected target locale for Gate 4 locale checks |
-| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **Required for the MCP server** (`ol mcp` / `ol-mcp`). Comma-separated directory allowlist. **Fail-CLOSED**: if unset and the deprecated `OL_ALLOWED_DIRECTORIES` is also unset, the server raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`) at startup instead of silently defaulting to `cwd` + `/tmp`. MCP tool calls surface `error.code == "OL_MCP_NOT_CONFIGURED"` with recovery strategy `configure_environment` — set the allowlist env var, not your input. |
+| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **Required for the MCP server** (`ol-mcp`). Comma-separated directory allowlist. **Fail-CLOSED**: if unset and the deprecated `OL_ALLOWED_DIRECTORIES` is also unset, the server raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`) at startup instead of silently defaulting to `cwd` + `/tmp`. MCP tool calls surface `error.code == "OL_MCP_NOT_CONFIGURED"` with recovery strategy `configure_environment` — set the allowlist env var, not your input. |
 
 ### Testing the Agent Integration
 

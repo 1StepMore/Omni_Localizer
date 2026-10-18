@@ -324,13 +324,14 @@ def partition_usable_models(
 ) -> tuple[dict[str, list], list[tuple[str, LLMModelConfig, list[str]]]]:
     """Split each role's models into usable ones and skipped-but-reasoned ones.
 
-    A missing key for ONE provider must not disable the whole pool. The
-    canonical pool lists three providers per role, so a user holding only the
-    priority-2/3 keys can still serve every request; previously the missing
-    priority-1 key raised inside ``_build_model_list`` at ``__init__`` and
-    every role became unusable — a hard fail that contradicted the documented
-    two-layer env contract (``schema._check_env_vars`` WARNS at startup, and a
-    model is only unusable once actually selected).
+    A missing key for ONE provider must not disable the whole pool. The pool
+    lists multiple providers per role (the committed ``config/default.yaml``
+    uses two; the schema requires at least two per role), so a user holding
+    only the lower-priority keys can still serve every request; previously the
+    missing priority-1 key raised inside ``_build_model_list`` at ``__init__``
+    and every role became unusable — a hard fail that contradicted the
+    documented two-layer env contract (``schema._check_env_vars`` WARNS at
+    startup, and a model is only unusable once actually selected).
 
     Returns ``(usable_by_role, skipped)`` where ``skipped`` carries the role,
     the model, and its unresolved env-var names so the caller can warn once.

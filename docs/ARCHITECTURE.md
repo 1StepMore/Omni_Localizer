@@ -76,7 +76,7 @@ src/
 │   └── xliff_shield.py        # restore_tags
 ├── ol_core/                   # TranslationContext, TranslationUnit, ChannelType
 ├── ol_logging/                # python-json-logger setup
-├── ol_checkpoint/             # .omni_cache/ reader/writer
+├── ol_checkpoint/             # Translation checkpointing (NOT the CLI result cache)
 ├── ol_mcp/                    # MCP server
 │   ├── server.py              # stdio_server() entry (29 lines)
 │   ├── tools.py               # 21-tool registry (724 lines)
@@ -204,33 +204,36 @@ Shielding extracts them as opaque placeholders. The LLM only sees the surroundin
 
 ## 3. Model pool and failover
 
-`ModelPool` (`src/ol_pool/router.py:216`) is the central LLM router. It wraps a LiteLLM `Router` configured from the YAML pool, with three role groups:
+`ModelPool` (`src/ol_pool/router.py`) is the central LLM router. It wraps a LiteLLM `Router` configured from the YAML pool, with four role groups:
 
-- **translation** — primary translation model
+- **translation** — primary translation model (the designated liveness role)
 - **judging** — used by `JudgeService` for LQA
 - **restoration** — used by the A12.4 post-translate restoration step (re-asks the LLM to reinsert missing placeholders)
+- **profiling** — used by `profile_doc` (StyleGuide profiling)
 
-Each role can list multiple models, each with a `priority` (1 = highest). Failover inside a role is automatic:
+Each role can list multiple models, each with a `priority` (1 = highest). Failover inside a role is automatic; when every model in a non-translation role is exhausted, that role reroutes onto the translation role:
 
 ```
+judging / restoration / profiling
+       │
+       │  role's own models fail / 429 / 5xx
+       ▼
 translation priority=1 (DeepSeek-V4.1-Flash)
        │
        │  fail / 429 / 5xx
        ▼
 translation priority=2 (glm-4.7-flash)
        │
-       │  fail / 429 / 5xx
-       ▼
-restoration pool  (cross-role safety net, router.py:373-385)
-       │
        │  fail
        ▼
 raises the last error
 ```
 
+`translation` itself is the rescue *target* and never falls back elsewhere: silently serving a translation request from a judge-tier model is worse than a clear error. Implemented in `_build_fallbacks` (`src/ol_pool/router.py`).
+
 ### 3.1 Circuit breaker
 
-A `pybreaker.CircuitBreaker` is created per role (router.py:237-245):
+A `pybreaker.CircuitBreaker` is created per role (`src/ol_pool/router.py`):
 
 - 5 consecutive failures → open for 60 s
 - On open, `pybreaker.CircuitBreakerError` is raised immediately, skipping LiteLLM
@@ -250,7 +253,7 @@ Use rpm for rate-capped providers. Use `max_parallel_requests` only when the cap
 
 ### 3.3 Cross-role safety net
 
-If a role's own pool is exhausted (all models failing, breaker open), the router falls back to the **translation** role's models. This trades quality for liveness — the judging role using the translation model is dumber, but it returns *something*. Implemented in `router.py:373-385`.
+If a role's own pool is exhausted (all models failing, breaker open), the router falls back to the **translation** role's models. This trades quality for liveness — the judging role using the translation model is dumber, but it returns *something*. Implemented in `_build_fallbacks` (`src/ol_pool/router.py`).
 
 ### 3.4 Singleton lifecycle
 
@@ -289,7 +292,7 @@ TM = translation memory. TB = terminology base (glossary). SG = (in the agent pa
                 ModelPool.translate
 ```
 
-TM matches are found by `TMService.search` (sentence-transformer embeddings, default threshold 0.85). Glossary matches are substring + confidence weighted (see `glossary.py:115-161`). Both are top-k, not exhaustive — the LLM is biased, not constrained.
+TM matches are found by `TMService.search` (sentence-transformer embeddings, default threshold 0.85). Glossary matches are substring + confidence weighted (see `src/ol_terminology/glossary.py`). Both are top-k, not exhaustive — the LLM is biased, not constrained.
 
 If either is unavailable, OL degrades gracefully: translation proceeds without that pre-injection. No blocking errors, no LLM-call failures from a missing TM file.
 
@@ -299,7 +302,7 @@ If either is unavailable, OL degrades gracefully: translation proceeds without t
 
 `src/ol_mcp/server.py` is 29 lines on purpose: it does nothing except wire the stdio transport to the `Server` instance defined in `tools.py`. The earlier `mcp.server.fastmcp.FastMCP` was abandoned in Phase 1.4 because it swallowed the first JSON-RPC handshake on stdio; the raw `mcp.server.Server` + `stdio_server()` pattern works reliably when the subprocess is unbuffered (`python -u -m ol_mcp`, `bufsize=0`).
 
-21 tools, all in `TOOL_REGISTRY` (`tools.py:88`):
+21 tools, all in `TOOL_REGISTRY` (`src/ol_mcp/tools.py`):
 (The table below lists the pipeline-critical subset; the full set is in `AGENTS.md` / `get_capabilities`.)
 
 | Tool | Input model | Returns |
@@ -317,7 +320,7 @@ The dispatcher (`tools.py:_invoke_tool`) validates the arguments against the too
 
 ### 5.1 Path validation and rate limiting
 
-- `PathValidator` (`src/ol_mcp/security.py`) restricts file-path inputs (`glossary_path`, `tmx_path`, `load_glossary.path`) to the server's CWD by default. The CLI does not enforce this — ad-hoc file paths work there.
+- `PathValidator` (`src/ol_mcp/security.py`) restricts file-path inputs (`glossary_path`, `tmx_path`, `load_glossary.path`) to the directories named by `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS` / the deprecated `OL_ALLOWED_DIRECTORIES`). It is **fail-CLOSED**: when none of those env vars is set, `get_default_validator()` raises `MCPNotConfiguredError` (`OL_MCP_NOT_CONFIGURED`) rather than defaulting to the server's CWD. The CLI does not enforce this — ad-hoc file paths work there.
 - `check_rate_limit` (`src/ol_mcp/rate_limiter.py`) is a token-bucket DoS guard on every tool call. A misbehaving client gets `OL_RATE_LIMITED` instead of GPU time.
 - `check_auth` (`src/ol_mcp/auth.py`) optionally enforces a `MCP_SHARED_SECRET` — enabled only when the env var is set, so dev clients don't need it.
 
@@ -325,11 +328,13 @@ The dispatcher (`tools.py:_invoke_tool`) validates the arguments against the too
 
 ## 6. Cache and idempotency
 
-`ol_checkpoint` (the `.omni_cache/` reader/writer) makes `translate-md` / `translate-xliff` idempotent for unchanged inputs:
+The CLI result cache lives in `src/cli/cache.py` (root `~/.omni_cache/ol`, overridable with `OMNI_CACHE_DIR`). It makes `translate-md` / `translate-xliff` idempotent for unchanged inputs. `ol_checkpoint` is a separate feature (translation checkpointing) and does **not** back this cache.
 
-- Cache key = `sha256(input_bytes + config_path + flags)` plus the output path.
+- Cache key = `sha256(input_bytes + config_bytes + behavioral_flags + LLM_mode)` — deliberately **not** including the output path.
 - `--no-cache` skips the check and forces a fresh translation.
 - `--clear-cache` removes all cached outputs and exits.
+
+Two safety rules were added after live incidents: an untranslated run never writes to the cache, and a cache hit whose frontmatter records `untranslated_units > 0` is treated as a miss (#132); and the LLM mode (`fake` vs `real`) is mixed into the key, so a real run can never serve a fake-mode artifact and vice versa (#135).
 
 This is critical for batch re-runs (e.g. a CI job that re-translates on each PR): only the changed files pay the LLM cost.
 
@@ -351,7 +356,7 @@ This is critical for batch re-runs (e.g. a CI job that re-translates on each PR)
 | **MCP tool contract: `str` out, always** | Agents parse `r.content[0].text` as JSON. Tools that return `dict` would require the agent to know which tools are which. |
 | **Two glossary shapes (v1 CLI + legacy dict)** | The legacy dict is what `BatchProcessor` and the original RAG path use. The v1 shape is a stricter, schema-validated form for the CLI. Both are load-equivalent for the simple cases. |
 | **Cyrillic-safe frontmatter date** | Use `datetime.now(timezone.utc).isoformat()` — never `str(datetime.now())` — so the YAML frontmatter is locale-independent. |
-| **Cross-role fallback (judging → translation)** | If all judging models are down, the worst case is a noisier judge score, not a crashed CLI. The cross-role fallback is the last safety net. |
+| **Cross-role fallback (judging/restoration/profiling → translation)** | If all models of a non-translation role are down, the worst case is a noisier judge score or a degraded restoration, not a crashed CLI. The cross-role fallback is the last safety net. |
 | **Pure-python TMX stub (`_py_tmx.py`)** | Some test envs don't have `hypomnema`. The stub installs onto the `hypomnema` module at import time so the rest of the code doesn't know. |
 
 ---
