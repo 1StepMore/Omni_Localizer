@@ -82,6 +82,40 @@ async def test_source_copy_retry_exhausted_marks_untranslated():
     assert "SOURCE_COPY after 3 attempt(s)" in result.warning
 
 
+@pytest.mark.asyncio
+async def test_zh_unit_without_source_script_is_not_source_copy():
+    """OL#142: a zh→en unit whose source is an OPP English heading is done."""
+    from cli.translate_md import _translate_one_unit
+
+    pool = _SequencePool(["Images"])
+    result = await _translate_one_unit(
+        _unit("u0", "Images"), pool, None, None, "zh", "en",
+        sem=asyncio.Semaphore(1), repair_pipeline=MagicMock(),
+    )
+
+    assert result.untranslated is False
+    assert result.translated == "Images"
+    assert result.attempts == 1
+    assert result.warning is None
+    assert len(pool.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_zh_unit_with_source_script_still_retries():
+    """OL#142: real Chinese source text keeps the #189 retry behaviour."""
+    from cli.translate_md import _translate_one_unit
+
+    pool = _SequencePool(["图像", "Images"])
+    result = await _translate_one_unit(
+        _unit("u0", "图像"), pool, None, None, "zh", "en",
+        sem=asyncio.Semaphore(1), repair_pipeline=MagicMock(),
+    )
+
+    assert result.untranslated is False
+    assert result.translated == "Images"
+    assert result.attempts == 2
+
+
 def _fake_async(untranslated_units: int, total_units: int, unit_ids: list[str]):
     from cli.translate_md import _MdText
 

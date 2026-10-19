@@ -337,6 +337,7 @@ class BatchProcessor:
                 length_ratio_max=qg.length_ratio.max,
                 locale_enabled=qg.locale.enabled,
                 target_locale=qg.locale.target_locale,
+                src_lang=self.src_lang,
             )
         except Exception as exc:
             self._logger.warning(
