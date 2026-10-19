@@ -174,6 +174,9 @@ else:
     Timeout = _StubTimeout
     RouterRateLimitError = _StubRouterRateLimitError
     Router = None  # type: ignore[assignment,misc]
+    # Direct-call seam for intra-role 429 failover (_direct_acompletion).
+    # Tests replace this module attribute with a fake exposing acompletion().
+    litellm = None  # type: ignore[assignment]
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMModelConfig, LLMPoolConfig
@@ -348,6 +351,20 @@ def partition_usable_models(
                 kept.append(model)
         usable[role] = kept
     return usable, skipped
+
+
+def _rate_limited_model_label(exc: BaseException, role: str) -> str:
+    """Best-effort model identifier carried by a rate-limit error.
+
+    litellm exceptions usually expose ``model`` and/or ``llm_provider``. When
+    neither is present (e.g. a router-level error) the role name is the only
+    honest label available.
+    """
+    for attr in ("model", "llm_provider"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, str) and value and value != "test":
+            return value
+    return role
 
 
 # 2026-06-18 round 16 Phase B1: circuit breaker for LLM calls.
@@ -649,6 +666,195 @@ class ModelPool:
                 fallbacks.append({role: candidates})
         return fallbacks
 
+    async def _direct_acompletion(
+        self,
+        model: LLMModelConfig,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Call one specific model directly, bypassing the Router.
+
+        The Router registers every model of a role under a single group name,
+        so litellm cannot address one member of that group. A direct completion
+        is therefore the only way to step to the next priority within a role
+        after a 429 (see ``_intra_role_failover``).
+        """
+        if litellm is None:  # pragma: no cover - only reachable in FAKE_LLM mode
+            raise RuntimeError(
+                "litellm is unavailable; cannot perform intra-role failover"
+            )
+        params: dict[str, Any] = {
+            "model": f"{model.provider}/{model.model}",
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if model.api_key:
+            params["api_key"] = _resolve_env_vars(model.api_key)
+        if model.base_url:
+            params["api_base"] = _resolve_env_vars(model.base_url)
+        if model.timeout is not None:
+            params["timeout"] = model.timeout
+        return await litellm.acompletion(**params)
+
+    def _process_translation_response(
+        self,
+        response: Any,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+    ) -> str:
+        """Validate, clean and return a successful translation response.
+
+        Shared by the Router path and the intra-role failover path so they
+        cannot drift on truncation / chain-of-thought / residual checks.
+        """
+        if response.choices[0].finish_reason == "length":
+            raise ModelPoolTruncationError(
+                f"Translation response truncated at {4096} tokens "
+                f"(finish_reason=length) for ~{len(text)} chars input"
+            )
+
+        # OL#47 secondary heuristic: detect truncated output even
+        # when the API reports finish_reason="stop".  Three signals:
+        #   a. Output ends with "..." or ".." (abrupt termination)
+        #   b. Output ends with non-sentence-terminal punctuation
+        #      (, ; : — –) for inputs longer than 500 chars
+        #   c. usage.completion_tokens >= 90 % of max_tokens (4096)
+        if response.choices[0].finish_reason == "stop":
+            _content = response.choices[0].message.content or ""
+            _truncated = False
+            _trunc_reasons: list[str] = []
+
+            # (a) trailing ellipsis / double-dot
+            if _content.endswith("...") or _content.endswith(".."):
+                _truncated = True
+                _trunc_reasons.append("output ends with '...' or '..'")
+
+            # (b) non-sentence-terminal punctuation on long inputs
+            if not _truncated and len(text) > 500:
+                _non_terminal = (",", ";", ":", "—", "–")
+                if any(_content.rstrip().endswith(p) for p in _non_terminal):
+                    _truncated = True
+                    _trunc_reasons.append(
+                        "output ends with non-sentence-terminal punctuation"
+                    )
+
+            # (c) completion_tokens near the max_tokens limit
+            if not _truncated:
+                _usage = getattr(response, "usage", None)
+                if _usage is not None:
+                    _ct = getattr(_usage, "completion_tokens", None)
+                    # isinstance(_ct, int) guards against MagicMock
+                    # objects (the existing happy-path test doesn't
+                    # set usage, so getattr would return a MagicMock
+                    # instance that is truthy but not an int).
+                    if isinstance(_ct, int) and _ct >= int(0.9 * 4096):
+                        _truncated = True
+                        _trunc_reasons.append(
+                            f"completion_tokens ({_ct}) >= 90% of max_tokens (4096)"
+                        )
+
+            if _truncated:
+                raise ModelPoolTruncationError(
+                    f"Translation response appears truncated (finish_reason=stop, "
+                    f"heuristics: {'; '.join(_trunc_reasons)}) "
+                    f"for ~{len(text)} chars input"
+                )
+
+        raw = response.choices[0].message.content
+        translated = _strip_thinking_blocks(raw)
+        if translated != raw:
+            _logger.debug(
+                f"Stripped {len(raw) - len(translated)} chars of "
+                f"chain-of-thought from LLM output"
+            )
+        no_markdown = _strip_markdown_emphasis(translated)
+        if no_markdown != translated:
+            _logger.debug(
+                f"Stripped {len(translated) - len(no_markdown)} chars of "
+                f"markdown emphasis from LLM output"
+            )
+        localized = _localize_chinese_punctuation(no_markdown)
+        if localized != no_markdown:
+            _logger.debug(
+                f"Localized {len(no_markdown) - len(localized)} chars of "
+                f"Chinese typographic conventions to English"
+            )
+        translated = localized
+        if has_source_language_residual(translated, source_lang, target_lang):
+            raise ModelPoolSourceLanguageResidualError(
+                f"Translation output contains {source_lang}-language residual "
+                f"for {target_lang} target (CJK ratio > 15%)"
+            )
+        _logger.debug(f"Translation response: {len(translated)} chars")
+        return translated
+
+    async def _intra_role_failover(
+        self,
+        role: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        cache_key: tuple,
+        original_exc: BaseException,
+    ) -> str:
+        """Step through a role's remaining models after a 429.
+
+        Models are ordered by ``priority`` and drawn ONLY from
+        ``self._usable_by_role[role]``. Cross-role downgrade is deliberately
+        not attempted: a judging/restoration/profiling model must never answer
+        a translation request. If every same-role model is rate limited, the
+        original exception is re-raised (fail-closed).
+        """
+        models = sorted(
+            self._usable_by_role.get(role) or [],
+            key=lambda m: (m.priority, m.provider, m.model),
+        )
+        hit_label = _rate_limited_model_label(original_exc, role)
+        attempted: set[str] = set()
+        for model in models:
+            model_id = f"{model.provider}/{model.model}"
+            if hit_label in (model_id, model.model):
+                attempted.add(model_id)
+
+        switches = 0
+        for tier, model in enumerate(models, start=1):
+            model_id = f"{model.provider}/{model.model}"
+            if model_id in attempted:
+                continue
+            attempted.add(model_id)
+            switches += 1
+            # Same backoff magnitude as the first-tier retry loop (10, 20, ...).
+            wait = 2 ** (switches - 1) * 10
+            await asyncio.sleep(wait)
+            _logger.warning(
+                "rate-limited on %s; switching to %s (tier %d/%d)",
+                hit_label, model_id, tier, len(models),
+            )
+            try:
+                response = await self._direct_acompletion(
+                    model, messages, temperature, max_tokens,
+                )
+            except (RateLimitError, RouterRateLimitError) as exc:
+                hit_label = _rate_limited_model_label(exc, role)
+                continue
+            translated = self._process_translation_response(
+                response, text, source_lang, target_lang,
+            )
+            if self._cache_enabled and temperature == 0.0:
+                self._cache.put(cache_key, translated)
+            return translated
+
+        _logger.error(
+            "Translation failed: every %s-tier model was rate limited", role,
+        )
+        raise original_exc
+
     async def translate(
         self, text: str, source_lang: str, target_lang: str,
         context: dict | str | None = None,
@@ -775,85 +981,9 @@ class ModelPool:
                     temperature=temperature,
                     max_tokens=4096,
                 )
-                if response.choices[0].finish_reason == "length":
-                    raise ModelPoolTruncationError(
-                        f"Translation response truncated at {4096} tokens "
-                        f"(finish_reason=length) for ~{len(text)} chars input"
-                    )
-
-                # OL#47 secondary heuristic: detect truncated output even
-                # when the API reports finish_reason="stop".  Three signals:
-                #   a. Output ends with "..." or ".." (abrupt termination)
-                #   b. Output ends with non-sentence-terminal punctuation
-                #      (, ; : — –) for inputs longer than 500 chars
-                #   c. usage.completion_tokens >= 90 % of max_tokens (4096)
-                if response.choices[0].finish_reason == "stop":
-                    _content = response.choices[0].message.content or ""
-                    _truncated = False
-                    _trunc_reasons: list[str] = []
-
-                    # (a) trailing ellipsis / double-dot
-                    if _content.endswith("...") or _content.endswith(".."):
-                        _truncated = True
-                        _trunc_reasons.append("output ends with '...' or '..'")
-
-                    # (b) non-sentence-terminal punctuation on long inputs
-                    if not _truncated and len(text) > 500:
-                        _non_terminal = (",", ";", ":", "—", "–")
-                        if any(_content.rstrip().endswith(p) for p in _non_terminal):
-                            _truncated = True
-                            _trunc_reasons.append(
-                                "output ends with non-sentence-terminal punctuation"
-                            )
-
-                    # (c) completion_tokens near the max_tokens limit
-                    if not _truncated:
-                        _usage = getattr(response, "usage", None)
-                        if _usage is not None:
-                            _ct = getattr(_usage, "completion_tokens", None)
-                            # isinstance(_ct, int) guards against MagicMock
-                            # objects (the existing happy-path test doesn't
-                            # set usage, so getattr would return a MagicMock
-                            # instance that is truthy but not an int).
-                            if isinstance(_ct, int) and _ct >= int(0.9 * 4096):
-                                _truncated = True
-                                _trunc_reasons.append(
-                                    f"completion_tokens ({_ct}) >= 90% of max_tokens (4096)"
-                                )
-
-                    if _truncated:
-                        raise ModelPoolTruncationError(
-                            f"Translation response appears truncated (finish_reason=stop, "
-                            f"heuristics: {'; '.join(_trunc_reasons)}) "
-                            f"for ~{len(text)} chars input"
-                        )
-
-                raw = response.choices[0].message.content
-                translated = _strip_thinking_blocks(raw)
-                if translated != raw:
-                    _logger.debug(
-                        f"Stripped {len(raw) - len(translated)} chars of "
-                        f"chain-of-thought from LLM output"
-                    )
-                no_markdown = _strip_markdown_emphasis(translated)
-                if no_markdown != translated:
-                    _logger.debug(
-                        f"Stripped {len(translated) - len(no_markdown)} chars of "
-                        f"markdown emphasis from LLM output"
-                    )
-                localized = _localize_chinese_punctuation(no_markdown)
-                if localized != no_markdown:
-                    _logger.debug(
-                        f"Localized {len(no_markdown) - len(localized)} chars of "
-                        f"Chinese typographic conventions to English"
-                    )
-                translated = localized
-                if has_source_language_residual(translated, source_lang, target_lang):
-                    raise ModelPoolSourceLanguageResidualError(
-                        f"Translation output contains {source_lang}-language residual "
-                        f"for {target_lang} target (CJK ratio > 15%)"
-                    )
-                _logger.debug(f"Translation response: {len(translated)} chars")
+                translated = self._process_translation_response(
+                    response, text, source_lang, target_lang,
+                )
                 if self._cache_enabled and temperature == 0.0:
                     self._cache.put(cache_key, translated)
                 return translated
@@ -874,7 +1004,19 @@ class ModelPool:
                     await asyncio.sleep(wait)
                 else:
                     _logger.error(f"Translation failed after 4 attempts: {e}")
-                    raise
+                    # Intra-role only: step to the next priority model within
+                    # the SAME role. Never a cross-role downgrade.
+                    return await self._intra_role_failover(
+                        role=model_str,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=4096,
+                        text=text,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
+                        cache_key=cache_key,
+                        original_exc=e,
+                    )
             except AuthenticationError:
                 _logger.error("Translation failed: AuthenticationError (no retry)")
                 raise

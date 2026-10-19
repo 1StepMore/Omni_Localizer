@@ -231,6 +231,8 @@ raises the last error
 
 `translation` itself is the rescue *target* and never falls back elsewhere: silently serving a translation request from a judge-tier model is worse than a clear error. Implemented in `_build_fallbacks` (`src/ol_pool/router.py`).
 
+These are two different directions, and only one is forbidden. **Intra-role 429 failover** — stepping from a rate-limited translation model to the next translation model by `priority` — is allowed: when the Router exhausts its retries, `translate()` calls the next same-role model directly. **Cross-role downgrade** — a judging, restoration, or profiling model answering a translation request — remains forbidden; if no same-role model is left, the original error is raised.
+
 ### 3.1 Circuit breaker
 
 A `pybreaker.CircuitBreaker` is created per role (`src/ol_pool/router.py`):
