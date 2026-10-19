@@ -132,9 +132,9 @@ def _runner_and_fake(untranslated_units: int):
         result = _MdText(str(output_file))
         result.untranslated_units = untranslated_units
         # One more unit than untranslated keeps these cases *partial*
-        # (0 < untranslated < total) so the default exit stays 0; the
-        # all-untranslated → non-zero rule is covered by
-        # tests/test_e2e_133_untranslated_visible.py.
+        # (0 < untranslated < total) so ``--allow-untranslated`` keeps exit 0;
+        # the fail-closed default and the all-untranslated → non-zero rule are
+        # covered by tests/test_e2e_133_untranslated_visible.py.
         result.total_units = untranslated_units + 1
         return result
 
@@ -150,7 +150,8 @@ def test_json_payload_reports_untranslated_units(tmp_path):
         rc = runner.invoke(
             app,
             ["translate-md", str(src), "-s", "en", "-t", "zh",
-             "-o", str(tmp_path / "out"), "--json", "--no-cache"],
+             "-o", str(tmp_path / "out"), "--json", "--no-cache",
+             "--allow-untranslated"],
         )
 
     assert rc.exit_code == 0, f"rc={rc.exit_code} output={rc.output!r}"
@@ -178,7 +179,23 @@ def test_fail_on_untranslated_flag_exits_pipeline_error(tmp_path):
     assert rc.exit_code == 1, f"rc={rc.exit_code} output={rc.output!r}"
 
 
-def test_fail_on_untranslated_default_off_stays_success(tmp_path):
+def test_allow_untranslated_flag_stays_success(tmp_path):
+    runner, app, fake = _runner_and_fake(1)
+    src = tmp_path / "in.md"
+    src.write_text("# Title\n\nBody text.\n", encoding="utf-8")
+
+    with patch("cli.translate_md._translate_md_async", side_effect=fake):
+        rc = runner.invoke(
+            app,
+            ["translate-md", str(src), "-s", "en", "-t", "zh",
+             "-o", str(tmp_path / "out"), "--no-cache",
+             "--allow-untranslated"],
+        )
+
+    assert rc.exit_code == 0, f"rc={rc.exit_code} output={rc.output!r}"
+
+
+def test_default_fails_closed_and_removes_output(tmp_path):
     runner, app, fake = _runner_and_fake(1)
     src = tmp_path / "in.md"
     src.write_text("# Title\n\nBody text.\n", encoding="utf-8")
@@ -190,7 +207,10 @@ def test_fail_on_untranslated_default_off_stays_success(tmp_path):
              "-o", str(tmp_path / "out"), "--no-cache"],
         )
 
-    assert rc.exit_code == 0, f"rc={rc.exit_code} output={rc.output!r}"
+    assert rc.exit_code != 0, f"rc={rc.exit_code} output={rc.output!r}"
+    assert not (tmp_path / "out" / "in.md").exists(), (
+        "fail-closed must remove the partial output"
+    )
 
 
 @pytest.mark.asyncio

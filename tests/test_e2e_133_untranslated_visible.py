@@ -3,12 +3,14 @@
 ``ol translate-md`` used to report untranslated (source-fallback) units only on
 stderr, while stdout printed the same ``Translated: ...`` success line and the
 process exited ``0``. A caller that reads only stdout or only the exit code
-treated a fully failed translation as success. These tests pin the new
-contract:
+treated a fully failed translation as success. These tests pin the contract:
 
-* stdout always carries ``[untranslated: a/b]``;
-* ``untranslated == total > 0`` exits non-zero;
-* partial untranslated still exits ``0``;
+* ``--allow-untranslated`` keeps the legacy behavior: stdout carries
+  ``[untranslated: a/b]`` and partial untranslated exits ``0``;
+* fail-closed is the default (Issue #189): any untranslated unit exits
+  non-zero and the partial output file is removed;
+* ``untranslated == total > 0`` still exits non-zero even with
+  ``--allow-untranslated``;
 * ``--fail-on-untranslated`` keeps its "any untranslated is fatal" semantics.
 """
 from __future__ import annotations
@@ -68,14 +70,29 @@ def test_all_untranslated_exits_nonzero(tmp_path):
     rc = _invoke(tmp_path, untranslated_units=3, total_units=3)
 
     assert rc.exit_code != 0, f"rc={rc.exit_code} output={rc.output!r}"
-    assert "[untranslated: 3/3]" in rc.output, rc.output
+    assert not (tmp_path / "out" / "in.md").exists(), (
+        "fail-closed must remove the half-translated output"
+    )
 
 
-def test_partial_untranslated_exits_zero_and_reports_count(tmp_path):
+def test_partial_untranslated_fails_closed_by_default(tmp_path):
     rc = _invoke(tmp_path, untranslated_units=2, total_units=6)
+
+    assert rc.exit_code != 0, f"rc={rc.exit_code} output={rc.output!r}"
+    assert not (tmp_path / "out" / "in.md").exists(), (
+        "fail-closed must remove the half-translated output"
+    )
+
+
+def test_partial_untranslated_allow_flag_exits_zero_and_reports_count(tmp_path):
+    rc = _invoke(
+        tmp_path, untranslated_units=2, total_units=6,
+        extra_args=("--allow-untranslated",),
+    )
 
     assert rc.exit_code == 0, f"rc={rc.exit_code} output={rc.output!r}"
     assert "[untranslated: 2/6]" in rc.output, rc.output
+    assert (tmp_path / "out" / "in.md").exists()
 
 
 def test_fully_translated_exits_zero_and_reports_zero(tmp_path):
@@ -95,7 +112,10 @@ def test_fail_on_untranslated_partial_exits_nonzero(tmp_path):
 
 
 def test_stdout_keeps_original_summary_prefix(tmp_path):
-    rc = _invoke(tmp_path, untranslated_units=2, total_units=6)
+    rc = _invoke(
+        tmp_path, untranslated_units=2, total_units=6,
+        extra_args=("--allow-untranslated",),
+    )
 
     assert "Translated: in.md ->" in rc.output, rc.output
     assert "(en -> zh) [untranslated: 2/6]" in rc.output, rc.output
