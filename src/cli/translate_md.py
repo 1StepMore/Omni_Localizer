@@ -445,7 +445,7 @@ async def _translate_one_unit(
     # Timeout/RateLimit/SourceLanguageResidual, so a 200 response carrying
     # the source text used to be accepted with no retry. Re-ask with a
     # non-zero temperature (cache-bypassing) and a harder instruction.
-    copy_warnings = check_source_copy(unit.source_text, repaired)
+    copy_warnings = check_source_copy(unit.source_text, repaired, src_lang)
     copy_attempts = 1
     while copy_warnings and copy_attempts < _SOURCE_COPY_MAX_ATTEMPTS:
         logger.warning(
@@ -475,7 +475,7 @@ async def _translate_one_unit(
         if isinstance(retried, str) and retried.strip():
             translated = retried
             repaired, repair_warnings = _restore_and_repair(retried)
-            copy_warnings = check_source_copy(unit.source_text, repaired)
+            copy_warnings = check_source_copy(unit.source_text, repaired, src_lang)
         else:
             logger.warning(
                 f"Unit {unit.unit_id} source-copy retry returned empty output; "
@@ -749,7 +749,10 @@ async def _translate_md_async(
     if max_concurrent <= 1:
         total_units = 1
         untranslated_count = (
-            1 if (sequential_fallback or check_source_copy(original_text, repaired))
+            1 if (
+                sequential_fallback
+                or check_source_copy(original_text, repaired, src_lang)
+            )
             else 0
         )
 
@@ -849,6 +852,7 @@ async def _translate_md_async(
             length_ratio_max=cfg.quality_gates.length_ratio.max,
             locale_enabled=cfg.quality_gates.locale.enabled,
             target_locale=cfg.quality_gates.locale.target_locale,
+            src_lang=src_lang,
         )
         if _qg_warnings:
             _warn_block = "\n\n<!-- Quality gate warnings -->\n"
@@ -1075,6 +1079,7 @@ async def _translate_md_by_paragraph(
             length_ratio_max=_cfg_by_para.quality_gates.length_ratio.max,
             locale_enabled=_cfg_by_para.quality_gates.locale.enabled,
             target_locale=_cfg_by_para.quality_gates.locale.target_locale,
+            src_lang=src,
         )
         if _qg_warnings_p:
             _warn_block_p = "\n\n<!-- Quality gate warnings -->\n"

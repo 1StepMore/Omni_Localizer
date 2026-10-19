@@ -691,6 +691,100 @@ class TestCheckSourceCopy:
         warnings = check_source_copy("Hello, world.", "你好，世界。")
         assert len(warnings) == 0
 
+    # ── OL#142: language-aware source-copy guard ────────────────────────────
+    # OPP emits English structural headings inside Chinese documents. For a
+    # zh→en run the correct "translation" of ``Images`` is ``Images``, so the
+    # echo is not an untranslated unit and the #140 retries can never clear
+    # it. When the declared source language is known and the source contains
+    # none of that script, Gate 5 must stand down.
+
+    @pytest.mark.parametrize("src_lang", ["zh", "zh-CN", "ZH-hans"])
+    def test_source_without_source_script_not_flagged(self, src_lang: str) -> None:
+        """zh source language + Latin-only source text must not warn."""
+        assert check_source_copy("Images", "Images", src_lang) == []
+
+    def test_source_with_source_script_still_flagged(self) -> None:
+        """zh source language + real Chinese echo is still a source copy."""
+        warnings = check_source_copy("图像", "图像", "zh")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_mixed_source_with_source_script_still_flagged(self) -> None:
+        """One Chinese character arms the guard even beside Latin text."""
+        warnings = check_source_copy("图像 Images", "图像 Images", "zh")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_en_source_latin_echo_still_flagged(self) -> None:
+        """en→zh: echoing "Images" is meaningful and stays a source copy."""
+        warnings = check_source_copy("Images", "Images", "en")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_en_source_cjk_echo_not_flagged(self) -> None:
+        """en source language + CJK-only source text is not an English echo."""
+        assert check_source_copy("图像", "图像", "en") == []
+
+    @pytest.mark.parametrize("src_lang", [None, "auto", "", "unknown"])
+    def test_unknown_source_lang_keeps_legacy_behaviour(
+        self, src_lang: str | None,
+    ) -> None:
+        """No/unknown source language must not change Gate 5 (back-compat)."""
+        assert len(check_source_copy("Images", "Images")) == 1
+        warnings = check_source_copy("Images", "Images", src_lang)
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_no_alphabetic_skip_precedes_language_guard(self) -> None:
+        """The existing numeric/symbol skip still returns [] first."""
+        assert check_source_copy("1,234.56", "1,234.56", "zh") == []
+        assert check_source_copy("123", "123", "en") == []
+
+    def test_ko_source_latin_heading_not_flagged(self) -> None:
+        """The guard is script-family driven, not zh-only."""
+        assert check_source_copy("Images", "Images", "ko") == []
+        # Pure-Hangul text is already suppressed by the pre-existing
+        # "no alphabetic characters" skip, so mix in Latin to reach the guard.
+        assert len(check_source_copy("이미지 Images", "이미지 Images", "ko")) == 1
+
+    def test_ru_source_latin_heading_not_flagged(self) -> None:
+        """Cyrillic family behaves the same way."""
+        assert check_source_copy("Images", "Images", "ru") == []
+        assert len(
+            check_source_copy("Изображения Images", "Изображения Images", "ru")
+        ) == 1
+
+    def test_ar_source_latin_heading_not_flagged(self) -> None:
+        """Arabic family behaves the same way."""
+        assert check_source_copy("Images", "Images", "ar") == []
+        assert len(check_source_copy("صور Images", "صور Images", "ar")) == 1
+
+    def test_de_source_latin_accents_still_flagged(self) -> None:
+        """Latin-script sources keep the guard armed for accented text."""
+        warnings = check_source_copy("Größe", "Größe", "de")
+        assert len(warnings) == 1
+        assert "SOURCE_COPY" in warnings[0]
+
+    def test_run_quality_gates_forwards_src_lang(self) -> None:
+        """The orchestrator must thread src_lang into Gate 5 (OL#142)."""
+        kwargs: dict[str, Any] = {
+            "source": "Images",
+            "target": "Images",
+            "inline_tags_enabled": False,
+            "terminology_enabled": False,
+            "length_ratio_enabled": False,
+            "locale_enabled": False,
+            "source_script_check_enabled": False,
+            "protocol_artifact_check_enabled": False,
+        }
+        assert any(
+            "SOURCE_COPY" in w for w in run_quality_gates(**kwargs)
+        ), "baseline: no src_lang must still flag the echo"
+        assert run_quality_gates(src_lang="zh", **kwargs) == []
+        assert any(
+            "SOURCE_COPY" in w for w in run_quality_gates(src_lang="en", **kwargs)
+        )
+
 
 # =========================================================================
 # Gate 6: check_source_script_fragments

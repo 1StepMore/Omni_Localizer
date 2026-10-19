@@ -45,6 +45,85 @@ _NON_CJK_LOCALES = {"en", "fr", "de", "es", "pt", "it"}
 # CJK character range (used by Gate 6 script-consistency check)
 _RE_CJK = re.compile(r"[\u4e00-\u9fff]")
 
+# OL#142: script ranges per source-language family, used by Gate 5 to decide
+# whether the *source* text can plausibly be in the declared source language.
+# OPP synthesises English structural headings (e.g. ``Images``) inside
+# otherwise-Chinese documents, so a zh→en unit whose source is ``Images``
+# can never be "translated" — the echo is correct output, not a skipped
+# translation. One character of the declared script is enough to keep the
+# check armed; zero characters means the guard must stand down.
+_SCRIPT_RANGES: dict[str, str] = {
+    # Chinese: CJK Unified Ideographs (+ Ext A, compatibility ideographs)
+    "zh": r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff",
+    # Japanese: kana (+ half-width katakana) and kanji
+    "ja": r"\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff",
+    # Korean: Hangul syllables, Jamo, compatibility Jamo
+    "ko": r"\u1100-\u11ff\u3130-\u318f\uac00-\ud7af",
+    # Cyrillic: Russian, Ukrainian, Bulgarian (and siblings)
+    "ru": r"\u0400-\u04ff",
+    "uk": r"\u0400-\u04ff",
+    "bg": r"\u0400-\u04ff",
+    # Arabic script: Arabic, Persian, Urdu (+ presentation forms)
+    "ar": r"\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff",
+    "fa": r"\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff",
+    "ur": r"\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff",
+    # Devanagari: Hindi, Marathi, Nepali
+    "hi": r"\u0900-\u097f",
+    "mr": r"\u0900-\u097f",
+    "ne": r"\u0900-\u097f",
+    "th": r"\u0e00-\u0e7f",
+    "he": r"\u0590-\u05ff",
+    "el": r"\u0370-\u03ff\u1f00-\u1fff",
+}
+
+# Latin-script languages: basic ASCII letters plus Latin-1 Supplement,
+# Latin Extended-A/B (U+00C0–U+024F) and Latin Extended Additional
+# (U+1E00–U+1EFF, which carries Vietnamese tone marks).
+_LATIN_SCRIPT_LANGS = frozenset({
+    "en", "fr", "de", "es", "pt", "it", "nl", "pl", "cs", "sv", "da", "no",
+    "fi", "tr", "vi", "id", "ms", "ro", "hu", "sk", "sl", "hr", "ca", "gl",
+    "et", "lt", "lv", "is", "sq", "af", "sw", "tl", "fil", "cy", "ga",
+})
+_LATIN_SCRIPT_RANGES = r"A-Za-z\u00c0-\u024f\u1e00-\u1eff"
+
+# Languages that mean "unknown" to the guard: no script can be assumed.
+_UNKNOWN_SRC_LANGS = frozenset({"", "auto", "unknown", "und", "none"})
+
+
+def _source_script_pattern(src_lang: str | None) -> re.Pattern[str] | None:
+    """Return the script pattern for *src_lang*, or ``None`` when unknown.
+
+    ``src_lang`` is the CLI ``--source-lang`` value and may be a locale
+    (``zh-CN``, ``en-US``) or the literal ``auto`` produced by language
+    detection.  Normalisation is ``split("-")[0].lower()``.
+
+    ``None`` means "no guard": an unknown or auto source language must not
+    change Gate 5 behaviour (OL#142).
+    """
+    if not src_lang:
+        return None
+    base = src_lang.split("-")[0].strip().lower()
+    if base in _UNKNOWN_SRC_LANGS:
+        return None
+    ranges = _SCRIPT_RANGES.get(base)
+    if ranges is None and base in _LATIN_SCRIPT_LANGS:
+        ranges = _LATIN_SCRIPT_RANGES
+    if ranges is None:
+        return None
+    return re.compile(f"[{ranges}]")
+
+
+def _has_source_script(text: str, src_lang: str | None) -> bool:
+    """Whether *text* contains at least one character of *src_lang*'s script.
+
+    Returns ``True`` (i.e. "the guard cannot rule this out") when the source
+    language is unknown, so callers keep their pre-#142 behaviour.
+    """
+    pattern = _source_script_pattern(src_lang)
+    if pattern is None:
+        return True
+    return pattern.search(text) is not None
+
 # Protocol/metadata artifacts that should never appear in translated text
 _RE_PROTOCOL_ARTIFACTS = [
     re.compile(r"\[USERTEXTSTART\]"),
@@ -506,7 +585,11 @@ def _canonical_for_copy_check(text: str) -> str:
     return normalize_to_english(_FRONTMATTER_RE.sub("", text, count=1)).strip()
 
 
-def check_source_copy(source: str, target: str) -> list[str]:
+def check_source_copy(
+    source: str,
+    target: str,
+    src_lang: str | None = None,
+) -> list[str]:
     """Gate 5 — detect when LLM echoes the source text back unchanged.
 
     Compares source and target in a canonical form (see
@@ -520,6 +603,20 @@ def check_source_copy(source: str, target: str) -> list[str]:
     symbols, whitespace-only) — these should remain unchanged across
     translation and are not meaningful copy-echo signals.
 
+    Also skips the warning when ``src_lang`` is known and the source text
+    contains no character of that language's script (OL#142). OPP emits
+    English structural headings (``Images``, ``Table of Contents``) inside
+    Chinese documents; for a zh→en run the "translation" of ``Images`` is
+    ``Images``, so flagging it as an untranslated unit is a false positive
+    that the #140 retries can never clear. Unknown / ``auto`` source
+    languages leave the check unchanged.
+
+    Args:
+        source: Source (pre-translation) text.
+        target: Candidate translation.
+        src_lang: Declared source language (``--source-lang``; a locale such
+            as ``zh-CN`` is accepted). ``None`` and ``auto`` mean unknown.
+
     Returns:
         List of ``OL_WARN: SOURCE_COPY`` strings (empty if the canonical
         forms differ or the text contains no translatable content).
@@ -528,6 +625,8 @@ def check_source_copy(source: str, target: str) -> list[str]:
         # Skip pure numeric/symbolic content — numbers and symbols should
         # remain unchanged across translation; flagging them is noise.
         if not re.search(r"[a-zA-Z一-鿿]", source):
+            return []
+        if not _has_source_script(source, src_lang):
             return []
         return [
             "OL_WARN: SOURCE_COPY — target is identical to source, "
@@ -589,6 +688,7 @@ def run_quality_gates(
     source_script_check_enabled: bool = True,
     protocol_artifact_check_enabled: bool = True,
     block_on_source_script_fragment: bool = False,
+    src_lang: str | None = None,
 ) -> list[str]:
     """Run all enabled quality gates on a source-target pair.
 
@@ -614,6 +714,10 @@ def run_quality_gates(
             fragment detection).
         protocol_artifact_check_enabled: Run Gate 7 (protocol
             artifact detection).
+        src_lang: Declared source language, forwarded to Gate 5 so a source
+            that contains none of that language's script is not reported as
+            an untranslated echo (OL#142). ``None`` / ``auto`` keeps the
+            pre-#142 behaviour.
 
     Returns:
         Combined list of all ``OL_WARN: <CODE>`` strings from all
@@ -661,7 +765,7 @@ def run_quality_gates(
     # Gate 5
     if source_copy_enabled:
         try:
-            all_warnings.extend(check_source_copy(source, target))
+            all_warnings.extend(check_source_copy(source, target, src_lang))
         except Exception as exc:
             _logger.exception("Gate 5 (source copy) failed: %s", exc)
 

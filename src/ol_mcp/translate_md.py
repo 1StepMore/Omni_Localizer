@@ -204,6 +204,7 @@ async def _run_translate_md_async(
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    src_lang=source_lang,
                 )),
             )
 
@@ -341,6 +342,7 @@ async def translate_md_text(params: TranslateInput) -> str:
                     length_ratio_max=qg.length_ratio.max,
                     locale_enabled=qg.locale.enabled,
                     target_locale=qg.locale.target_locale,
+                    src_lang=params.source_lang,
                 )),
             )
 

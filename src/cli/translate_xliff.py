@@ -471,6 +471,7 @@ async def _translate_xliff_async(
                     block_on_source_script_fragment=getattr(
                         cfg.quality_gates, "block_on_source_script_fragment", False
                     ),
+                    src_lang=src_lang,
                 )
                 if _xuw:
                     # Check for blocking gates before recording warnings

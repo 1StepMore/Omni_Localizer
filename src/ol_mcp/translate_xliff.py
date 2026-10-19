@@ -171,6 +171,7 @@ async def _run_translate_xliff_async(
                         length_ratio_max=qg.length_ratio.max,
                         locale_enabled=qg.locale.enabled,
                         target_locale=qg.locale.target_locale,
+                        src_lang=source_lang,
                     )
                     if gate_warnings:
                         warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
@@ -378,6 +379,7 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                         length_ratio_max=qg.length_ratio.max,
                         locale_enabled=qg.locale.enabled,
                         target_locale=qg.locale.target_locale,
+                        src_lang=params.source_lang,
                     )
                     if gate_warnings:
                         warnings_per_unit.setdefault(unit.unit_id, []).extend(gate_warnings)
