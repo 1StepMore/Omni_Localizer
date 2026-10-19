@@ -655,6 +655,7 @@ class ModelPool:
         temperature: float = 0.0,
         glossary: Any = None,
         system_message_override: str | None = None,
+        extra_instruction: str | None = None,
     ) -> str:
         if self._test_mode:
             return "placeholder"
@@ -725,6 +726,12 @@ class ModelPool:
         # branch above is preserved for BatchProcessor / RAG users.
         if glossary is not None and hasattr(glossary, "inject_into_prompt"):
             prompt = glossary.inject_into_prompt(text, prompt)
+
+        # Issue #189: callers may append a one-off retranslation instruction
+        # (e.g. after detecting the LLM echoed the source back unchanged).
+        # Appended to the already-assembled prompt — no new template.
+        if extra_instruction:
+            prompt = f"{prompt}\n\n{extra_instruction}"
 
         if system_message_override is not None and system_message_override:
             system_message = system_message_override

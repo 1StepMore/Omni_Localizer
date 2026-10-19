@@ -55,6 +55,20 @@ from ol_lqa.quality_gates import check_source_copy, run_quality_gates
 logger = get_logger("cli")
 
 
+# Issue #189: when the LLM returns the source text verbatim (SOURCE_COPY),
+# re-ask up to this many total attempts. Retries use a non-zero temperature
+# to bypass the content-addressed cache (router only reads/writes it at
+# temperature == 0.0), otherwise the retry would re-serve the same echo.
+_SOURCE_COPY_MAX_ATTEMPTS = 3
+_SOURCE_COPY_RETRY_INSTRUCTION = (
+    "上一次输出与源文完全相同。这是一次重译要求："
+    "必须输出目标语言的译文，不得复制源文。"
+    "(Your previous output was identical to the source. This is a "
+    "retranslation request: output the target-language translation; do not "
+    "copy the source.)"
+)
+
+
 # ========== A12: Glossary settings — passed as function args, not globals ==========
 # Wave 4 (L-C1): removed concurrency-unsafe module-level globals
 # (_pending_glossary, _pending_restoration_enabled, _pending_glossary_max_terms).
@@ -128,7 +142,6 @@ def _build_restoration_pool(config_path: str | None) -> 'ModelPool | None':
         from ol_pool.router import ModelPool
         return ModelPool.get_instance(str(resolve_config_path(config_path)))
     except Exception:
-        logger = get_logger("cli")
         logger.exception("ModelPool init failed")
         logger.warning("ModelPool init failed (likely test env without API keys)")
         return None
@@ -412,19 +425,71 @@ async def _translate_one_unit(
     if unit.shield_map:
         from ol_buses.xliff_shield import restore_tags
 
-        unshielded = restore_tags(translated, unit.shield_map)
-        repaired, repair_warnings = repair_pipeline.repair(
-            unshielded, unit.source_text, unit.shield_map,
-        )
+        def _restore_and_repair(text: str) -> tuple[str, list[str]]:
+            unshielded = restore_tags(text, unit.shield_map)
+            repaired_text, repair_ws = repair_pipeline.repair(
+                unshielded, unit.source_text, unit.shield_map,
+            )
+            return repaired_text, repair_ws
+
+        repaired, repair_warnings = _restore_and_repair(translated)
     else:
+        def _restore_and_repair(text: str) -> tuple[str, list[str]]:
+            return text, []
+
         repaired = translated
         repair_warnings = []
 
-    untranslated = False
+    # Issue #189: retry SOURCE_COPY (LLM echoed the source back unchanged).
+    # The transport-level retries in ModelPool.translate only cover
+    # Timeout/RateLimit/SourceLanguageResidual, so a 200 response carrying
+    # the source text used to be accepted with no retry. Re-ask with a
+    # non-zero temperature (cache-bypassing) and a harder instruction.
     copy_warnings = check_source_copy(unit.source_text, repaired)
-    if copy_warnings:
-        untranslated = True
-        copy_note = copy_warnings[0]
+    copy_attempts = 1
+    while copy_warnings and copy_attempts < _SOURCE_COPY_MAX_ATTEMPTS:
+        logger.warning(
+            f"Unit {unit.unit_id} returned the source text unchanged "
+            f"(SOURCE_COPY, attempt {copy_attempts}/{_SOURCE_COPY_MAX_ATTEMPTS}); "
+            f"retranslating with a cache-bypassing temperature"
+        )
+        await asyncio.sleep(1.5 * 2 ** (copy_attempts - 1))
+        copy_attempts += 1
+        try:
+            async with sem:
+                retried = await pool.translate(
+                    unit.source_text, src_lang, tgt_lang,
+                    context=styleguide_context,
+                    glossary=glossary,
+                    temperature=0.2 + 0.1 * (copy_attempts - 2),
+                    extra_instruction=_SOURCE_COPY_RETRY_INSTRUCTION,
+                )
+        except Exception as retry_err:
+            error_msg = f"{type(retry_err).__name__}: {str(retry_err)[:200]}"
+            logger.warning(
+                f"Unit {unit.unit_id} source-copy retry raised "
+                f"{type(retry_err).__name__}; keeping source fallback"
+            )
+            break
+        attempts += 1
+        if isinstance(retried, str) and retried.strip():
+            translated = retried
+            repaired, repair_warnings = _restore_and_repair(retried)
+            copy_warnings = check_source_copy(unit.source_text, repaired)
+        else:
+            logger.warning(
+                f"Unit {unit.unit_id} source-copy retry returned empty output; "
+                f"keeping source fallback"
+            )
+            break
+
+    untranslated = bool(copy_warnings)
+    if untranslated:
+        copy_note = copy_warnings[0].replace(
+            "SOURCE_COPY",
+            f"SOURCE_COPY after {copy_attempts} attempt(s)",
+            1,
+        )
         if warning is None:
             warning = copy_note
         elif "SOURCE_COPY" not in warning:
@@ -796,6 +861,7 @@ async def _translate_md_async(
 
     result_path = _MdText(str(output_file))
     result_path.untranslated_units = untranslated_count
+    result_path.untranslated_unit_ids = ["md_main"] if untranslated_count else []
     result_path.total_units = total_units
     return result_path
 
@@ -850,6 +916,7 @@ async def _translate_md_units_concurrent(
     tracker = TokenPositionTracker(tokens)
     rebuilt = _MdText(tracker.rebuild(tokens, units))
     rebuilt.untranslated_units = sum(1 for r in results if r.untranslated)
+    rebuilt.untranslated_unit_ids = [r.unit_id for r in results if r.untranslated]
     rebuilt.total_units = len(units)
     return rebuilt
 
@@ -1131,10 +1198,11 @@ def translate_md(
              "Copied to output directory alongside translated .md.",
     ),
     fail_on_untranslated: bool = typer.Option(
-        False, "--fail-on-untranslated",
-        help="Exit with a pipeline error (exit code 1) when any trans-unit "
-             "was returned untranslated (LLM call failed or was rate-limited). "
-             "Off by default: degraded output is still written and reported.",
+        True, "--fail-on-untranslated/--allow-untranslated",
+        help="Fail-closed (default): exit non-zero AND delete the partial "
+             "output when any trans-unit came back untranslated after retries. "
+             "Pass --allow-untranslated to opt back into the legacy behavior "
+             "(keep the degraded output, warn, exit 0 unless every unit failed).",
     ),
 ) -> int:
     try:
@@ -1300,6 +1368,9 @@ def translate_md(
         # observe this step.
         _untranslated_units = getattr(output_file, "untranslated_units", 0)
         _total_units = getattr(output_file, "total_units", 0)
+        _untranslated_unit_ids = list(
+            getattr(output_file, "untranslated_unit_ids", []) or []
+        )
         if not no_restoration:
             try:
                 _original_text = input_path.read_text(encoding="utf-8")
@@ -1376,6 +1447,31 @@ def translate_md(
                     "(use --glossary <path> to enable coverage reporting)."
                 )
 
+        # Issue #189: fail-closed is the default. Any unit still untranslated
+        # after the source-copy retries makes the whole run fail AND removes
+        # the half-translated output, so a caller cannot mistake it for a
+        # completed translation. --allow-untranslated opts back into the
+        # legacy degraded-output behavior (non-zero only when every unit failed).
+        if fail_on_untranslated and _untranslated_units > 0:
+            try:
+                Path(output_file).unlink()
+            except OSError:
+                pass
+            _ids = ", ".join(str(u) for u in _untranslated_unit_ids) or "<unknown>"
+            typer.echo(
+                f"ERROR: {_untranslated_units} of {_total_units} unit(s) were "
+                f"returned untranslated after retries - failing (fail-closed) and "
+                f"removing the partial output. Untranslated unit IDs: {_ids}. "
+                f"Pass --allow-untranslated to keep the degraded output.",
+                err=True,
+            )
+            logger.error(
+                f"translate_md: {_untranslated_units} of {_total_units} unit(s) "
+                f"untranslated after retries - failing (fail-closed). "
+                f"unit_ids=[{_ids}]"
+            )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
+
         if json_output:
             actual_output = output_path / input_path.name
             output_json(
@@ -1391,17 +1487,10 @@ def translate_md(
                 typer.echo(
                     f"WARNING: {_untranslated_units} of {_total_units} unit(s) "
                     f"were returned untranslated; those units carry the source "
-                    f"text verbatim. Re-run or use --fail-on-untranslated to "
-                    f"make this fatal.",
+                    f"text verbatim (--allow-untranslated).",
                     err=True,
                 )
         logger.info(f"Completed: translate_md {input}")
-        if fail_on_untranslated and _untranslated_units > 0:
-            logger.error(
-                f"translate_md: {_untranslated_units} of {_total_units} unit(s) "
-                f"untranslated - failing due to --fail-on-untranslated"
-            )
-            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
         if _total_units > 0 and _untranslated_units >= _total_units:
             typer.echo(
                 f"ERROR: all {_total_units} unit(s) were returned untranslated "
