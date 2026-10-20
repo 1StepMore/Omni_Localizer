@@ -2,10 +2,13 @@ import asyncio
 import hashlib
 import json
 import os
+import random
 import re
 import sys
 import time
 from collections import OrderedDict
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -179,7 +182,7 @@ else:
     litellm = None  # type: ignore[assignment]
 
 from ol_config.loader import load_config
-from ol_config.schema import LLMModelConfig, LLMPoolConfig
+from ol_config.schema import LLMModelConfig, LLMPoolConfig, RateLimitBackoffConfig
 from ol_logging.core import get_logger
 
 
@@ -367,6 +370,109 @@ def _rate_limited_model_label(exc: BaseException, role: str) -> str:
     return role
 
 
+def _parse_retry_after_value(value: Any) -> float | None:
+    """Parse a ``Retry-After`` header value (delta-seconds or HTTP-date)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return max(float(value), 0.0)
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("latin-1")
+        except Exception:
+            return None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        return max(float(stripped), 0.0)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(stripped)
+    except Exception:
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max((when - datetime.now(timezone.utc)).total_seconds(), 0.0)
+
+
+def _extract_retry_after(exc: BaseException | None) -> float | None:
+    """Best-effort ``Retry-After`` read across litellm/httpx error shapes.
+
+    Never raises: a missing or malformed header is simply "no signal".
+    """
+    if exc is None:
+        return None
+    header_sources: list[Any] = []
+    try:
+        response = getattr(exc, "response", None)
+        if response is not None:
+            header_sources.append(getattr(response, "headers", None))
+    except Exception:
+        pass
+    try:
+        header_sources.append(getattr(exc, "response_headers", None))
+    except Exception:
+        pass
+    try:
+        header_sources.append(getattr(exc, "headers", None))
+    except Exception:
+        pass
+
+    for headers in header_sources:
+        if not headers:
+            continue
+        for name in ("retry-after", "Retry-After"):
+            try:
+                value = headers.get(name)
+            except Exception:
+                continue
+            parsed = _parse_retry_after_value(value)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def compute_rate_limit_backoff(
+    attempt: int,
+    exc: BaseException | None,
+    cfg: RateLimitBackoffConfig | None = None,
+) -> float:
+    """Seconds to wait before the next 429 retry.
+
+    Priority:
+    1) ``Retry-After`` carried by ``exc`` (seconds or HTTP-date), capped at
+       ``cfg.max_delay_s``;
+    2) otherwise ``cfg.base_delay_s * 2**attempt``, capped at
+       ``cfg.max_delay_s``;
+    3) ``cfg.jitter`` adds ``[0, 25%]`` of the chosen delay.
+
+    The final value is clamped to ``cfg.max_delay_s`` so backoff can never
+    grow past the configured ceiling (and thus past the caller's timeout wall).
+    """
+    if cfg is None:
+        cfg = RateLimitBackoffConfig()
+    if not cfg.enabled:
+        return 0.0
+
+    retry_after = _extract_retry_after(exc)
+    if retry_after is not None:
+        wait = min(retry_after, cfg.max_delay_s)
+    else:
+        wait = min(cfg.base_delay_s * (2 ** max(attempt, 0)), cfg.max_delay_s)
+
+    if cfg.jitter:
+        wait += random.uniform(0.0, wait * 0.25)
+    return min(wait, cfg.max_delay_s)
+
+
 # 2026-06-18 round 16 Phase B1: circuit breaker for LLM calls.
 class _LogBreakerListener(pybreaker.CircuitBreakerListener):
     """Logs circuit breaker state transitions at WARNING level."""
@@ -392,6 +498,9 @@ class ModelPoolInitError(RuntimeError):
 
 class ModelPool:
     _instance: "ModelPool | None" = None
+    # Default 429 policy for instances constructed via __new__ (tests) or
+    # configs that predate the field. __init__ overrides it from config.
+    _rate_limit_backoff: RateLimitBackoffConfig = RateLimitBackoffConfig()
 
     def __init__(self, config_path: str = "config/default.yaml"):
         # Detect test mode: if the Router class has been replaced with a
@@ -407,12 +516,21 @@ class ModelPool:
             self._cache_enabled = False
             self._cache = _PromptCache(max_size=0, ttl_seconds=0.0)
             self._rate_limit_hits = {}
+            self._rate_limit_backoff = RateLimitBackoffConfig()
             return
         result = load_config(config_path)
         try:
             config = result[0]
         except (TypeError, IndexError):
             config = result
+        # 429 policy: defaults apply even when config/*.yaml predates the
+        # field, and a test double without a real schema object is ignored.
+        _backoff_cfg = getattr(config.llm_pool, "rate_limit_backoff", None)
+        self._rate_limit_backoff = (
+            _backoff_cfg
+            if isinstance(_backoff_cfg, RateLimitBackoffConfig)
+            else RateLimitBackoffConfig()
+        )
         # A3 — temperature-bypass is enforced in translate()/judge(), not here.
         self._cache_enabled = getattr(config, "cache_system_prompt", True)
         self._cache = _PromptCache(max_size=1000, ttl_seconds=300.0)
@@ -823,18 +941,26 @@ class ModelPool:
                 attempted.add(model_id)
 
         switches = 0
+        wait_exc: BaseException = original_exc
+        backoff_cfg = self._rate_limit_backoff
         for tier, model in enumerate(models, start=1):
             model_id = f"{model.provider}/{model.model}"
             if model_id in attempted:
                 continue
             attempted.add(model_id)
             switches += 1
-            # Same backoff magnitude as the first-tier retry loop (10, 20, ...).
-            wait = 2 ** (switches - 1) * 10
+            retry_after = _extract_retry_after(wait_exc)
+            wait = compute_rate_limit_backoff(switches - 1, wait_exc, backoff_cfg)
             await asyncio.sleep(wait)
             _logger.warning(
-                "rate-limited on %s; switching to %s (tier %d/%d)",
-                hit_label, model_id, tier, len(models),
+                "rate-limited on %s (attempt %d/%d): waiting %.1fs "
+                "(retry_after=%s, remaining same-role models=%d); "
+                "switching to %s (tier %d/%d)",
+                hit_label, switches, backoff_cfg.max_attempts_per_model,
+                wait,
+                f"{retry_after:g}" if retry_after is not None else "none",
+                max(len(models) - tier, 0),
+                model_id, tier, len(models),
             )
             try:
                 response = await self._direct_acompletion(
@@ -842,6 +968,7 @@ class ModelPool:
                 )
             except (RateLimitError, RouterRateLimitError) as exc:
                 hit_label = _rate_limited_model_label(exc, role)
+                wait_exc = exc
                 continue
             translated = self._process_translation_response(
                 response, text, source_lang, target_lang,
@@ -971,7 +1098,9 @@ class ModelPool:
             )
 
         model_str = "translation"  # role passed to acompletion; key for hit counter
-        for attempt in range(4):  # 1 initial + 3 retries
+        backoff_cfg = self._rate_limit_backoff
+        max_attempts = backoff_cfg.max_attempts_per_model
+        for attempt in range(max_attempts):  # 1 initial + (max_attempts-1) retries
             try:
                 response = await self._call_with_breaker(
                     "translation",
@@ -988,22 +1117,31 @@ class ModelPool:
                     self._cache.put(cache_key, translated)
                 return translated
             except Timeout as e:
-                if attempt < 3:
+                if attempt < max_attempts - 1:
                     wait = 2 ** attempt * 5
-                    _logger.warning(f"Timeout, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    _logger.warning(f"Timeout, retrying in {wait}s (attempt {attempt + 1}/{max_attempts})")
                     await asyncio.sleep(wait)
                 else:
-                    _logger.error(f"Translation failed after 4 attempts: {e}")
+                    _logger.error(f"Translation failed after {max_attempts} attempts: {e}")
                     raise
             except (RateLimitError, RouterRateLimitError) as e:
                 # 2026-06-17 round 5 (FIX-#18): increment per-model hit counter
                 self._rate_limit_hits[model_str] = self._rate_limit_hits.get(model_str, 0) + 1
-                if attempt < 3:
-                    wait = 2 ** attempt * 10
-                    _logger.warning(f"RateLimitError/RouterRateLimitError, retrying in {wait}s (attempt {attempt + 1}/4): {e}")
+                if attempt < max_attempts - 1:
+                    retry_after = _extract_retry_after(e)
+                    wait = compute_rate_limit_backoff(attempt, e, backoff_cfg)
+                    _logger.warning(
+                        "rate-limited on %s (attempt %d/%d): waiting %.1fs "
+                        "(retry_after=%s, remaining same-role models=%d): %s",
+                        _rate_limited_model_label(e, model_str),
+                        attempt + 1, max_attempts, wait,
+                        f"{retry_after:g}" if retry_after is not None else "none",
+                        len(self._usable_by_role.get(model_str) or []),
+                        e,
+                    )
                     await asyncio.sleep(wait)
                 else:
-                    _logger.error(f"Translation failed after 4 attempts: {e}")
+                    _logger.error(f"Translation failed after {max_attempts} attempts: {e}")
                     # Intra-role only: step to the next priority model within
                     # the SAME role. Never a cross-role downgrade.
                     return await self._intra_role_failover(
@@ -1024,12 +1162,12 @@ class ModelPool:
                 _logger.error("Translation failed: response truncated (max_tokens limit)")
                 raise
             except ModelPoolSourceLanguageResidualError as e:
-                if attempt < 3:
+                if attempt < max_attempts - 1:
                     wait = 2 ** attempt * 5
-                    _logger.warning(f"Source language residual detected, retrying in {wait}s (attempt {attempt + 1}/4)")
+                    _logger.warning(f"Source language residual detected, retrying in {wait}s (attempt {attempt + 1}/{max_attempts})")
                     await asyncio.sleep(wait)
                 else:
-                    _logger.error(f"Translation failed after 4 attempts due to source language residual: {e}")
+                    _logger.error(f"Translation failed after {max_attempts} attempts due to source language residual: {e}")
                     raise
             except Exception as e:
                 _logger.error(f"Translation failed: {e}")
