@@ -381,7 +381,7 @@ def _parse_retry_after_value(value: Any) -> float | None:
     if isinstance(value, bytes):
         try:
             value = value.decode("latin-1")
-        except Exception:
+        except Exception:  # expected: bytes decode is total; keep best-effort
             return None
     if not isinstance(value, str):
         return None
@@ -394,7 +394,7 @@ def _parse_retry_after_value(value: Any) -> float | None:
         pass
     try:
         when = parsedate_to_datetime(stripped)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return None
     if when is None:
         return None
@@ -415,15 +415,15 @@ def _extract_retry_after(exc: BaseException | None) -> float | None:
         response = getattr(exc, "response", None)
         if response is not None:
             header_sources.append(getattr(response, "headers", None))
-    except Exception:
+    except Exception:  # expected: provider .response property may raise
         pass
     try:
         header_sources.append(getattr(exc, "response_headers", None))
-    except Exception:
+    except Exception:  # expected: provider .response_headers may raise
         pass
     try:
         header_sources.append(getattr(exc, "headers", None))
-    except Exception:
+    except Exception:  # expected: provider .headers property may raise
         pass
 
     for headers in header_sources:
@@ -432,7 +432,7 @@ def _extract_retry_after(exc: BaseException | None) -> float | None:
         for name in ("retry-after", "Retry-After"):
             try:
                 value = headers.get(name)
-            except Exception:
+            except Exception:  # expected: header mapping may be a proxy
                 continue
             parsed = _parse_retry_after_value(value)
             if parsed is not None:
