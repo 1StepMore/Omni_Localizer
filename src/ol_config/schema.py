@@ -80,6 +80,40 @@ class LLMModelConfig(BaseModel):
         _check_env_vars(self.base_url, "base_url")
         return self
 
+class RateLimitBackoffConfig(BaseModel):
+    """429 backoff policy shared by the retry loop and intra-role failover.
+
+    Defaults are active without any ``config/*.yaml`` change: the retry loop
+    waits ``base_delay_s * 2**attempt`` capped at ``max_delay_s``, honours a
+    provider-supplied ``Retry-After``, and adds up to 25% jitter so a batch of
+    concurrent requests does not retry in lockstep.
+    """
+
+    enabled: bool = Field(
+        True,
+        description="Wait between 429 retries (disable to retry immediately).",
+    )
+    base_delay_s: float = Field(
+        5.0, ge=0.0,
+        description="Base delay for the exponential series (seconds).",
+    )
+    max_delay_s: float = Field(
+        60.0, gt=0.0,
+        description=(
+            "Hard ceiling for a single wait (seconds). Kept below typical "
+            "caller timeouts so backoff never outlives the request."
+        ),
+    )
+    max_attempts_per_model: int = Field(
+        4, ge=1,
+        description="Attempts on one model before stepping to the next same-role model.",
+    )
+    jitter: bool = Field(
+        True,
+        description="Add [0, 25%] random jitter to avoid synchronized retries.",
+    )
+
+
 class LLMPoolConfig(BaseModel):
     """LLM model pool configuration."""
 
@@ -87,6 +121,10 @@ class LLMPoolConfig(BaseModel):
     judging: list[LLMModelConfig] = Field(default_factory=list, description="Judging models")
     restoration: list[LLMModelConfig] = Field(default_factory=list, description="Restoration models")
     profiling: list[LLMModelConfig] = Field(default_factory=list, description="Profiling models")
+    rate_limit_backoff: RateLimitBackoffConfig = Field(
+        default_factory=RateLimitBackoffConfig,
+        description="429 retry/failover backoff policy.",
+    )
 
     @model_validator(mode='after')
     def check_min_models_per_role(self) -> 'LLMPoolConfig':
