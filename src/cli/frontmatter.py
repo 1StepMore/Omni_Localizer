@@ -49,6 +49,28 @@ def _get_ol_version() -> str:
     return __version__
 
 
+#: A frontmatter block only counts when it opens the file: ``---`` on the very
+#: first line and a closing ``---`` line. A ``---`` horizontal rule inside the
+#: body must never match (OMNI_Localizer#146).
+_FRONTMATTER_BLOCK_RE = _re.compile(
+    r"\A---[ \t]*\r?\n.*?\r?\n---[ \t]*(?:\r?\n|\Z)", _re.DOTALL
+)
+
+
+def strip_frontmatter(text: str) -> str:
+    """Drop a leading YAML frontmatter block; leave everything else untouched.
+
+    Used before translation so an already-frontmattered input (an OL output
+    being re-translated, or a hand-written MD) is not sent to the LLM as prose:
+    markdown-it reads the opening ``---`` as a horizontal rule, turning the YAML
+    block into a list (OMNI_Localizer#146). An unterminated ``---`` or a rule
+    later in the body is returned unchanged.
+    """
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    return text[match.end():] if match else text
+
+
+
 def _generate_frontmatter(
     source_lang: str,
     target_lang: str,
