@@ -32,6 +32,7 @@ from cli.frontmatter import (
     _generate_frontmatter,
     _get_ol_version,
     _validate_lang_code,
+    strip_frontmatter,
 )
 from cli._shared import (
     ExitCode,
@@ -637,7 +638,7 @@ async def _translate_md_async(
     if not isinstance(max_concurrent, int) or max_concurrent < 1:
         max_concurrent = 5
 
-    original_text = input_path.read_text(encoding="utf-8")
+    original_text = strip_frontmatter(input_path.read_text(encoding="utf-8"))
 
     judge = None
     retry_mgr = None
@@ -949,8 +950,7 @@ async def _translate_md_by_paragraph(
     import sys
 
     raw = input_path.read_text(encoding="utf-8")
-    parts = raw.split("---", 2)
-    body = parts[2].strip() if len(parts) >= 3 and parts[0].strip() == "" else raw
+    body = strip_frontmatter(raw).strip()
     body = re.sub(r"^#+\s.*$", "", body, flags=re.MULTILINE)
     paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
 
