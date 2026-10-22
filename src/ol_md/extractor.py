@@ -30,7 +30,7 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
     current_unit_id = 1
     known_types = {
         'paragraph_open', 'paragraph_close', 'heading_open', 'heading_close',
-        'text', 'softbreak', 'hardbreak', 'code_block', 'fence', 'html_block',
+        'text', 'softbreak', 'hardbreak', 'code_block', 'fence', 'html_block', 'hr',
         'link_open', 'link_close', 'image', 'strong_open', 'strong_close',
         'em_open', 'em_close', 's_open', 's_close', 'bullet_list_open',
         'bullet_list_close', 'ordered_list_open', 'ordered_list_close',
