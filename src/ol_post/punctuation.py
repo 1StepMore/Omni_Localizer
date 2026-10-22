@@ -72,6 +72,8 @@ _PROTECTED_RE = re.compile(
     r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"                 # IPv4
     r"|"
     r"v?\d+\.\d+(?:\.\d+)*(?:[a-zA-Z][\w]*)?"             # version (v1.2.3, 1.2.3-alpha)
+    r"|"
+    r"(?m:^[ \t]*\d+\.(?=[ \t]|$))"                       # ordered-list marker (line start)
     r")",
     re.IGNORECASE,
 )
