@@ -1,3 +1,11 @@
+def _heading_level(token) -> int:
+    """ATX depth from the token tag; setext `markup` is `=`/`-`, not a prefix."""
+    tag = getattr(token, 'tag', '') or ''
+    if len(tag) == 2 and tag[0] == 'h' and tag[1] in '123456':
+        return int(tag[1])
+    return len(getattr(token, 'markup', '') or '')
+
+
 class TokenPositionTracker:
     def __init__(self, tokens: list):
         self.tokens = self._flatten(tokens)
@@ -48,9 +56,9 @@ class TokenPositionTracker:
                     result_parts.append(token.content)
 
             elif token_type == 'heading_open':
-                markup = getattr(token, 'markup', '') or ''
-                if markup:
-                    result_parts.append(markup + ' ')
+                level = _heading_level(token)
+                if level:
+                    result_parts.append('#' * level + ' ')
 
             elif token_type == 'fence':
                 info = getattr(token, 'info', '') or ''
