@@ -84,12 +84,11 @@ src/
 ├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
 ├── ol_retry/                # RetryManager
 ├── ol_logging/              # Structured JSON + console logger
-├── ol_checkpoint/           # Translation checkpointing (distinct from cli/cache.py)
+├── ol_checkpoint/           # Translation checkpointing (library-only; not wired into CLI/batch)
 ├── ol_post/                 # zh↔en punctuation normalization
 ├── ol_tm/                   # TMX translation memory service
 ├── ol_style/                # StyleGuide profiling + cache
 ├── ol_core/                 # TranslationContext, TranslationUnit, ChannelType
-├── ol_routing/              # routing helpers
 ├── ol_review_extractor.py
 └── ol_mcp/                  # MCP server (the Agent-facing surface)
 ```

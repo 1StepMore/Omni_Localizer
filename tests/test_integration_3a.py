@@ -1,4 +1,4 @@
-"""Integration tests for Phase 3a components: routing, model pool, concurrency, checkpoint."""
+"""Integration tests for Phase 3a components: model pool, concurrency, checkpoint."""
 import asyncio
 import os
 import sys
@@ -7,43 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ol_core.dataclass import ChannelType
-from ol_core.exceptions import FormatNotSupportedError
 from ol_pool.router import ModelPool
-from ol_routing.router import route_batch, route_by_extension
 
 # Mock fcntl for Windows compatibility in tests
 if sys.platform == 'win32':
     import unittest.mock
     sys.modules['fcntl'] = unittest.mock.MagicMock()
-
-
-class TestRoutingIntegration:
-    """Integration tests for routing engine."""
-
-    def test_routing_to_md_channel(self):
-        channel = route_by_extension("document.md")
-        assert channel == ChannelType.MD
-
-    def test_routing_to_xliff_channel(self):
-        channel = route_by_extension("translation.xliff")
-        assert channel == ChannelType.XLIFF
-
-    def test_routing_uppercase_extension_normalized(self):
-        assert route_by_extension("FILE.MD") == ChannelType.MD
-        assert route_by_extension("FILE.XLIFF") == ChannelType.XLIFF
-
-    def test_routing_unsupported_format_raises(self):
-        with pytest.raises(FormatNotSupportedError):
-            route_by_extension("document.docx")
-
-    def test_batch_routing_multiple_files(self):
-        paths = ["file1.md", "file2.xliff", "file3.MD"]
-        result = route_batch(paths)
-        assert len(result) == 3
-        assert result["file1.md"] == ChannelType.MD
-        assert result["file2.xliff"] == ChannelType.XLIFF
-        assert result["file3.MD"] == ChannelType.MD
 
 
 class TestModelPoolIntegration:
@@ -240,10 +209,7 @@ class TestPipelineIntegration:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     @pytest.mark.anyio
-    async def test_routing_to_translation_pipeline(self, mock_components):
-        channel = route_by_extension("document.md")
-        assert channel == ChannelType.MD
-
+    async def test_translation_pipeline(self, mock_components):
         async with mock_components["limiter"].translation():
             result = await mock_components["pool"].translate(
                 "hello world", "en", "zh",
@@ -251,10 +217,7 @@ class TestPipelineIntegration:
         assert result == "translated content"
 
     @pytest.mark.anyio
-    async def test_routing_to_judging_pipeline(self, mock_components):
-        channel = route_by_extension("translation.xliff")
-        assert channel == ChannelType.XLIFF
-
+    async def test_judging_pipeline(self, mock_components):
         async with mock_components["limiter"].scoring():
             result = await mock_components["pool"].judge(
                 "hello", "你好", "en", "zh",
@@ -294,18 +257,16 @@ class TestPipelineIntegration:
         results = []
 
         async def process_file(file_idx):
-            channel = route_by_extension(f"file{file_idx}.md")
             async with mock_components["limiter"].translation():
                 result = await mock_components["pool"].translate(
                     f"text {file_idx}", "en", "zh",
                 )
-            results.append((file_idx, result, channel))
+            results.append((file_idx, result))
 
         await asyncio.gather(*[process_file(i) for i in range(5)])
 
         assert len(results) == 5
-        for i, result, channel in results:
-            assert channel == ChannelType.MD
+        for i, result in results:
             assert result == "translated content"
 
 
@@ -342,12 +303,6 @@ class TestErrorHandlingIntegration:
                     pass
             assert "0.1" in str(exc_info.value)
 
-    def test_format_not_supported_error_contains_path(self):
-        with pytest.raises(FormatNotSupportedError) as exc_info:
-            route_by_extension("file.unsupported")
-        assert "file.unsupported" in str(exc_info.value)
-
-
 class TestComponentInitialization:
     """Integration tests for component initialization."""
 
@@ -377,13 +332,6 @@ class TestComponentInitialization:
         limiter = ConcurrencyLimiter(max_translation=20, max_scoring=15)
         assert limiter._translation_sem._value == 20
         assert limiter._scoring_sem._value == 15
-
-    def test_route_batch_returns_dict(self):
-        paths = ["file1.md", "file2.xliff"]
-        result = route_batch(paths)
-        assert isinstance(result, dict)
-        assert len(result) == 2
-
 
 # Import at bottom to avoid fcntl import issues on Windows
 from ol_checkpoint import CheckpointManager, HashMismatchError

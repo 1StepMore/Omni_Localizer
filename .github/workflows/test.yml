@@ -33,7 +33,7 @@ jobs:
           # pipefail so the step fails when pytest fails (tee always exits 0);
           # without it a red run is reported green and no artifact is left.
           set -o pipefail
-          python -m pytest tests/test_format_guard.py tests/test_routing.py tests/test_config_loader.py tests/test_evaluation_result.py tests/test_llm_restorer_interface.py tests/test_retry.py tests/test_concurrent_engine.py --tb=short -v 2>&1 | tee test_output.log
+          python -m pytest tests/test_format_guard.py tests/test_config_loader.py tests/test_evaluation_result.py tests/test_llm_restorer_interface.py tests/test_retry.py tests/test_concurrent_engine.py --tb=short -v 2>&1 | tee test_output.log
           exit_status=$?
           exit ${exit_status}
 
