@@ -25,7 +25,7 @@ src/
 │
 ├── ol_md/                     # Markdown pipeline (shield / repair / restore)
 │   ├── shield.py              # shield_markdown / unshield_markdown
-│   ├── pipeline.py            # MDRepairPipeline: 4-layer repair
+│   ├── pipeline.py            # MDRepairPipeline: 3-stage repair (L3 LLM opt-in)
 │   ├── token_stream.py        # Position tracker
 │   ├── extractor.py           # MD chunk extraction
 │   └── repair/

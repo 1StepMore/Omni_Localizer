@@ -257,7 +257,7 @@ The translated Markdown has un-substituted placeholders like `{{_OL_LINK_0001_}}
 
 **Cause**
 
-The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missing `restoration` pool, will leave them in the output. The 4-layer repair in `src/ol_md/pipeline.py` covers most cases, but if the `restoration` role has no working models, layer 3 (LLM restoration) is skipped.
+The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missing `restoration` pool, will leave them in the output. The repair cascade in `src/ol_md/pipeline.py` covers most cases; layer 3 (LLM restoration) is opt-in and not wired into the default pipeline, so production runs use levels 1, 2, and 4.
 
 **Fix**
 
