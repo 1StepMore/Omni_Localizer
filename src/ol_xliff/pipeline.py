@@ -1,4 +1,4 @@
-"""XLIFF Repair Pipeline - orchestrates 4-layer repair cascade."""
+"""XLIFF Repair Pipeline - orchestrates the repair cascade (L3 LLM opt-in)."""
 
 from ol_xliff.repair.level1 import level1_regex_clean
 from ol_xliff.repair.level2 import level2_span_align
@@ -7,7 +7,7 @@ from ol_xliff.repair.level4 import level4_safe_fallback
 
 
 class XLIFFRepairPipeline:
-    """Orchestrates 4-layer repair cascade for XLIFF placeholder restoration.
+    """Orchestrates the repair cascade for XLIFF placeholder restoration.
 
     Cascade flow:
         L1: Regex clean whitespace around placeholders
@@ -56,7 +56,7 @@ class XLIFFRepairPipeline:
         return True
 
     def repair(self, text: str, original: str, shield_map: dict[str, str]) -> tuple[str, list[str]]:
-        """Repair text through 4-layer cascade until complete.
+        """Repair text through the repair cascade until complete.
 
         Args:
             text: Translated text with potential placeholder issues

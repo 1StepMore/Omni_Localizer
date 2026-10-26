@@ -210,7 +210,7 @@ Returns:
 
 `translated` is duplicated at the top level as a backward-compat alias.
 
-`quality_gates.status` reports whether the 8 gates (§ OL#56 in `AGENTS.md`) actually
+`quality_gates.status` reports whether the 7 gates (§ OL#56 in `AGENTS.md`) actually
 executed, so a caller never has to guess (issue #115):
 
 | `status` | Meaning | `reason` |
