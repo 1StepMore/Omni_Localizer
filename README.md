@@ -520,7 +520,7 @@ python -m ol_cli translate-md --help | grep json
 
 ## Validation Master Plan
 
-A comprehensive validation master plan for OL is available in the Omni Suite docs at `../docs/OL_VALIDATION_MASTER_PLAN.md`. It covers **17 user questions** across **79 executable scenarios** in AutoInfo-style format (user question → executable scenarios → binary verdict):
+A comprehensive validation master plan for OL is available in the Omni Suite docs at `../docs/OL_VALIDATION_MASTER_PLAN.md`. It covers **17 user questions** across **79 executable scenarios** in the scenario-per-question format (user question → executable scenarios → binary verdict):
 
 | Part | Focus | Questions |
 |------|-------|-----------|
