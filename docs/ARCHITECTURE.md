@@ -25,7 +25,7 @@ src/
 │
 ├── ol_md/                     # Markdown pipeline (shield / repair / restore)
 │   ├── shield.py              # shield_markdown / unshield_markdown
-│   ├── pipeline.py            # MDRepairPipeline: 4-layer repair
+│   ├── pipeline.py            # MDRepairPipeline: 3-stage repair (L3 LLM opt-in)
 │   ├── token_stream.py        # Position tracker
 │   ├── extractor.py           # MD chunk extraction
 │   └── repair/
@@ -38,7 +38,7 @@ src/
 │   ├── parser.py              # parse <trans-unit> list
 │   ├── pipeline.py            # XLIFFRepairPipeline
 │   ├── shield.py              # XLIFF tag shielding
-│   └── repair/                # 4 layers, same shape as ol_md/repair
+│   └── repair/                # repair stages, same shape as ol_md/repair
 │
 ├── ol_tm/                     # Translation memory (TMX)
 │   ├── service.py             # TMService: load / search / add / flush
@@ -153,7 +153,7 @@ OL's core invariant: **code blocks, links, images, math, HTML blocks, and autoli
 │      │                                                                       │
 │      ▼                                                                       │
 │   ┌──────────────────────────────────────────────────────────────────┐       │
-│   │  5. MDRepairPipeline.repair()  — 4 layers         src/ol_md/     │       │
+│   │  5. MDRepairPipeline.repair()  — 3 stages         src/ol_md/     │       │
 │   │                                                                  │       │
 │   │     L1  regex clean  (level1.py)        — strip stray markers    │       │
 │   │     L2  span align   (level2.py)        — reinsert missing       │       │

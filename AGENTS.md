@@ -60,7 +60,7 @@ src/
 │   └── json_tolerance.py    # LLM JSON tolerance
 ├── ol_md/                   # MD translation channel
 │   ├── shield.py            # E2E-77/78: math regex + [OL:...] markers
-│   ├── repair/              # 4-layer repair (regex → span → LLM → fallback)
+│   ├── repair/              # repair stages (regex → span → [L3 LLM opt-in] → fallback)
 │   ├── extractor.py         # Tokenize MD into translatable units
 │   ├── pipeline.py          # MDRepairPipeline
 │   └── token_stream.py
@@ -79,7 +79,7 @@ src/
 ├── ol_lqa/                  # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
 │   ├── qa_rules.py          # LQA rules
-│   └── quality_gates.py     # OL#56: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, terms_audit)
+│   └── quality_gates.py     # OL#56: 7 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts); terms audit is a separate tool
 ├── ol_restoration/          # Post-translate placeholder restoration
 ├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
 ├── ol_retry/                # RetryManager
@@ -180,7 +180,7 @@ OL's MD translation is a 4-stage pipeline:
      │  translated.md (with markers preserved)
      ▼
   ┌─────────────┐
-  │  3. REPAIR   │  4-layer restoration of any markers the LLM
+  │  3. REPAIR   │  3-stage restoration of any markers the LLM
   │             │  mangled / dropped:
   │             │    Level 1: regex (fast)
   │             │    Level 2: span alignment
@@ -202,7 +202,7 @@ OL's MD translation is a 4-stage pipeline:
       │
       ▼
    ┌──────────────┐
-    │ 6. QUALITY   │  8 gates run after translation/repair, warnings
+    │ 6. QUALITY   │  7 gates run after translation/repair, warnings
     │    GATES     │  appended during final output generation:
     │             │  • inline_tags — verify <bx>/<ex>/<x> tag parity
     │             │  • terminology — detect mixed source/glossary term usage

@@ -1,4 +1,4 @@
-"""XLIFF repair package - 4-layer repair cascade."""
+"""XLIFF repair package - repair cascade (L3 LLM restore opt-in)."""
 from ol_xliff.repair.level1 import level1_regex_clean
 from ol_xliff.repair.level2 import level2_span_align
 from ol_xliff.repair.level3 import level3_llm_restore

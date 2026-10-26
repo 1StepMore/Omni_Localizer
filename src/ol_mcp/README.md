@@ -138,7 +138,7 @@ ol_mcp/tools.py     ← Tool implementation (input validation, error handling)
     ▼
 ol_pool.router.ModelPool.translate()    ← LLM translation
 ol_md.shield.shield_markdown()          ← Content preservation
-ol_md.pipeline.MDRepairPipeline.repair() ← 4-layer repair
+ol_md.pipeline.MDRepairPipeline.repair() ← 3-stage repair (L3 LLM opt-in)
 ol_terminology.glossary.load_glossary() ← Terminology
 ol_tm.service.TMService.search()        ← Translation memory
 ```
