@@ -12,7 +12,7 @@ fallback and neither had any *field-level* tolerance:
 * profile stripped fences, called ``json.loads`` and otherwise returned
   ``{"raw_response": ...}``.
 
-The 2026-10-17 AutoMedia incident showed why that is not enough: a model
+A 2026-10-17 incident on a sibling pipeline showed why that is not enough: a model
 emitted ``"bridge_score": wiggle`` (a bare identifier in value position),
 which made the *whole document* fail to parse.  Re-asking the same
 question with the same parameters reproduced the failure four times.
