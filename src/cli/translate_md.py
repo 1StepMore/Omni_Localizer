@@ -853,6 +853,9 @@ async def _translate_md_async(
             length_ratio_max=cfg.quality_gates.length_ratio.max,
             locale_enabled=cfg.quality_gates.locale.enabled,
             target_locale=cfg.quality_gates.locale.target_locale,
+            source_script_check_enabled=cfg.quality_gates.source_script_check,
+            protocol_artifact_check_enabled=cfg.quality_gates.protocol_artifact_check,
+            invented_token_check_enabled=cfg.quality_gates.invented_token_check,
             src_lang=src_lang,
         )
         if _qg_warnings:
@@ -1079,6 +1082,9 @@ async def _translate_md_by_paragraph(
             length_ratio_max=_cfg_by_para.quality_gates.length_ratio.max,
             locale_enabled=_cfg_by_para.quality_gates.locale.enabled,
             target_locale=_cfg_by_para.quality_gates.locale.target_locale,
+            source_script_check_enabled=_cfg_by_para.quality_gates.source_script_check,
+            protocol_artifact_check_enabled=_cfg_by_para.quality_gates.protocol_artifact_check,
+            invented_token_check_enabled=_cfg_by_para.quality_gates.invented_token_check,
             src_lang=src,
         )
         if _qg_warnings_p:

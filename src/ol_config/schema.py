@@ -192,6 +192,12 @@ class QualityGateConfig(BaseModel):
         "(e.g. [USERTEXTSTART], [INST], [SYSTEM_PROMPT]) that "
         "reflected into the translated text as literal content.",
     )
+    invented_token_check: bool = Field(
+        True,
+        description="Gate 8: detect model-invented glued tokens "
+        "(e.g. manufacturingGovorun) that appear in neither the source "
+        "nor the target language (OL#158).",
+    )
     block_on_source_script_fragment: bool = Field(
         False,
         description="When True, Gate 6 (SOURCE_SCRIPT_FRAGMENT) "

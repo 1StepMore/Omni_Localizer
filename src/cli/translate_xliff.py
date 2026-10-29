@@ -468,6 +468,9 @@ async def _translate_xliff_async(
                     length_ratio_max=cfg.quality_gates.length_ratio.max,
                     locale_enabled=cfg.quality_gates.locale.enabled,
                     target_locale=cfg.quality_gates.locale.target_locale,
+                    source_script_check_enabled=cfg.quality_gates.source_script_check,
+                    protocol_artifact_check_enabled=cfg.quality_gates.protocol_artifact_check,
+                    invented_token_check_enabled=cfg.quality_gates.invented_token_check,
                     block_on_source_script_fragment=getattr(
                         cfg.quality_gates, "block_on_source_script_fragment", False
                     ),

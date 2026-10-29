@@ -8,6 +8,7 @@ import pytest
 
 from ol_lqa.quality_gates import (
     check_inline_tag_counts,
+    check_invented_tokens,
     check_length_ratio,
     check_locale_conventions,
     check_protocol_artifacts,
@@ -897,3 +898,75 @@ class TestCheckProtocolArtifacts:
         warnings = check_protocol_artifacts(text)
         # Two unique markers: USERTEXTSTART and USERTEXTEND
         assert len(warnings) == 2
+
+
+class TestCheckInventedTokens:
+    """Gate 8 — flag model-invented glued tokens (OL#158)."""
+
+    SOURCE = "全球智造科技有限公司成立于2008年，专注于工业自动化系统的研发与制造。"
+    TARGET = (
+        "Global Smart Manufacturing Technology Co., Ltd. was founded in 2008 "
+        "and focuses on the research, development, and manufacturingGovorun "
+        "of industrial automation systems."
+    )
+
+    def test_issue_158_token_is_flagged(self) -> None:
+        warnings = check_invented_tokens(self.SOURCE, self.TARGET)
+        assert len(warnings) == 1
+        assert "INVENTED_TOKEN" in warnings[0]
+        assert "manufacturingGovorun" in warnings[0]
+
+    def test_clean_translation_is_not_flagged(self) -> None:
+        target = (
+            "Global Smart Manufacturing Technology Co., Ltd. was founded in "
+            "2008 and focuses on the research, development, and manufacture "
+            "of industrial automation systems."
+        )
+        assert check_invented_tokens(self.SOURCE, target) == []
+
+    def test_short_camel_case_brands_are_not_flagged(self) -> None:
+        target = "Use iPhone, eBay, macOS, arXiv, GitHub and YouTube daily."
+        assert check_invented_tokens(self.SOURCE, target) == []
+
+    def test_known_compounds_are_not_flagged(self) -> None:
+        target = "The elasticSearch and springSecurity services are healthy."
+        assert check_invented_tokens(self.SOURCE, target) == []
+
+    def test_code_and_urls_are_excluded(self) -> None:
+        target = (
+            "Call `getUserName` then see https://example.com/parseDocumentNow "
+            "and run:\n\n```python\nparseDocumentNow = 1\n```\n"
+        )
+        assert check_invented_tokens(self.SOURCE, target) == []
+
+    def test_token_present_in_source_is_not_invented(self) -> None:
+        source = "The manufacturingGovorun service is running."
+        target = "The manufacturingGovorun service is running."
+        assert check_invented_tokens(source, target) == []
+
+    def test_each_token_reported_once(self) -> None:
+        target = "manufacturingGovorun and manufacturingGovorun again"
+        warnings = check_invented_tokens(self.SOURCE, target)
+        assert len(warnings) == 1
+
+    def test_empty_target_is_safe(self) -> None:
+        assert check_invented_tokens(self.SOURCE, "") == []
+
+    def test_orchestrator_emits_gate_8_warning(self) -> None:
+        warnings = run_quality_gates(
+            source=self.SOURCE,
+            target=self.TARGET,
+            length_ratio_enabled=False,
+            locale_enabled=False,
+        )
+        assert any("INVENTED_TOKEN" in w for w in warnings)
+
+    def test_orchestrator_can_disable_gate_8(self) -> None:
+        warnings = run_quality_gates(
+            source=self.SOURCE,
+            target=self.TARGET,
+            length_ratio_enabled=False,
+            locale_enabled=False,
+            invented_token_check_enabled=False,
+        )
+        assert not any("INVENTED_TOKEN" in w for w in warnings)

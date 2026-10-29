@@ -171,6 +171,9 @@ async def _run_translate_xliff_async(
                         length_ratio_max=qg.length_ratio.max,
                         locale_enabled=qg.locale.enabled,
                         target_locale=qg.locale.target_locale,
+                        source_script_check_enabled=qg.source_script_check,
+                        protocol_artifact_check_enabled=qg.protocol_artifact_check,
+                        invented_token_check_enabled=qg.invented_token_check,
                         src_lang=source_lang,
                     )
                     if gate_warnings:
@@ -379,6 +382,9 @@ async def translate_xliff(params: TranslateXliffInput) -> str:
                         length_ratio_max=qg.length_ratio.max,
                         locale_enabled=qg.locale.enabled,
                         target_locale=qg.locale.target_locale,
+                        source_script_check_enabled=qg.source_script_check,
+                        protocol_artifact_check_enabled=qg.protocol_artifact_check,
+                        invented_token_check_enabled=qg.invented_token_check,
                         src_lang=params.source_lang,
                     )
                     if gate_warnings:

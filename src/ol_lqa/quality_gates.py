@@ -667,6 +667,68 @@ def check_protocol_artifacts(target: str) -> list[str]:
     return warnings
 
 
+#: Glued lowercase+CamelCase shape: >=6 lowercase chars then a capitalised
+#: suffix of >=5. The threshold is deliberately high because the gate is
+#: advisory: legitimate long camelCase brands are allowlisted below, while
+#: short ones (iPhone, eBay, macOS, arXiv, GitHub, YouTube) never match.
+_CAMEL_GLUE_RE = re.compile(r"^[a-z]{6,}[A-Z][A-Za-z]{4,}$")
+
+#: Legitimate lowercase-start camelCase compounds that match the shape above.
+_KNOWN_CAMEL_CASE = frozenset({
+    "elasticSearch",
+    "serviceMesh",
+    "springSecurity",
+})
+
+_FENCED_CODE_RE = re.compile(r"```.*?```|~~~.*?~~~", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+
+
+def _prose_only(text: str) -> str:
+    text = _FENCED_CODE_RE.sub(" ", text)
+    text = _INLINE_CODE_RE.sub(" ", text)
+    return _URL_RE.sub(" ", text)
+
+
+def check_invented_tokens(source: str, target: str) -> list[str]:
+    """Gate 8 — flag model-invented glued tokens (issue OL#158).
+
+    A real-model EN output produced ``manufacturingGovorun``, a
+    concatenation present in neither the Chinese source nor English. The
+    aggregate gates could not see it: the token is Latin, the length ratio
+    moved only slightly, and the unit was otherwise translated.
+
+    Fenced code, inline code and URLs are stripped before scanning, so
+    identifiers such as ``getUserName`` never trigger the gate.
+
+    Args:
+        source: Source (pre-translation) text.
+        target: Translated target text.
+
+    Returns:
+        ``OL_WARN: INVENTED_TOKEN`` for each distinct suspicious token.
+    """
+    if not target:
+        return []
+    source_lower = source.lower()
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for token in re.findall(r"[A-Za-z][A-Za-z'-]*", _prose_only(target)):
+        if token in seen or token in _KNOWN_CAMEL_CASE:
+            continue
+        if not _CAMEL_GLUE_RE.match(token):
+            continue
+        if token.lower() in source_lower:
+            continue
+        seen.add(token)
+        warnings.append(
+            f"OL_WARN: INVENTED_TOKEN — token {token!r} looks like a "
+            "model-invented concatenation (absent from the source)"
+        )
+    return warnings
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -687,6 +749,7 @@ def run_quality_gates(
     source_copy_enabled: bool = True,
     source_script_check_enabled: bool = True,
     protocol_artifact_check_enabled: bool = True,
+    invented_token_check_enabled: bool = True,
     block_on_source_script_fragment: bool = False,
     src_lang: str | None = None,
 ) -> list[str]:
@@ -714,6 +777,8 @@ def run_quality_gates(
             fragment detection).
         protocol_artifact_check_enabled: Run Gate 7 (protocol
             artifact detection).
+        invented_token_check_enabled: Run Gate 8 (model-invented
+            glued-token detection, OL#158).
         src_lang: Declared source language, forwarded to Gate 5 so a source
             that contains none of that language's script is not reported as
             an untranslated echo (OL#142). ``None`` / ``auto`` keeps the
@@ -787,5 +852,12 @@ def run_quality_gates(
             all_warnings.extend(check_protocol_artifacts(target))
         except Exception as exc:
             _logger.exception("Gate 7 (protocol artifact check) failed: %s", exc)
+
+    # Gate 8
+    if invented_token_check_enabled:
+        try:
+            all_warnings.extend(check_invented_tokens(source, target))
+        except Exception as exc:
+            _logger.exception("Gate 8 (invented token check) failed: %s", exc)
 
     return all_warnings
