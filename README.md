@@ -9,7 +9,7 @@ AI-native localization pipeline that translates documents through intelligent LL
 - **Translate documents** (Markdown, XLIFF) using LLM APIs
 - **Automatic failover** — switches to backup model if primary fails
 - **Quality preservation** — shields code blocks, links, images during translation
-- **Configurable post-translation quality gates** — 7 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts (the terms audit is a separate `verify-terms` tool, not a pipeline gate)
+- **Configurable post-translation quality gates** — 8 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts, invented tokens (the terms audit is a separate `verify-terms` tool, not a pipeline gate)
 - **LLM-based judging** — evaluates translation accuracy and fluency
 - **Restoration layer** — uses LLM to restore placeholders after translation
 
