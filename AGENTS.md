@@ -212,7 +212,6 @@ OL's MD translation is a 4-stage pipeline:
     │             │  • source_script_fragments — detect CJK residue in non-CJK target locale
     │             │  • protocol_artifacts — detect LLM protocol markers leaked to output
     │             │  • invented_tokens — detect model-invented glued tokens (OL#158)
-    │             │  • terms_audit — full glossary term audit via verify_translation
    └──────────────┘
       │
       ▼
@@ -412,8 +411,9 @@ duplicating tag halves already restored by Level 3.
 
 ### OL#56: Quality gates
 
-Nine config-driven checks run after translation/repair and append
-non-blocking warnings to the output:
+Eight config-driven checks run after translation/repair and append
+non-blocking warnings to the output (the terms audit is a separate
+`verify-terms` tool, not a pipeline gate):
 
 | Gate | Description | Warning codes |
 |------|-------------|---------------|
@@ -425,7 +425,6 @@ non-blocking warnings to the output:
 | `source_script_check` | Detect CJK characters that leaked into a non-CJK target locale | `SOURCE_SCRIPT_FRAGMENT` |
 | `protocol_artifact_check` | Detect LLM protocol/metadata markers in translated text | `PROTOCOL_ARTIFACT` |
 | `invented_token_check` | Detect model-invented glued tokens absent from the source (OL#158) | `INVENTED_TOKEN` |
-| `terms_audit` | Full glossary term audit via verify_translation (mismatches, absent, inconsistencies, low confidence) | `TERM_AUDIT_MISMATCH`, `TERM_AUDIT_ABSENT`, `TERM_AUDIT_INCONSISTENCY`, `TERM_AUDIT_LOW_CONFIDENCE` |
 
 Warnings are collected and returned in the `warnings` output field
 (MCP) or appended to the output file as HTML comments / `<note>`

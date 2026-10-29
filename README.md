@@ -267,7 +267,7 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --json
 | **TM Integration** | hypomnema for translation memory lookups |
 | **TM/TB/SG Automation** | Pre-injection of TM matches + glossary terms for context-aware translation |
 | **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
-| **Quality Gates** | Non-blocking post-translation checks (8 total): inline tag parity, terminology consistency, length ratio bounds, locale conventions, source copy detection, CJK script fragment detection, protocol artifact detection, full glossary term audit. Failures produce `OL_WARN` output. |
+| **Quality Gates** | Non-blocking post-translation checks (8 pipeline gates): inline tag parity, terminology consistency, length ratio bounds, locale conventions, source copy detection, CJK script fragment detection, protocol artifact detection, invented-token detection. The full glossary term audit is a separate `verify-terms` tool, not a pipeline gate. Failures produce `OL_WARN` output. |
 | **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
 ## Quality Assurance & Robustness
