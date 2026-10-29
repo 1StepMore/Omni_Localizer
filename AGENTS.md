@@ -79,7 +79,7 @@ src/
 ├── ol_lqa/                  # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
 │   ├── qa_rules.py          # LQA rules
-│   └── quality_gates.py     # OL#56: 7 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts); terms audit is a separate tool
+│   └── quality_gates.py     # OL#56 + OL#158: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, invented_tokens); terms audit is a separate tool
 ├── ol_restoration/          # Post-translate placeholder restoration
 ├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
 ├── ol_retry/                # RetryManager
