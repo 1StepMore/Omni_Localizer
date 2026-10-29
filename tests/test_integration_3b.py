@@ -114,7 +114,12 @@ class TestTMServiceIntegration:
             TMMatch(source="thank you", target="gracias", similarity=0.75, language_pair="en-es"),
         ]
 
-        results = svc.search("hello world", threshold=0.85, src_lang="en", tgt_lang="es")
+        # Query must NOT equal any entry's source verbatim: an exact source
+        # hit short-circuits to similarity 1.0 before the model loads
+        # (e2e-test-suite#230). "hello" exercises the semantic path, where
+        # the conftest _FakeSTModel puts "hello world" and "good morning"
+        # in the same embedding group (cos=1.0) and "thank you" orthogonal.
+        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="es")
 
         assert len(results) == 2
         assert results[0].source == "hello world"

@@ -203,9 +203,22 @@ class TMService:
     def search(self, source_text: str, threshold: float = 0.85, *, src_lang: str, tgt_lang: str) -> list[TMMatch]:
         """Search for similar translations, filtered by language pair.
 
+        Exact source-text matches short-circuit before the embedding model is
+        loaded: if any entry in the requested language pair has a ``source``
+        equal to *source_text* after ``strip()`` on both sides (case-sensitive
+        — TM sources are stored verbatim, so a case difference is a genuine
+        miss), those entries are returned with ``similarity=1.0`` (the maximum
+        score) and the semantic path is skipped entirely. Every exact match is
+        returned, preserving entry order (they all tie at 1.0, and the sort is
+        stable). This is what keeps an exact-hit lookup fast and hermetic: no
+        ``sentence_transformers``/``numpy`` import, no model load.
+
+        When there is no exact hit, the embedding model is loaded and the
+        usual cosine-similarity ranking (with *threshold*) applies unchanged.
+
         Args:
             source_text: The text to search for.
-            threshold: Minimum similarity score (0-1).
+            threshold: Minimum similarity score (0-1) for the semantic path.
             src_lang: Source language code (required, OL#8).
             tgt_lang: Target language code (required, OL#8).
 
@@ -218,6 +231,19 @@ class TMService:
         entries = [e for e in self._entries if e.language_pair == lang_pair]
         if not entries:
             return []
+        needle = source_text.strip()
+        exact_matches = [
+            TMMatch(
+                source=e.source,
+                target=e.target,
+                similarity=1.0,
+                language_pair=lang_pair,
+            )
+            for e in entries
+            if e.source.strip() == needle
+        ]
+        if exact_matches:
+            return sorted(exact_matches, key=lambda x: x.similarity, reverse=True)
         model = self._get_model()
         source_emb = model.encode([source_text])[0]
         entries_emb = model.encode([e.source for e in entries])
