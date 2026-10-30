@@ -12,6 +12,9 @@ _TMX_PATHS = [
     "/tmp/test_new.tmx",
     "/tmp/test_empty.tmx",
     "/tmp/test_threshold.tmx",
+    "/tmp/test_exact_fastpath.tmx",
+    "/tmp/test_exact_strip.tmx",
+    "/tmp/test_semantic_path.tmx",
 ]
 
 
@@ -91,9 +94,10 @@ class TestTMService:
             TMMatch(source="hello", target="hola", similarity=0.90, language_pair="en-es"),
             TMMatch(source="world", target="mundo", similarity=0.80, language_pair="en-es"),
         ]
-        results = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="es")
+        results = svc.search("hell", threshold=0.85, src_lang="en", tgt_lang="es")
         assert len(results) == 1
         assert results[0].source == "hello"
+        assert results[0].similarity == 0.90
 
     def test_search_sorted_by_similarity(self):
         svc = TMService("/tmp/test_sorted.tmx")
@@ -107,6 +111,73 @@ class TestTMService:
         assert results[0].similarity == 0.95
         assert results[1].similarity == 0.90
         assert results[2].similarity == 0.85
+
+
+class TestTMSearchExactMatchFastPath:
+    """Exact source hits must return similarity 1.0 without loading the model.
+
+    Loading ``sentence_transformers`` costs ~150-260 s wall clock per process
+    (e2e-test-suite#230), so an exact TM hit must never touch that path.
+    """
+
+    def test_exact_match_returns_1_0_without_loading_model(self, monkeypatch):
+        def _explode(self):
+            raise AssertionError("_get_model must not be called for an exact TM hit")
+
+        monkeypatch.setattr(TMService, "_get_model", _explode)
+
+        svc = TMService("/tmp/test_exact_fastpath.tmx")
+        svc._entries = [
+            TMMatch(source="Click the button", target="点击按钮", similarity=1.0, language_pair="en-zh"),
+        ]
+
+        results = svc.search("Click the button", threshold=0.85, src_lang="en", tgt_lang="zh")
+
+        assert len(results) == 1
+        assert results[0].source == "Click the button"
+        assert results[0].target == "点击按钮"
+        assert results[0].similarity == 1.0
+        assert results[0].language_pair == "en-zh"
+
+    def test_exact_match_is_stripped_and_language_filtered(self, monkeypatch):
+        def _explode(self):
+            raise AssertionError("_get_model must not be called for an exact TM hit")
+
+        monkeypatch.setattr(TMService, "_get_model", _explode)
+
+        svc = TMService("/tmp/test_exact_strip.tmx")
+        svc._entries = [
+            TMMatch(source="Click the button", target="点击按钮", similarity=1.0, language_pair="en-zh"),
+            TMMatch(source="Click the button", target="Cliquez", similarity=1.0, language_pair="en-fr"),
+        ]
+
+        results = svc.search("  Click the button  ", threshold=0.85, src_lang="en", tgt_lang="zh")
+
+        assert len(results) == 1
+        assert results[0].target == "点击按钮"
+
+    def test_non_exact_query_still_loads_model(self, monkeypatch):
+        calls: list[bool] = []
+
+        def _fake_get_model(self):
+            calls.append(True)
+            m = MagicMock()
+            m.encode = lambda texts: [[1.0, 0.0, 0.0] for _ in texts]
+            return m
+
+        monkeypatch.setattr(TMService, "_get_model", _fake_get_model)
+        monkeypatch.setattr(TMService, "_cosine_sim", lambda self, s, t: [0.90 for _ in t])
+
+        svc = TMService("/tmp/test_semantic_path.tmx")
+        svc._entries = [
+            TMMatch(source="Click the button", target="点击按钮", similarity=1.0, language_pair="en-zh"),
+        ]
+
+        results = svc.search("Press the button", threshold=0.85, src_lang="en", tgt_lang="zh")
+
+        assert calls == [True]
+        assert len(results) == 1
+        assert results[0].similarity == 0.90
 
 
 class TestTMServiceFlush:
@@ -221,13 +292,13 @@ class TestTMSearchLanguageFilter:
         ]
 
         # Search en→zh: must only return the zh entry
-        results_zh = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="zh")
+        results_zh = svc.search("hell", threshold=0.85, src_lang="en", tgt_lang="zh")
         assert len(results_zh) == 1
         assert results_zh[0].target == "你好"
         assert results_zh[0].language_pair == "en-zh"
 
         # Search en→fr: must only return the fr entry
-        results_fr = svc.search("hello", threshold=0.85, src_lang="en", tgt_lang="fr")
+        results_fr = svc.search("hell", threshold=0.85, src_lang="en", tgt_lang="fr")
         assert len(results_fr) == 1
         assert results_fr[0].target == "bonjour"
         assert results_fr[0].language_pair == "en-fr"

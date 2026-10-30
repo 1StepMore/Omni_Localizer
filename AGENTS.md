@@ -79,7 +79,7 @@ src/
 ├── ol_lqa/                  # Linguistic Quality Assurance
 │   ├── judge.py             # JudgeService (score 0-100)
 │   ├── qa_rules.py          # LQA rules
-│   └── quality_gates.py     # OL#56: 7 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts); terms audit is a separate tool
+│   └── quality_gates.py     # OL#56 + OL#158: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, invented_tokens); terms audit is a separate tool
 ├── ol_restoration/          # Post-translate placeholder restoration
 ├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
 ├── ol_retry/                # RetryManager
@@ -201,7 +201,7 @@ OL's MD translation is a 4-stage pipeline:
       │
       ▼
    ┌──────────────┐
-    │ 6. QUALITY   │  7 gates run after translation/repair, warnings
+    │ 6. QUALITY   │  8 gates run after translation/repair, warnings
     │    GATES     │  appended during final output generation:
     │             │  • inline_tags — verify <bx>/<ex>/<x> tag parity
     │             │  • terminology — detect mixed source/glossary term usage
@@ -211,7 +211,7 @@ OL's MD translation is a 4-stage pipeline:
     │             │  • source_copy — detect unchanged source echo in target
     │             │  • source_script_fragments — detect CJK residue in non-CJK target locale
     │             │  • protocol_artifacts — detect LLM protocol markers leaked to output
-    │             │  • terms_audit — full glossary term audit via verify_translation
+    │             │  • invented_tokens — detect model-invented glued tokens (OL#158)
    └──────────────┘
       │
       ▼
@@ -412,7 +412,8 @@ duplicating tag halves already restored by Level 3.
 ### OL#56: Quality gates
 
 Eight config-driven checks run after translation/repair and append
-non-blocking warnings to the output:
+non-blocking warnings to the output (the terms audit is a separate
+`verify-terms` tool, not a pipeline gate):
 
 | Gate | Description | Warning codes |
 |------|-------------|---------------|
@@ -423,7 +424,7 @@ non-blocking warnings to the output:
 | `source_copy` | Detect when LLM echoes source text back unchanged | `SOURCE_COPY` |
 | `source_script_check` | Detect CJK characters that leaked into a non-CJK target locale | `SOURCE_SCRIPT_FRAGMENT` |
 | `protocol_artifact_check` | Detect LLM protocol/metadata markers in translated text | `PROTOCOL_ARTIFACT` |
-| `terms_audit` | Full glossary term audit via verify_translation (mismatches, absent, inconsistencies, low confidence) | `TERM_AUDIT_MISMATCH`, `TERM_AUDIT_ABSENT`, `TERM_AUDIT_INCONSISTENCY`, `TERM_AUDIT_LOW_CONFIDENCE` |
+| `invented_token_check` | Detect model-invented glued tokens absent from the source (OL#158) | `INVENTED_TOKEN` |
 
 Warnings are collected and returned in the `warnings` output field
 (MCP) or appended to the output file as HTML comments / `<note>`

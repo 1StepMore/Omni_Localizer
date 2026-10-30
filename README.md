@@ -9,7 +9,7 @@ AI-native localization pipeline that translates documents through intelligent LL
 - **Translate documents** (Markdown, XLIFF) using LLM APIs
 - **Automatic failover** — switches to backup model if primary fails
 - **Quality preservation** — shields code blocks, links, images during translation
-- **Configurable post-translation quality gates** — 7 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts (the terms audit is a separate `verify-terms` tool, not a pipeline gate)
+- **Configurable post-translation quality gates** — 8 gates: inline tags, terminology, length ratio, locale, source copy, script fragments, protocol artifacts, invented tokens (the terms audit is a separate `verify-terms` tool, not a pipeline gate)
 - **LLM-based judging** — evaluates translation accuracy and fluency
 - **Restoration layer** — uses LLM to restore placeholders after translation
 
@@ -267,7 +267,7 @@ ol translate-batch ./docs/ -s en -t zh -o output/ --json
 | **TM Integration** | hypomnema for translation memory lookups |
 | **TM/TB/SG Automation** | Pre-injection of TM matches + glossary terms for context-aware translation |
 | **Term Disambiguation** | LLM-based polyseme resolution with confidence fallback |
-| **Quality Gates** | Non-blocking post-translation checks (8 total): inline tag parity, terminology consistency, length ratio bounds, locale conventions, source copy detection, CJK script fragment detection, protocol artifact detection, full glossary term audit. Failures produce `OL_WARN` output. |
+| **Quality Gates** | Non-blocking post-translation checks (8 pipeline gates): inline tag parity, terminology consistency, length ratio bounds, locale conventions, source copy detection, CJK script fragment detection, protocol artifact detection, invented-token detection. The full glossary term audit is a separate `verify-terms` tool, not a pipeline gate. Failures produce `OL_WARN` output. |
 | **QA Rules Subset** | translate-toolkit pofilter rules (accelerators, brackets, printf, variables, xmltags) |
 
 ## Quality Assurance & Robustness
