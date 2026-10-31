@@ -7,7 +7,7 @@
 
 | Document | Lines |
 |---|---:|
-| AGENTS.md | 544 |
+| AGENTS.md | 172 |
 | README.md | 552 |
 | docs/API.md | 466 |
 | docs/ARCHITECTURE.md | 395 |
@@ -17,5 +17,10 @@
 | docs/adr/0001-doc-inventory-gate.md | 50 |
 | docs/adr/README.md | 18 |
 | docs/adr/TEMPLATE.md | 29 |
+| docs/dev/cli-reference.md | 34 |
+| docs/dev/gotchas.md | 101 |
+| docs/dev/llm-pool.md | 62 |
+| docs/dev/pipeline.md | 143 |
+| docs/dev/source-layout.md | 58 |
 | docs/glossary_format.md | 230 |
 | docs/real_llm_runbook.md | 195 |
