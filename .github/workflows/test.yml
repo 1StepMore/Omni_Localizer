@@ -98,6 +98,11 @@ jobs:
       - name: Doc inventory (--check)
         run: python scripts/doc_inventory.py --check
 
+      # Production matrix gate (OL#164): docs/dev/production-matrix.md rows
+      # must stay in sync with the source-derived channel/gate/tool sets.
+      - name: Coverage matrix (--check)
+        run: python scripts/coverage_matrix.py --check
+
   # Suite validation: OL's own scenarios (tool-ol-* + pipeline quality bar)
   # via the Omni Suite validation framework's per-module filter.
   # Hermetic tier-1 (no LLM keys) — the pipeline quality bar is tier 2 and
