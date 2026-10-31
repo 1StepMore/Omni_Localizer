@@ -7,12 +7,15 @@
 
 | Document | Lines |
 |---|---:|
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/API.md | 466 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/ARCHITECTURE.md | 395 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/MCP-CONNECTION-TEMPLATE.md | 642 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/TROUBLESHOOTING.md | 479 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/TUTORIAL.md | 282 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/glossary_format.md | 230 |
-| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/real_llm_runbook.md | 195 |
 | AGENTS.md | 544 |
 | README.md | 552 |
+| docs/API.md | 466 |
+| docs/ARCHITECTURE.md | 395 |
+| docs/MCP-CONNECTION-TEMPLATE.md | 642 |
+| docs/TROUBLESHOOTING.md | 479 |
+| docs/TUTORIAL.md | 282 |
+| docs/adr/0001-doc-inventory-gate.md | 50 |
+| docs/adr/README.md | 18 |
+| docs/adr/TEMPLATE.md | 29 |
+| docs/glossary_format.md | 230 |
+| docs/real_llm_runbook.md | 195 |

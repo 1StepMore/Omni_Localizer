@@ -136,6 +136,13 @@ def _check_referential_paths(failures: list[str]) -> None:
     按父仓根解析。
     """
     _skip_prefixes = ("http://", "https://", "/", "~", "pip ", "python ", "uv ")
+    # 两档：本仓路径总是强制；跨仓路径（suite 父仓 docs）仅在该树存在时
+    # 强制——「树存在」要求 pyproject.toml/docs/ 标记，CI 的 runner 工作目录
+    # 永远 is_dir()，不能作为判据。
+    _cross_roots = [ROOT.parent]
+    present_cross_roots = [r for r in _cross_roots
+                           if (r / "pyproject.toml").is_file() or (r / "docs").is_dir()]
+    skipped_cross = 0
     for rel in REFERENTIAL_SCOPE:
         path = ROOT / rel
         if not path.is_file():
@@ -148,20 +155,31 @@ def _check_referential_paths(failures: list[str]) -> None:
             if any(token.startswith(p) for p in _skip_prefixes):
                 continue
             token = token.split(":", 1)[0]  # ``path.py:62`` 行/符号引用
-            if (ROOT / token).exists() or (ROOT.parent / token).exists():
+            if (ROOT / token).exists():
                 continue
+            if any((base / token).exists() for base in present_cross_roots):
+                continue
+            if not present_cross_roots:
+                skipped_cross += 1
+                continue  # CI 单仓 checkout：跨仓树不存在，跳过
             failures.append(f"{rel}: backticked path does not exist: {token!r}")
+    if _cross_roots and not present_cross_roots and skipped_cross:
+        print(f"  note: {skipped_cross} cross-repo reference(s) skipped — "
+              "suite checkout not present in this environment")
 
 
 # ── 行集生成 ────────────────────────────────────────────────────────────────
 
 
 def _doc_rows() -> list[tuple[str, int]]:
+    # 行集键必须是 ROOT 相对路径——绝对路径会让新鲜度比较在任何不同
+    # checkout 位置上必然失败（CI 的 /home/runner/...）。
     rows = []
     for p in sorted((ROOT / "docs").rglob("*.md")):
         if "dev/doc-inventory" in p.as_posix():
             continue
-        rows.append((p.as_posix(), len(p.read_text(encoding="utf-8", errors="replace").splitlines())))
+        rows.append((p.relative_to(ROOT).as_posix(),
+                     len(p.read_text(encoding="utf-8", errors="replace").splitlines())))
     for rel in ("README.md", "AGENTS.md"):
         p = ROOT / rel
         if p.is_file():
