@@ -90,6 +90,14 @@ jobs:
           OMNI_TEST_FAKE_LLM: "1"
         run: python -m pytest tests/ --ignore=tests/test_checkpoint*.py --ignore=tests/test_lqa_judge.py --ignore=tests/test_lqa_scorer.py --ignore=tests/test_lqa_comet.py --ignore=tests/test_tm_service.py --ignore=tests/test_ol_mcp.py --ignore=tests/test_ol_mcp_error_boundary.py --ignore=tests/test_ol_mcp_translate_xliff_bug.py --ignore=tests/test_e2e_behavioral.py --tb=short -v
 
+      # Doc-truth gate (OL#163): README/AGENTS/API.md claims must match the
+      # values derived from source (21 tools from TOOL_REGISTRY, 8 gates from
+      # run_quality_gates's *_enabled params, scenarios, version), referenced
+      # paths must resolve, and docs/dev/doc-inventory.md must be fresh.
+      # exit 1 = doc drift.
+      - name: Doc inventory (--check)
+        run: python scripts/doc_inventory.py --check
+
   # Suite validation: OL's own scenarios (tool-ol-* + pipeline quality bar)
   # via the Omni Suite validation framework's per-module filter.
   # Hermetic tier-1 (no LLM keys) — the pipeline quality bar is tier 2 and
