@@ -224,6 +224,29 @@ def has_source_language_residual(text: str, source_lang: str, target_lang: str) 
 
 _logger = get_logger("pool")
 
+#: Pipeline default completion ceiling per role. These mirror the historical
+#: call-site constants. They are only written into ``litellm_params`` for a
+#: role that opts into per-entry ceilings; see ``_router_max_tokens_kwargs``.
+_ROLE_DEFAULT_MAX_TOKENS: dict[str, int] = {
+    "translation": 4096,
+    "judging": 2048,
+    "restoration": 2048,
+    "profiling": 2048,
+}
+
+
+def _effective_max_tokens(role: str, model: LLMModelConfig) -> int:
+    """Return the completion ceiling a single deployment should use.
+
+    A per-entry ``max_tokens`` wins; otherwise the role's pipeline default.
+    """
+    if model.max_tokens is not None:
+        return model.max_tokens
+    return _ROLE_DEFAULT_MAX_TOKENS.get(
+        role, _ROLE_DEFAULT_MAX_TOKENS["translation"],
+    )
+
+
 # 2026-06-17 round 6 (FIX-#11): cache value is (pool, config_mtime) so
 # config edits on disk are picked up without restarting the process.
 _pool_cache: dict[str, tuple["ModelPool", float]] = {}
@@ -676,7 +699,19 @@ class ModelPool:
         usable = usable if usable is not None else partition_usable_models(pool)[0]
         model_list = []
         for role in ("translation", "judging", "restoration", "profiling"):
-            for model in usable.get(role, []):
+            role_models = usable.get(role, [])
+            # LiteLLM request kwargs override deployment litellm_params, so a
+            # per-entry ceiling only has an effect when the caller does NOT pin
+            # `max_tokens` itself. Opt in per role: if ANY entry declares
+            # `max_tokens`, every entry of that role gets an explicit ceiling
+            # (its own override, else the role default) and the call sites stop
+            # pinning a value (see _router_max_tokens_kwargs). Roles with no
+            # override keep the historical call-site constant, so their
+            # litellm_params stay byte-identical.
+            role_has_override = any(
+                m.max_tokens is not None for m in role_models
+            )
+            for model in role_models:
                 litellm_params = {
                     "model": f"{model.provider}/{model.model}",
                 }
@@ -695,6 +730,17 @@ class ModelPool:
                     litellm_params["max_parallel_requests"] = (
                         model.max_parallel_requests
                     )
+                # Per-entry overrides. `extra_body` is omitted when unset so
+                # existing configs keep producing byte-identical
+                # litellm_params. `max_tokens` is emitted for the whole role
+                # once any entry declares it, because the call site then stops
+                # pinning a value and every deployment must carry its own.
+                if role_has_override:
+                    litellm_params["max_tokens"] = _effective_max_tokens(
+                        role, model,
+                    )
+                if model.extra_body is not None:
+                    litellm_params["extra_body"] = model.extra_body
                 model_list.append(
                     {
                         "model_name": role,
@@ -702,6 +748,27 @@ class ModelPool:
                     },
                 )
         return model_list
+
+    def _router_max_tokens_kwargs(self, role: str) -> dict[str, int]:
+        """Per-call ``max_tokens`` kwargs for a Router completion.
+
+        LiteLLM's Router merges request kwargs LAST, so a pinned call-site
+        value would override every deployment-level ceiling. When a role
+        declares any per-entry ``max_tokens``, the ceiling therefore has to be
+        resolved by the deployments themselves and this returns nothing.
+        Roles without overrides keep the historical call-site constant.
+        """
+        models = getattr(self, "_usable_by_role", {}).get(role) or []
+        if any(m.max_tokens is not None for m in models):
+            return {}
+        return {"max_tokens": _ROLE_DEFAULT_MAX_TOKENS.get(role, 2048)}
+
+    def _role_max_tokens_ceiling(self, role: str) -> int:
+        """Largest effective ceiling across a role's usable deployments."""
+        models = getattr(self, "_usable_by_role", {}).get(role) or []
+        if not models:
+            return _ROLE_DEFAULT_MAX_TOKENS.get(role, 2048)
+        return max(_effective_max_tokens(role, m) for m in models)
 
     def _make_cache_key(
         self, model: str, messages: list[dict], temperature: float,
@@ -806,8 +873,14 @@ class ModelPool:
             "model": f"{model.provider}/{model.model}",
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": (
+                model.max_tokens
+                if model.max_tokens is not None
+                else max_tokens
+            ),
         }
+        if model.extra_body is not None:
+            params["extra_body"] = model.extra_body
         if model.api_key:
             params["api_key"] = _resolve_env_vars(model.api_key)
         if model.base_url:
@@ -822,15 +895,19 @@ class ModelPool:
         text: str,
         source_lang: str,
         target_lang: str,
+        max_tokens: int | None = None,
     ) -> str:
         """Validate, clean and return a successful translation response.
 
         Shared by the Router path and the intra-role failover path so they
         cannot drift on truncation / chain-of-thought / residual checks.
+        ``max_tokens`` is the effective completion ceiling for the deployment
+        that answered; it is used by the OL#47 secondary heuristic.
         """
+        _limit = max_tokens or _ROLE_DEFAULT_MAX_TOKENS["translation"]
         if response.choices[0].finish_reason == "length":
             raise ModelPoolTruncationError(
-                f"Translation response truncated at {4096} tokens "
+                f"Translation response truncated at {_limit} tokens "
                 f"(finish_reason=length) for ~{len(text)} chars input"
             )
 
@@ -839,7 +916,7 @@ class ModelPool:
         #   a. Output ends with "..." or ".." (abrupt termination)
         #   b. Output ends with non-sentence-terminal punctuation
         #      (, ; : — –) for inputs longer than 500 chars
-        #   c. usage.completion_tokens >= 90 % of max_tokens (4096)
+        #   c. usage.completion_tokens >= 90 % of the effective ceiling
         if response.choices[0].finish_reason == "stop":
             _content = response.choices[0].message.content or ""
             _truncated = False
@@ -868,10 +945,11 @@ class ModelPool:
                     # objects (the existing happy-path test doesn't
                     # set usage, so getattr would return a MagicMock
                     # instance that is truthy but not an int).
-                    if isinstance(_ct, int) and _ct >= int(0.9 * 4096):
+                    if isinstance(_ct, int) and _ct >= int(0.9 * _limit):
                         _truncated = True
                         _trunc_reasons.append(
-                            f"completion_tokens ({_ct}) >= 90% of max_tokens (4096)"
+                            f"completion_tokens ({_ct}) >= 90% of max_tokens "
+                            f"({_limit})"
                         )
 
             if _truncated:
@@ -972,6 +1050,7 @@ class ModelPool:
                 continue
             translated = self._process_translation_response(
                 response, text, source_lang, target_lang,
+                max_tokens=_effective_max_tokens(role, model),
             )
             if self._cache_enabled and temperature == 0.0:
                 self._cache.put(cache_key, translated)
@@ -1108,10 +1187,11 @@ class ModelPool:
                     model=model_str,
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=4096,
+                    **self._router_max_tokens_kwargs("translation"),
                 )
                 translated = self._process_translation_response(
                     response, text, source_lang, target_lang,
+                    max_tokens=self._role_max_tokens_ceiling("translation"),
                 )
                 if self._cache_enabled and temperature == 0.0:
                     self._cache.put(cache_key, translated)
@@ -1221,7 +1301,7 @@ class ModelPool:
                 model="judging",
                 messages=messages,
                 temperature=temperature,
-                max_tokens=2048,
+                **self._router_max_tokens_kwargs("judging"),
             )
         except Timeout as e:
             _logger.warning(f"Judge timeout: {e}")
@@ -1357,7 +1437,7 @@ class ModelPool:
                 model="judging",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
-                max_tokens=2048,
+                **self._router_max_tokens_kwargs("judging"),
             )
             try:
                 return _resp.choices[0].message.content or ""
@@ -1466,7 +1546,7 @@ class ModelPool:
                 model="profiling",
                 messages=messages,
                 temperature=0.0,
-                max_tokens=2048,
+                **self._router_max_tokens_kwargs("profiling"),
             )
         except Timeout as e:
             _logger.warning(f"Profile timeout: {e}")
@@ -1523,7 +1603,7 @@ class ModelPool:
                     model="profiling",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
-                    max_tokens=2048,
+                    **self._router_max_tokens_kwargs("profiling"),
                 )
                 try:
                     return _resp.choices[0].message.content or ""

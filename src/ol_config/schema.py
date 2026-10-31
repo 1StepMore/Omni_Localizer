@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -71,6 +72,35 @@ class LLMModelConfig(BaseModel):
             "'model_concurrency_rate_limit_exceeded' naming a concurrency "
             "number, Zhipu returns 'code 1305 该模型当前访问量过大'. requests_per_minute "
             "cannot prevent either."
+        ),
+    )
+    max_tokens: int | None = Field(
+        None, ge=1,
+        description=(
+            "Per-deployment max_tokens override, forwarded to "
+            "litellm_params['max_tokens'] and applied to every call routed to "
+            "this entry. Leave unset (the default) to keep the pipeline's "
+            "existing per-call value, so configs that do not declare it behave "
+            "exactly as before. Set it on reasoning models whose thinking "
+            "budget can exceed the pipeline default: iFlytek Spark (spark-x2.6, "
+            "OpenAI-compatible MaaS) emitted a single 4292-token answer, so the "
+            "entry needs a larger ceiling than the 4096 used elsewhere."
+        ),
+    )
+    extra_body: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Per-deployment provider-specific request body, forwarded to "
+            "litellm_params['extra_body']. Leave unset (the default) to send "
+            "no extra body, so configs that do not declare it are unchanged. "
+            "LiteLLM forwards provider-specific body parameters ONLY through "
+            "extra_body; a sibling key such as additional_body is silently "
+            "dropped. Reasoning background: iFlytek Spark (spark-x2.6) spends "
+            "max_tokens on hidden thinking, so long inputs end with "
+            "finish_reason=length and empty content unless thinking is "
+            "disabled. Spark accepts "
+            "{'thinking': {'type': 'disabled'}} and "
+            "{'chat_template_kwargs': {'enable_thinking': False}}."
         ),
     )
 
