@@ -12,7 +12,15 @@
 | /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/MCP-CONNECTION-TEMPLATE.md | 642 |
 | /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/TROUBLESHOOTING.md | 479 |
 | /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/TUTORIAL.md | 282 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/adr/0001-doc-inventory-gate.md | 50 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/adr/README.md | 18 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/adr/TEMPLATE.md | 29 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/dev/cli-reference.md | 34 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/dev/gotchas.md | 101 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/dev/llm-pool.md | 62 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/dev/pipeline.md | 143 |
+| /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/dev/source-layout.md | 58 |
 | /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/glossary_format.md | 230 |
 | /mnt/d/贯维/Omni_Suite/Omni_Localizer/docs/real_llm_runbook.md | 195 |
-| AGENTS.md | 544 |
+| AGENTS.md | 172 |
 | README.md | 552 |

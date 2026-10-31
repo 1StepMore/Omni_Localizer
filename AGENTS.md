@@ -9,6 +9,9 @@ OL.
 > produces MD + XLIFF, OL translates them via LLM, ORF backfills into
 > the target format.
 
+This file is an **index + invariants** file (≤200 lines, #162): detail
+lives in `docs/dev/*.md` and `docs/API.md`, not here.
+
 ## Quick start
 
 ```bash
@@ -33,465 +36,96 @@ ol-mcp            # or: python -m ol_mcp
 
 # Tests (must set OMNI_TEST_FAKE_LLM=1 to avoid real LLM calls)
 make test
-# Or: OMNI_TEST_FAKE_LLM=1 uv run pytest tests/ -v
 ```
 
 ## Source layout
 
 ```
 src/
-├── ol_cli.py                # `ol` CLI entry (Typer) — builds the app, registers 21 sub-commands
-├── cli/                     # CLI sub-command implementations
-│   ├── _shared.py           # ExitCode, precheck_api_keys, signal handling
-│   ├── cache.py             # content-addressed cache (root ~/.omni_cache/ol)
-│   ├── translate_md.py      # `translate-md` + _load_env_for_cli
-│   ├── translate_xliff.py   # `translate-xliff`
-│   ├── batch.py             # `translate-batch` + `extract-warnings`
-│   └── …                    # one module per other sub-command
-├── ol/                      # package marker; src/ol/__init__.py holds __version__
-├── ol_config/               # YAML config + Pydantic schema
-│   ├── schema.py            # LLMPoolConfig, ProjectConfig
-│   ├── loader.py            # load_config() with ${ENV_VAR} resolution
-│   └── resolver.py          # ${VAR} resolution helpers
-├── ol_pool/                 # ModelPool (litellm Router wrapper)
-│   ├── router.py            # E2E-83: pre-call check removed
-│   ├── prompts/             # OL#112: prompt store (*.txt)
-│   ├── fake.py              # _FakeModelPool test seam
-│   └── json_tolerance.py    # LLM JSON tolerance
-├── ol_md/                   # MD translation channel
-│   ├── shield.py            # E2E-77/78: math regex + [OL:...] markers
-│   ├── repair/              # repair stages (regex → span → [L3 LLM opt-in] → fallback)
-│   ├── extractor.py         # Tokenize MD into translatable units
-│   ├── pipeline.py          # MDRepairPipeline
-│   └── token_stream.py
-├── ol_xliff/                # XLIFF translation channel
-│   ├── repair/              # E2E-64: is_complete() checks actual XML
-│   ├── parser.py            # trans-unit iteration
-│   ├── shield.py            # inline-tag shielding
-│   ├── polish.py
-│   └── pipeline.py
-├── ol_buses/                # Shared translation bus (md_bus, xliff_bus, xliff_shield)
-├── ol_batch/                # BatchProcessor
-├── ol_terminology/          # RAG-based prompt injection
-│   ├── rag_injector.py      # build_translate_prompt with TM/glossary
-│   ├── extractor.py         # YAKE term extraction
-│   └── disambiguator.py     # LLM-based polysemy resolution
-├── ol_lqa/                  # Linguistic Quality Assurance
-│   ├── judge.py             # JudgeService (score 0-100)
-│   ├── qa_rules.py          # LQA rules
-│   └── quality_gates.py     # OL#56 + OL#158: 8 quality gate functions (inline tags, terminology, length ratio, locale, source_copy, source_script_fragments, protocol_artifacts, invented_tokens); terms audit is a separate tool
-├── ol_restoration/          # Post-translate placeholder restoration
-├── ol_concurrency/          # ConcurrencyLimiter (semaphores)
-├── ol_retry/                # RetryManager
-├── ol_logging/              # Structured JSON + console logger
-├── ol_checkpoint/           # Translation checkpointing (library-only; not wired into CLI/batch)
-├── ol_post/                 # zh↔en punctuation normalization
-├── ol_tm/                   # TMX translation memory service
-├── ol_style/                # StyleGuide profiling + cache
-├── ol_core/                 # TranslationContext, TranslationUnit, ChannelType
-├── ol_review_extractor.py
-└── ol_mcp/                  # MCP server (the Agent-facing surface)
+├── ol_cli.py / cli/         # `ol` CLI entry (Typer) — 21 sub-commands
+├── ol_config/               # YAML config + Pydantic schema (LLMPoolConfig)
+├── ol_pool/                 # ModelPool (litellm Router) + prompts/*.txt store
+├── ol_md/                   # MD channel: shield → translate → repair → unshield
+├── ol_xliff/                # XLIFF channel (parser, repair, polish)
+├── ol_lqa/                  # Judge + 8 quality gates (quality_gates.py)
+├── ol_mcp/                  # MCP server (the Agent-facing surface)
+└── …                        # buses, batch, terminology, restoration, tm, style…
 ```
+
+Full annotated tree: `docs/dev/source-layout.md` (regenerate motivation:
+see `git log --follow src/` for anything not covered here).
 
 ## CLI reference
 
-| Command | Purpose |
-|---------|---------|
-| `ol translate-md <file> -s <src> -t <tgt> -o <dir>` | Translate a single MD file |
-| `ol translate-md <file> -s en -t zh --chunk-by-paragraph` | Translate paragraph-by-paragraph (better for literary text) |
-| `ol translate-md <file> --no-glossary --no-restoration` | Disable optional stages |
-| `ol translate-xliff <file> -s <src> -t <tgt>` | Translate an XLIFF file |
-| `ol translate-batch <dir> -s <src> -t <tgt> --concurrency 10` | Batch translate a directory |
-| `ol extract-warnings <file>` | Extract placeholder restoration warnings from an output |
-| `ol init [--config -c PATH] [--non-interactive] [--force]` | Interactive wizard generating `config/local.yaml` with the unified model pool |
-| `ol doctor [--config -c PATH] [--json]` | Validate model-pool config (5 checks) and print a pass/fail checklist; the env check passes when every role has at least one usable (keyed) model |
-| `ol-mcp` | Start the MCP server (stdio) |
+Top commands; the full command + flag table lives in
+[`docs/dev/cli-reference.md`](docs/dev/cli-reference.md).
 
-### Common flags
-
-- `--config <path>` — path to YAML config (default `config/default.yaml`)
-- `--json` — emit a one-line JSON status/summary (for agent parsing)
-- `--glossary <path>` — glossary JSON file (overrides config)
-- `--no-glossary` — disable glossary injection even if config has one
-- `--glossary-max-terms <N>` — top-N terms to inject per unit (default `5`)
-- `--chunk-by-paragraph` — split by blank lines, translate each separately
-- `--styleguide <path>` — inject a StyleGuide JSON (output of `profile-doc`)
-- `--polish` — post-translation cross-unit consistency pass
-- `--scorer <bleu|comet|none>` — LQA scorer backend
-- `--report-coverage` / `--coverage-threshold <pct>` — glossary coverage report + warning threshold
-- `--images-json <path>` — copy an OPP `images.json` alongside the output
-- `--concurrency <N>` — max concurrent translations
-- `--no-cache` — bypass the content-addressed cache and force a fresh translation
-- `--clear-cache` — remove all cached OL outputs and exit
-- `--fail-on-untranslated` — exit `1` if any unit came back untranslated
-- `--no-frontmatter` — skip YAML frontmatter injection
-- `--no-restoration` — skip post-translate placeholder restoration (Level 3 LLM)
-- `--log-format console|json` — log output format
+- `ol translate-md <file> -s <src> -t <tgt> -o <dir>` — single MD file
+- `ol translate-xliff <file> -s <src> -t <tgt>` — XLIFF file
+- `ol translate-batch <dir> -s <src> -t <tgt> -o <out> --concurrency 10` — batch
+- `ol init` / `ol doctor` — bootstrap + validate model-pool config (5 checks)
 
 ## MCP tools (21 total)
 
-| Tool | Purpose |
-|------|---------|
-| `translate_md_text` | Translate markdown text (text-in/text-out). Returns optional `warnings` field with post-translation quality gate results, plus a `quality_gates` field reporting whether the gates actually ran (`ran` / `not_run` / `skipped`); see issue #115 and `docs/API.md` § 2.1. The primary Agent tool. |
-| `translate_xliff` | Translate an XLIFF file (text-in/text-out). Per-unit quality gate notes written to `<note>` elements in output; run-level `quality_gates` field as above (`docs/API.md` § 2.2). |
-| `judge_text` | Evaluate translation quality (returns adequacy/fluency/terminology/format scores) |
-| `load_glossary` | Load a JSON glossary file |
-| `get_relevant_terms` | Extract top-k relevant glossary terms for a source text |
-| `search_tm` | Search TMX translation memory for similar past translations |
-| `batch_translate_texts` | Translate multiple texts in parallel |
-| `translate_file` | Translate a document file end-to-end (OPP → OL → ORF), shelling out to the `opp`/`ol`/`orf` CLIs |
-| `extract_terms` | Extract key terms from source texts using YAKE (ML deps required) |
-| `add_tm_entries` | Add translation entries to a TMX file, creating it if missing |
-| `shield_md_text` | Replace code/links/math/HTML/images in markdown with `[OL:TYPE:NNNN]` placeholders |
-| `unshield_md_text` | Restore `[OL:TYPE:NNNN]` placeholders using a prior `shield_map` |
-| `generate_report` | Generate HTML + CSV quality reports from translation warnings and model costs |
-| `inspect_config` | Inspect OL configuration (models, paths, LQA settings); API keys are redacted |
-| `disambiguate` | Resolve polysemous terms in text using context-aware confidence-based selection from a glossary |
-| `extract_warnings` | Read an MD/XLIFF file and extract OL warning markers as structured `WarningEntry` objects |
-| `get_translation_status` | Poll the status of an async translation task by `request_id` |
-| `verify_terms` | Verify glossary term usage in translated content |
-| `profile_doc` | Profile a document's writing style, returning a `StyleGuide` |
-| `get_capabilities` | Return OL module capabilities: roles, language pairs, and available MCP tools |
-| `ping` | Health check |
+The Agent-facing surface. The complete per-tool parameter reference is
+[`docs/API.md`](docs/API.md); the runtime list is `get_capabilities`.
 
-For full per-tool parameter reference, see this module's [`docs/API.md`](docs/API.md).
-The suite-level [agent-pipeline-guide.md](https://github.com/1StepMore/e2e-test-suite/blob/main/docs/agent-pipeline-guide.md)
-covers server/tool inventory and namespacing.
+- Primary: `translate_md_text` / `translate_xliff` — text-in/text-out;
+  responses carry a `quality_gates` field (`ran` / `not_run` / `skipped`)
+  and non-blocking `warnings` (issue #115, `docs/API.md` § 2.1–2.2).
+- Support: `judge_text`, `load_glossary`, `get_relevant_terms`, `search_tm`,
+  `batch_translate_texts`, `translate_file` (full OPP → OL → ORF chain),
+  `shield_md_text` / `unshield_md_text`, `extract_warnings`,
+  `verify_terms`, `profile_doc`, `get_capabilities`, `ping`, …
 
 ## Translation pipeline (MD channel)
 
-OL's MD translation is a 4-stage pipeline:
+6 stages: **shield → translate → repair (4 levels) → unshield → postproc
+→ 8 quality gates**. The stage diagram, prompt-store rules (prompts are
+`string.Template` files under `src/ol_pool/prompts/`, fail-loud
+rendering), the E2E regression contracts (E2E-65/14/64/77/78/83) and the
+channel-selection decision table live in
+[`docs/dev/pipeline.md`](docs/dev/pipeline.md).
 
-```
-   input.md
-     │
-     ▼
-  ┌─────────────┐
-  │  1. SHIELD   │  Replace code blocks, math ($..$), links, images,
-  │             │  HTML, autolinks with [OL:TYPE:NNNN] markers
-  └─────────────┘
-     │  shielded.md + shield_map
-     ▼
-  ┌─────────────┐
-  │  2. TRANSLATE│  LLM call (litellm Router → ModelPool)
-  │             │  with retry + circuit breaker + rate limit
-  └─────────────┘
-     │  translated.md (with markers preserved)
-     ▼
-  ┌─────────────┐
-  │  3. REPAIR   │  3-stage restoration of any markers the LLM
-  │             │  mangled / dropped:
-  │             │    Level 1: regex (fast)
-  │             │    Level 2: span alignment
-  │             │    Level 3: LLM-based (LiteLLMRestorer)
-  │             │    Level 4: safe fallback (append at end with warning)
-  └─────────────┘
-     │  repaired.md
-     ▼
-  ┌─────────────┐
-  │ 4. UNSHIELD  │  Replace [OL:TYPE:NNNN] markers with original content
-  │             │  from shield_map. Missing markers → OL_WARN comment.
-  └─────────────┘
-     │  output.md
-     ▼
-   ┌─────────────┐
-   │ 5. POSTPROC  │  zh↔en punctuation normalization (ol_post.punctuation)
-   │             │  + YAML frontmatter injection (source/target lang, ...)
-   └─────────────┘
-      │
-      ▼
-   ┌──────────────┐
-    │ 6. QUALITY   │  8 gates run after translation/repair, warnings
-    │    GATES     │  appended during final output generation:
-    │             │  • inline_tags — verify <bx>/<ex>/<x> tag parity
-    │             │  • terminology — detect mixed source/glossary term usage
-    │             │  • length_ratio — fail if OL_LENGTH_RATIO_MIN..MAX exceeded
-    │             │  • locale — currency mixing, date leakage, digit grouping,
-    │             │            unit spelling (en-US vs en-GB)
-    │             │  • source_copy — detect unchanged source echo in target
-    │             │  • source_script_fragments — detect CJK residue in non-CJK target locale
-    │             │  • protocol_artifacts — detect LLM protocol markers leaked to output
-    │             │  • invented_tokens — detect model-invented glued tokens (OL#158)
-   └──────────────┘
-      │
-      ▼
-   output.md (final)
-```
+## Model pool + env vars (critical invariants)
 
-### Prompts are a first-class asset (OL#112)
+Full tables: [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
 
-The core translation/judging prompts live in `src/ol_pool/prompts/*.txt`, not
-inline in `router.py`. **Changing a prompt touches only a file under
-`prompts/`.**
-
-| Prompt | Used by | Variables |
-|--------|---------|-----------|
-| `translate_system.txt` | `ModelPool.translate()` | `$source_lang`, `$target_lang` |
-| `translate_user.txt` | `ModelPool.translate()` | `$source_lang`, `$target_lang`, `$user_text` |
-| `judge_system.txt` | `ModelPool.judge()` | none |
-| `judge_user.txt` | `ModelPool.judge()` | `$source_lang`, `$source`, `$target_lang`, `$target`, `$terminology_section` |
-
-```python
-from ol_pool.prompts import load_prompt, render_prompt
-
-render_prompt("translate_system", source_lang="en", target_lang="zh")
-```
-
-Templates are stdlib `string.Template` (`$name`) — **not** `str.format`,
-because the prompts legitimately contain `{`/`}` (`{{_OL_XTAG_*_}}`, the judge
-JSON schema). A literal `$` must be written `$$`. Rendering **fails loud**
-(`PromptRenderError`) on a missing *or* an undeclared variable, so a renamed
-placeholder can never silently leave a hole in a prompt.
-
-`tests/test_prompt_store.py` pins the rendered bytes against digests captured
-before the extraction, and asserts each prompt is defined in exactly one place
-in `src/` — if you intentionally change a prompt, expect those digests to fail
-and update them deliberately.
-
-### E2E-65: Prompt injection strip
-
-If the LLM echoes back `CRITICAL: Output ONLY the translation...` or
-similar system-prompt fragments, the Level 1 repair strips them via
-regex. Don't strip these patterns yourself; OL handles it.
-
-### E2E-14: Base64 image dedup
-
-After translation, if the LLM re-encoded `![…](…)` image refs as
-fresh base64 lines, they're deduplicated. OPP already produced the
-canonical refs in the input.
-
-### E2E-64: XLIFF repair `is_complete()`
-
-The XLIFF repair pipeline checks that the XLIFF has all `<target>`
-elements filled. If not, it attempts restoration before writing the
-output.
-
-### E2E-77/78: Shield marker format + unshield fallback
-
-- Math: `$..$` only matched if it contains a LaTeX marker
-  (`\command`, `^`, or `_`) — currency text is not eaten.
-- HTML: `[OL:HTML:NNNN]` ASCII-delimited markers (not NUL-delimited
-  which LLMs would strip).
-- Unshield: if a marker is missing, the original content is appended
-  at the end under a `<!-- OL_WARN:missing_shields key1,key2,... -->`
-  comment, never silently lost.
-
-### E2E-83: litellm pre-call check removed
-
-OL used to pass `optional_pre_call_checks=['enforce_model_rate_limits']`
-to litellm's Router, which fast-rejected large requests (>~50KB /
->~20K tokens) and triggered 10/20/40s backoffs in the translate()
-retry loop. This was removed; per-model RPM is still set in
-`litellm_params['rpm']` but rejection now comes from the provider's
-HTTP 429 (handled by the existing backoff).
-
-## LLM model pool
-
-OL is configured via `config/default.yaml` + `config/local.yaml`.
-Each model has:
-- `provider` (e.g., `openai`)
-- `model` (e.g., `glm-4.7-flash`)
-- `priority` (1 = highest)
-- `role` (`translation` | `judging` | `restoration` | `profiling`)
-- `api_key` (use `${ENV_VAR}` syntax)
-- `base_url` (for non-OpenAI providers)
-- `timeout` (per-request, default 120s)
-- `requests_per_minute` (default 500) — routing weight only, NOT hard-enforced (E5E-83 removed `enforce_model_rate_limits`)
-- `max_parallel_requests` (default unset) — enforced cap on simultaneous in-flight requests; use it when the provider 429s on concurrency (AMD `model_concurrency_rate_limit_exceeded`, Zhipu `code 1305`)
-
-**Unified pool (canonical)** — `config/default.yaml` is the committed source of
-truth (2 tiers × 4 roles); `ol init` writes `config/local.yaml`. `local.yaml` is
-a **gitignored operator override**, not a byte-for-byte mirror: it may legitimately
-differ in tier count, rate limits, and timeouts (the operator config on this
-machine adds a third free `stealth/cat-jam:free` tier per role, keyed by
-`OL_COMMANDCODE_API_KEY`).
-
-- **DeepSeek-V4.1-Flash** → AMD Radeon (`AMD_API_KEY`, `https://developer.amd.com.cn/radeon/api/v1`) — priority-1 primary for translation/judging/restoration/profiling
-- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-2 fallback
-
-Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
-never written. Each of `translation`, `judging`, and `restoration` must
-have **≥2 models** — `ol doctor` enforces this as one of its 5 checks.
-
-litellm Router with `routing_strategy="simple-shuffle"` and
-`num_retries=2` picks a model within the role group. If it fails,
-the next model in priority is tried.
-
-## Env vars
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
-| `OMNI_RUN_REAL_LLM=1` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
-| `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `AMD_API_KEY` / `ZHIPU_API_KEY` | (none) | LLM provider API keys (DeepSeek-V4.1-Flash / glm-4.7-flash). |
-| `OL_COMMANDCODE_API_KEY` | (none) | Key for the optional third tier (`stealth/cat-jam:free`) in an operator's gitignored `config/local.yaml`. |
-| `OMNI_CACHE_DIR` | `~/.omni_cache` | Cache root; OL stores content-addressed entries under `<root>/ol/`. Read at call-time. |
-| `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |
-| `OPP_LOG_LEVEL` | `INFO` | Log level. |
-| `OL_MAX_INPUT_SIZE_MB` | 50 | Reject CLI inputs larger than this. |
-| `OL_LENGTH_RATIO_MIN` | 0.5 | Minimum acceptable translated/source length ratio (quality gates). |
-| `OL_LENGTH_RATIO_MAX` | 3.0 | Maximum acceptable translated/source length ratio (quality gates). |
-| `OL_TARGET_LOCALE` | (unset) | Target locale override for locale-specific quality gates (e.g. `en-US`, `en-GB`, `fr-FR`). Falls back to `locale.target_locale` in config. |
-| `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **REQUIRED for the MCP server** (`ol-mcp`). Comma-separated allowlist of directories the MCP may read/write. **Fail-CLOSED:** if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, `get_default_validator()` raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`; a `ValueError` subclass) — the server refuses to serve (no silent `cwd` + `/tmp` default). The MCP error envelope reports `OL_MCP_NOT_CONFIGURED` with recovery strategy `configure_environment`, NOT `OL_INVALID_INPUT`/`fix_input`. `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
-| `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset; (2) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. **BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** referenced provider key is set — you do not need every provider. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys configured but none referenced by this pool". `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**. |
-
-The MCP server is configured separately in `src/ol_mcp/config.py` —
-OL's MCP server is `ol-mcp` (no `-server` suffix, **different** from
-OPP's `opp-mcp-server` and ORF's `orf-mcp-server`). Startup additionally
-requires `MCP_ALLOWED_DIRECTORIES` (fail-CLOSED; see the env-var table
-above and `src/ol_mcp/security.py:get_default_validator`). When the
-allowlist is missing, any tool call that builds a validator returns
-`success=false` with `error.code == "OL_MCP_NOT_CONFIGURED"` and recovery
-strategy `configure_environment` — set the env var, do not change the
-request input.
+- **`OMNI_TEST_FAKE_LLM=1` is required for tests** (mock LLM seam); unset
+  it only for real-LLM validation. Decision matrix:
+  [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
+- **`MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) is REQUIRED and
+  fail-CLOSED** for `ol-mcp` — unset ⇒ `OL_MCP_NOT_CONFIGURED`, the
+  server refuses to serve. Recovery = set the env var, never loosen the
+  request.
+- **BYOK gate is OR, not AND**: the CLI pre-check passes when at least
+  one referenced provider key is set (`AMD_API_KEY` / `ZHIPU_API_KEY`).
+- Provider/rate-limit semantics and the two-layer `${VAR}` resolution:
+  [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
 
 ## Tests
 
 ```bash
 make test                            # all tests via uv run pytest tests/ -v
-pytest tests/test_e2e_74_translate_context.py  # specific E2E regression
-pytest tests/test_e2e_77_math_shield.py
-pytest tests/test_e2e_78_html_shield_unshield.py
-pytest tests/test_e2e_83_large_content.py
+OMNI_TEST_FAKE_LLM=1 pytest tests/test_e2e_77_math_shield.py   # one regression
 ```
 
-Coverage target ≥90%.
-
-Key test files:
-- `tests/test_e2e_74_translate_context.py` — context type handling
-- `tests/test_e2e_77_math_shield.py` — math regex false positives
-- `tests/test_e2e_78_html_shield_unshield.py` — marker format + unshield
-- `tests/test_e2e_83_large_content.py` — large content + Router config
-- `tests/test_md_shield.py` — shield basics
-- `tests/test_xliff_repair_pipeline.py` — XLIFF repair (some tests broken pre-existing CWD issue)
-- `tests/test_ol_cli.py` — CLI entry
-- `tests/test_ol_cache.py` — content-addressed prompt cache
+Coverage target ≥90%. Key regression files (E2E-74 context handling,
+E2E-77 math shield, E2E-78 html shield/unshield, E2E-83 large content):
+see `tests/test_e2e_*.py`; the full key-file list lives in
+[`docs/dev/gotchas.md`](docs/dev/gotchas.md).
 
 ## Known issues / gotchas
 
-- **E2E-65**: prompt injection strip in Level 1 repair. Don't strip
-  `CRITICAL/IMPORTANT/NOTE: Output ONLY...` patterns yourself; the
-  repair handles it.
-- **E2E-74**: `ModelPool.translate(context=...)` — `context=None` and
-  `context=dict` both work (pre-fix: UnboundLocalError); `context=str`
-  is used verbatim (pre-fix: AttributeError from str.get()).
-- **E2E-83**: large content (>~50K chars) emits a WARNING log but
-  is not blocked.
-- **LQA**: `enable_lqa: true` in config triggers auto-judging with
-  retry on low scores. Slow.
-- **TM/TB/SG**: Translation memory + glossary injection. Set
-  `glossary_path` in config or pass `--glossary <path>`.
-- **Routing**: litellm Router randomizes within role group. If you
-  need deterministic model selection, set `priority: 1` on only one
-  model per role.
-- **Circuit breaker**: 5 consecutive failures → open for 60s.
+The full list (OL#53 polish guard, OL#54 truncation detection, OL#55
+XLIFF tag normalization, OL#56 quality-gate table with warning codes,
+circuit breaker, FAKE_LLM decision matrix) lives in
+[`docs/dev/gotchas.md`](docs/dev/gotchas.md). The three agents hit most:
 
-### OL#53: Polish language guard
-
-`polish_translated_units()` and `polish_md_text()` now skip corrections
-that would revert translated text back to the source language (zh→en
-direction). The `has_source_language_residual()` helper is exported
-from `ol.pool` for reuse.
-
-### OL#54: Truncation detection
-
-`ModelPool.translate()` now applies a secondary truncation heuristic
-when the API reports `finish_reason="stop"` but the output looks
-incomplete (trailing ellipsis, non-terminal punctuation on long inputs,
-or `completion_tokens >= 90%` of `max_tokens`). `judge()` and
-`profile()` fail-closed on `finish_reason="length"`.
-
-### OL#55: XLIFF raw XML tag normalization
-
-XLIFF Level 1 repair normalizes raw LLM-emitted inline tags
-(`<x/>`, `<bx/>`, `<ex/>`) back to placeholders when a `shield_map` is
-available. Level 4 safe fallback is now bx/ex-pair-aware and avoids
-duplicating tag halves already restored by Level 3.
-
-### OL#56: Quality gates
-
-Eight config-driven checks run after translation/repair and append
-non-blocking warnings to the output (the terms audit is a separate
-`verify-terms` tool, not a pipeline gate):
-
-| Gate | Description | Warning codes |
-|------|-------------|---------------|
-| `inline_tags` | Verify `<bx>`, `<ex>`, `<x>` tag parity between source and target | `INLINE_TAG_MISMATCH` |
-| `terminology` | Detect mixed source/glossary term usage in target | `TERMINOLOGY_INCONSISTENCY` |
-| `length_ratio` | Check translated/source length ratio is within bounds | `LENGTH_RATIO` |
-| `locale` | Currency mixing, CJK date leakage, digit grouping (EU vs US), GB/US spelling | `CURRENCY_MIXING`, `DATE_LEAKAGE`, `DIGIT_GROUPING`, `UNIT_SPELLING` |
-| `source_copy` | Detect when LLM echoes source text back unchanged | `SOURCE_COPY` |
-| `source_script_check` | Detect CJK characters that leaked into a non-CJK target locale | `SOURCE_SCRIPT_FRAGMENT` |
-| `protocol_artifact_check` | Detect LLM protocol/metadata markers in translated text | `PROTOCOL_ARTIFACT` |
-| `invented_token_check` | Detect model-invented glued tokens absent from the source (OL#158) | `INVENTED_TOKEN` |
-
-Warnings are collected and returned in the `warnings` output field
-(MCP) or appended to the output file as HTML comments / `<note>`
-elements (CLI). Configure via `quality_gates:` in `config/default.yaml`
-or override with `OL_LENGTH_RATIO_MIN`, `OL_LENGTH_RATIO_MAX`, and
-`OL_TARGET_LOCALE` env vars.
-
-On the MCP channel (`translate_md_text`, `translate_xliff`) a gate pass that
-never ran is reported, not downgraded to a log line (issue #115). The response
-carries `quality_gates: {"status": "ran" | "not_run" | "skipped", "reason": …}`;
-`not_run` means the config was missing/unloadable or the gate invocation
-raised, and it also appends `OL_GATES_NOT_RUN: <reason>` to `warnings`. Callers
-opt out deliberately with `no_quality_gates: true`, which reports `skipped` plus
-`OL_GATES_SKIPPED: …`. Gate *warnings* stay non-blocking in all three cases.
-The CLI channel always passes a real config (`-c config/default.yaml`) and is
-unchanged. See `src/ol_mcp/gates.py` and `docs/API.md` § 2.1–2.2.
-
-### FAKE_LLM decision matrix
-
-`OMNI_TEST_FAKE_LLM=1` enables mock translation (no API calls).
-Use this table to decide when to set it:
-
-| Scenario | Set `OMNI_TEST_FAKE_LLM=1`? | Why |
-|----------|---------------------------|-----|
-| Running unit tests | **YES** | Required. All pipeline tests use `_FakeModelPool`. |
-| Running E2E tests with FAKE_LLM | **YES** | Validates pipeline orchestration without API cost. |
-| Running E2E tests with real LLM | NO | Set real API keys, ensure `OMNI_TEST_FAKE_LLM` is UNSET. |
-| Debugging translation quality | NO | Need real LLM responses to evaluate output. |
-| Config validation / env var check | **YES** | Bypasses `${VAR}` resolution errors during `_check_env_vars()`. |
-| MCP server testing | **YES** | Zero-cost smoke testing of MCP tools. |
-| CI (pull request) | **YES** | Required. Prevents API key leakage in CI logs. |
-| CI (nightly regression) | NO | Nightly runs test against real LLMs. |
-| Production deployment | NO | Real translation requires real LLM calls. |
-| Development / iteration | **YES** | Avoid burning through API quota during active development. |
-
-**Decision flow:**
-
-1. Are you running in CI on a PR? → **YES** (no API keys in CI)
-2. Are you just testing the pipeline orchestration? → **YES** (no need to call real LLMs)
-3. Are you validating translation quality or running nightly tests? → **NO** (need real LLM output)
-4. Unsure? → **YES** (safe default — set it unless you specifically need real translations)
-
-### translate-md vs translate-xliff
-
-OL offers two translation channels for different pipeline paths:
-
-| Aspect | `translate-md` | `translate-xliff` |
-|--------|---------------|-------------------|
-| Input | `.md` file | `.xlf` / `.xliff` file |
-| Output | Translated `.md` | XLIFF with `<target>` filled |
-| Downstream | ORF `apply-md` (16 formats) | ORF `apply-xliff` (needs skeleton) |
-| Layout preservation | Text-only (pandoc renders) | Full original layout retained |
-| Image handling | Via `images.json` + `--separate-images` | Auto-reinjected from skeleton |
-| When to use | Web content, docs, e-books | Contracts, branded docs, exact-layout |
-
-**Decision flow:**
-
-1. Is your source an OPP XLIFF that came with a skeleton.zip? → **`translate-xliff`**
-2. Do you need the output to look exactly like the source? → **`translate-xliff`**
-3. Otherwise → **`translate-md`** (faster, more format choices)
-
-**Both paths can run in parallel** if OPP extracted with `--target-format both`.
-The MD and XLIFF channels share no state — translate both simultaneously.
-
-**Full pipeline comparison**: See the suite-level
-[Pipeline Selection Strategy](https://github.com/1StepMore/e2e-test-suite/blob/main/README.md#pipeline-selection-strategy)
-for the complete decision tree and format support matrix.
+- Prompt-injection echo is stripped by repair (E2E-65) — don't strip it
+  yourself.
+- `large content (>~50K chars)` warns but is not blocked (E2E-83).
+- Circuit breaker: 5 consecutive failures → open for 60s.
 
 ## Pointers to the suite-level docs
 
@@ -500,21 +134,15 @@ for the complete decision tree and format support matrix.
 - Pre-commit hooks: [.pre-commit-config.yaml](https://github.com/1StepMore/e2e-test-suite/blob/main/.pre-commit-config.yaml)
 - Compatibility matrix: [COMPATIBILITY.md](https://github.com/1StepMore/e2e-test-suite/blob/main/COMPATIBILITY.md)
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
-- Per-Agent skill files: `src/.opencode/skills/ol-localizer/SKILL.md`
-  and `src/.hermes/skills/ol-localizer/SKILL.md`
 
 ## How to validate this module
 
 OL ships its own validation scenario library **in this repo** at
-`scenarios/` — 5 tier-2 `ol-translation` scenarios (translate-md happy
-path, translate-xliff, judge-text quality, glossary + quality gates,
-empty-input edge) with their own `scenarios/STANDARDS.md` +
-`scenarios/_fixtures/`. They need real LLM keys (`requires_env`: the 2
-canonical provider vars `AMD_API_KEY` / `ZHIPU_API_KEY`) and report `unconfigured` without them — never a fake
-green. The suite validation engine runs them via `--repo ol`. The suite's
-own `tool-ol-*` agent-surface scenarios + the HUMAN-QUALITY pipeline
-scenarios still live in the suite repo, covered by the suite-level
-`--module` filter. Any agent or the human director can validate OL:
+`scenarios/` — 5 tier-2 `ol-translation` scenarios with their own
+`scenarios/STANDARDS.md` + `scenarios/_fixtures/`. They need real LLM
+keys (`requires_env`: the 2 canonical provider vars `AMD_API_KEY` /
+`ZHIPU_API_KEY`) and report `unconfigured` without them — never a fake
+green. The suite validation engine runs them via `--repo ol`.
 
 ```bash
 # From the Omni Suite root (clone: https://github.com/1StepMore/e2e-test-suite)
