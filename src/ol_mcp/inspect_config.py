@@ -102,6 +102,8 @@ async def inspect_config(params: InspectConfigInput) -> str:
                 "role": m.role.value if hasattr(m.role, "value") else str(m.role),
                 "timeout": m.timeout,
                 "requests_per_minute": getattr(m, "requests_per_minute", None),
+                "max_tokens": getattr(m, "max_tokens", None),
+                "extra_body": getattr(m, "extra_body", None),
                 "api_key": _redact_secret(getattr(m, "api_key", None)),
                 "base_url": (
                     m.base_url

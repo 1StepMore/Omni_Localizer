@@ -58,6 +58,8 @@ def inspect_config(
                 "role": m.role.value if hasattr(m.role, "value") else str(m.role),
                 "timeout": m.timeout,
                 "requests_per_minute": getattr(m, "requests_per_minute", None),
+                "max_tokens": getattr(m, "max_tokens", None),
+                "extra_body": getattr(m, "extra_body", None),
                 "api_key": api_key,
                 "base_url": base_url,
             })
