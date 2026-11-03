@@ -135,10 +135,22 @@ def unshield_markdown(translated_text: str, shield_map: dict[str, str]) -> str:
     missing: list[tuple[str, str]] = []
     for key, original_content in shield_map.items():
         marker = _key_to_marker(key)
-        if marker in result:
-            result = result.replace(marker, original_content)
-        else:
+        count = result.count(marker)
+        if count == 0:
             missing.append((key, original_content))
+        else:
+            # Replace only the first occurrence; strip any extras the LLM
+            # may have duplicated.  str.replace(marker, original_content)
+            # replaces ALL occurrences, which duplicates image refs when
+            # the LLM repeats a shielded marker (T13-02 residual flaky).
+            result = result.replace(marker, original_content, 1)
+            if count > 1:
+                result = result.replace(marker, '')
+                log.warning(
+                    "unshield_markdown: marker %s appeared %d times in LLM output; "
+                    "replaced first, removed %d extra(s)",
+                    marker, count, count - 1,
+                )
     if missing:
         warn_lines = ["<!-- OL_WARN:missing_shields " + ",".join(k for k, _ in missing) + " -->"]
         for _, content in missing:
