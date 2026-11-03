@@ -67,16 +67,36 @@ Top commands; the full command + flag table lives in
 
 ## MCP tools (21 total)
 
-The Agent-facing surface. The complete per-tool parameter reference is
-[`docs/API.md`](docs/API.md); the runtime list is `get_capabilities`.
+The Agent-facing surface. The runtime list is `get_capabilities`.
 
-- Primary: `translate_md_text` / `translate_xliff` — text-in/text-out;
-  responses carry a `quality_gates` field (`ran` / `not_run` / `skipped`)
-  and non-blocking `warnings` (issue #115, `docs/API.md` § 2.1–2.2).
-- Support: `judge_text`, `load_glossary`, `get_relevant_terms`, `search_tm`,
-  `batch_translate_texts`, `translate_file` (full OPP → OL → ORF chain),
-  `shield_md_text` / `unshield_md_text`, `extract_warnings`,
-  `verify_terms`, `profile_doc`, `get_capabilities`, `ping`, …
+| Tool | Purpose |
+|------|---------|
+| `translate_md_text` | Translate markdown text directly without file I/O (text in, text out). |
+| `translate_xliff` | Translate an XLIFF file (writes `<target>` elements to the output file). |
+| `translate_file` | Translate a document file end-to-end (OPP → OL → ORF); shells out to the module CLIs and manages a temp workspace. |
+| `batch_translate_texts` | Translate multiple texts in parallel. |
+| `judge_text` | Evaluate translation quality using the LLM judge. |
+| `load_glossary` | Load a JSON glossary file for use in translation. |
+| `get_relevant_terms` | Extract relevant glossary terms for a given text. |
+| `search_tm` | Search translation memory for similar past translations. |
+| `add_tm_entries` | Add translation entries to a TMX file (creates the file if it doesn't exist). |
+| `extract_terms` | Extract key terms from source texts using YAKE. |
+| `shield_md_text` | Replace code/links/math/HTML/images in markdown with `[OL:TYPE:NNNN]` placeholders. |
+| `unshield_md_text` | Restore `[OL:TYPE:NNNN]` placeholders using the shield_map from a prior `shield_md_text` call. |
+| `extract_warnings` | Read a file (MD or XLIFF) and extract OL warning markers as structured entries. |
+| `generate_report` | Generate HTML and CSV quality reports from translation warnings and model costs. |
+| `inspect_config` | Inspect OL configuration: models, paths, LQA settings (API keys and hardcoded-token base_urls redacted). |
+| `disambiguate` | Resolve polysemous terms in text using context-aware, confidence-based selection from a glossary. |
+| `verify_terms` | Verify glossary term usage in translated content. |
+| `profile_doc` | Profile a document's writing style using an LLM; returns a StyleGuide. |
+| `get_translation_status` | Poll the status of an async translation task by request_id. |
+| `get_capabilities` | Return OL module capabilities: roles, language pairs, available tools. |
+| `ping` | Health check endpoint. |
+
+The translation tools' responses carry a `quality_gates` field
+(`ran` / `not_run` / `skipped`) and non-blocking `warnings`
+(issue #115, `docs/API.md` § 2.1–2.2). The complete per-tool parameter
+reference is [`docs/API.md`](docs/API.md).
 
 ## Translation pipeline (MD channel)
 
