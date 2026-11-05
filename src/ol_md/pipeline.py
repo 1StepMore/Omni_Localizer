@@ -4,6 +4,7 @@ from ol_md.repair import (
     level3_llm_restore,
     level4_safe_fallback,
 )
+from ol_md.shield import _key_to_marker
 
 
 class MDRepairPipeline:
@@ -43,8 +44,14 @@ class MDRepairPipeline:
         }
 
         if not strict:
-            # 非严格（repair 的默认模式）：键名还在文本里，说明仍是带标记形态
-            return all(key in text for key in pending)
+            # 非严格（repair 的默认模式）：键名、其标记形态（[OL:IMG:0000]，
+            # sequential/units 路径中 repair 先于 unshield 时的正文形态）、
+            # 或原值任一命中即视为未丢失。#244：原先只查裸键名，而裸键名
+            # 永远不是 [OL:IMG:0000] 的子串 → 恒判不完整 → level4 翻倍。
+            return all(
+                key in text or _key_to_marker(key) in text
+                for key in pending
+            )
 
         # 严格模式：要求键名以 {{_OL_XTAG_<key>_}} 占位符形式出现，
         # 裸键名（LLM 把标记当普通文本回显）不算恢复
