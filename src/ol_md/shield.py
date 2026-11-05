@@ -24,6 +24,9 @@ AUTOLINK_PATTERN = re.compile(r'<((https?|ftp|mailto):[^\s<>]+)>')
 # markdown link / image grammar (no `!` prefix, no `](` close).
 PLACEHOLDER_PATTERN = re.compile(r'\[OL:([A-Z_]+):(\d{4})\]')
 
+# Image ref scanner for the post-unshield integrity self-check (#244 F3).
+IMAGE_REF_RE = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+
 # Map from shield_map key prefix to marker type name
 _KEY_TO_TYPE = {
     'code': 'CODE',
@@ -122,6 +125,65 @@ def shield_markdown(md_text: str) -> tuple[str, dict[str, str]]:
     return text, shield_map
 
 
+def _image_ref_stem(path: str) -> str:
+    """Alphanumeric-only basename key, tolerant of underscore mangling."""
+    name = path.rstrip("/").split("/")[-1]
+    return re.sub(r"[^0-9A-Za-z]", "", name)
+
+
+def restore_image_ref_integrity(text: str, shield_map: dict[str, str]) -> str:
+    """Post-unshield self-check (#244 F3, finding T13-02b): every image ref
+    in the restored text must be one of the shielded originals.
+
+    Real LLMs occasionally mangle shielded image refs while translating
+    around them (verified: underscores stripped inside the path and target-
+    language text glued into the URL, producing an unresolvable ref that
+    backfill then drops — the src=2 out=1 loss signature). This check
+    rewrites any ref whose path no longer matches an original, but whose
+    alphanumeric basename still does, back to the original value. Exact
+    refs pass untouched; refs matching nothing are left with a warning
+    (never silently invented).
+    """
+    import logging
+
+    log = logging.getLogger("ol_md.shield")
+    originals: list[tuple[str, str]] = []
+    for value in shield_map.values():
+        if not value:
+            continue
+        m = IMAGE_REF_RE.match(value.strip())
+        if m:
+            originals.append((value.strip(), m.group(2)))
+    if not originals:
+        return text
+
+    unused = list(range(len(originals)))
+
+    def _fix(m: re.Match) -> str:
+        ref, path = m.group(0), m.group(2)
+        for idx in list(unused):
+            if path == originals[idx][1]:
+                unused.remove(idx)
+                return ref
+        want = _image_ref_stem(path)
+        if want:
+            for idx in list(unused):
+                if want == _image_ref_stem(originals[idx][1]):
+                    unused.remove(idx)
+                    log.info(
+                        "restore_image_ref_integrity: repaired mangled image "
+                        "ref %r -> original", path,
+                    )
+                    return originals[idx][0]
+        log.warning(
+            "restore_image_ref_integrity: image ref %r matches no shielded "
+            "original; left unchanged", path,
+        )
+        return ref
+
+    return IMAGE_REF_RE.sub(_fix, text)
+
+
 def unshield_markdown(translated_text: str, shield_map: dict[str, str]) -> str:
     """Restore the original content for each shielded marker in the text.
 
@@ -162,7 +224,9 @@ def unshield_markdown(translated_text: str, shield_map: dict[str, str]) -> str:
             "appended originals to end with OL_WARN comment",
             len(missing),
         )
-    return result
+    # #244 F3: heal model-mangled image refs (underscore-stripped paths,
+    # garbage glued into the URL) back to their shielded originals.
+    return restore_image_ref_integrity(result, shield_map)
 
 
 def get_placeholders_in_text(text: str) -> list[str]:

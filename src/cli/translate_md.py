@@ -738,8 +738,12 @@ async def _translate_md_async(
                 sequential_fallback = True
 
         if shield_map:
-            repaired = MDRepairPipeline().repair(translated, original_text, shield_map)
-            repaired = unshield_markdown(repaired, shield_map)
+            # #244：先 unshield 还原标记，再 repair —— 与 pipeline.is_complete
+            # 的判据文档及 _translate_md_by_paragraph 的既有顺序一致。
+            # 旧顺序（repair 在 unshield 之前）下 is_complete 对标记形态失明，
+            # 恒判不完整并升级 level4 把原值追加一遍（CI 夜跑 src=2 out=4）。
+            unshielded = unshield_markdown(translated, shield_map)
+            repaired = MDRepairPipeline().repair(unshielded, original_text, shield_map)
         else:
             repaired = translated
 
