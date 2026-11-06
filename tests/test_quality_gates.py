@@ -970,3 +970,36 @@ class TestCheckInventedTokens:
             invented_token_check_enabled=False,
         )
         assert not any("INVENTED_TOKEN" in w for w in warnings)
+
+
+class TestGate2bTerminologyAudit:
+    """P3 milestone 1: verify_translation (ol_terminology.verifier) is wired
+    into run_quality_gates Gate 2 — glossary terms present in the source but
+    ABSENT from the target, and MISMATCHED renderings, now surface as
+    OL_WARN lines (2026-10-22 review finding: the audit was never called)."""
+
+    GLOSSARY = {"file": {"translation": "fichier"}}
+
+    def test_absent_term_warns(self):
+        from ol_lqa.quality_gates import run_quality_gates
+
+        warnings = run_quality_gates(
+            "Open the file.", "Ouvrez le dossier.", glossary=self.GLOSSARY
+        )
+        assert any("TERM_ABSENT" in w and "fichier" in w for w in warnings), warnings
+
+    def test_matched_term_is_silent(self):
+        from ol_lqa.quality_gates import run_quality_gates
+
+        warnings = run_quality_gates(
+            "Open the file.", "Ouvrez le fichier.", glossary=self.GLOSSARY
+        )
+        assert not any("TERM_ABSENT" in w or "TERM_MISMATCH" in w for w in warnings), (
+            warnings
+        )
+
+    def test_no_glossary_is_silent(self):
+        from ol_lqa.quality_gates import run_quality_gates
+
+        warnings = run_quality_gates("Open the file.", "Ouvrez le dossier.")
+        assert not any("TERM_" in w for w in warnings), warnings
