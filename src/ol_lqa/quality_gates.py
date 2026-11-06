@@ -804,6 +804,31 @@ def run_quality_gates(
         except Exception as exc:
             _logger.exception("Gate 2 (terminology) failed: %s", exc)
 
+        # Gate 2b (P3 milestone 1, 2026-11-06): wire the richer
+        # ``ol_terminology.verifier.verify_translation`` audit that had never
+        # been called from the quality-gate runner (2026-10-22 review finding).
+        # Glossary terms present in the source but ABSENT from the target, and
+        # MISMATCHED renderings, now surface as warnings alongside the
+        # mixed-form check above.
+        try:
+            from ol_terminology.verifier import verify_translation
+
+            report = verify_translation(source, target, glossary)
+            for entry in report.absent:
+                all_warnings.append(
+                    f"OL_WARN: TERM_ABSENT — glossary term '{entry.term}' is in "
+                    f"the source but its translation '{entry.expected}' is absent "
+                    f"from the target"
+                )
+            for entry in report.mismatches:
+                found = f"'{entry.found}'" if entry.found else "nothing recognizable"
+                all_warnings.append(
+                    f"OL_WARN: TERM_MISMATCH — glossary term '{entry.term}' "
+                    f"rendered as {found} instead of '{entry.expected}'"
+                )
+        except Exception as exc:
+            _logger.exception("Gate 2b (terminology audit) failed: %s", exc)
+
     # Gate 3
     if length_ratio_enabled:
         try:
