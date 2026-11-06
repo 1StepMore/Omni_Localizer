@@ -31,25 +31,34 @@ def load_glossary(
 ) -> None:
     """Load a JSON glossary file and print as JSON."""
     from pathlib import Path as _P
+    from ol_mcp._errors import MCPNotConfiguredError as _MNCError
     from ol_mcp.security import PathValidator as _PV
+    from ol_mcp.security import get_default_validator as _get_default_validator
 
-    # Build a custom validator that extends the default allowlist with
-    # any directories provided via --allow-dir. This is needed because
-    # the default validator only allows project root + /tmp + env-configured
-    # dirs, which is too restrictive when loading glossaries from other
-    # paths (e.g. a shared corpus directory).
-    base_dirs: list = []
-    env_dirs = __import__('os').environ.get(
-        "OL_MCP_ALLOWED_DIRS",
-        __import__('os').environ.get("OL_ALLOWED_DIRECTORIES", ""),
-    )
-    if env_dirs.strip():
-        base_dirs.extend(_P(d).resolve() for d in env_dirs.split(",") if d.strip())
+    # 2026-11-06 (ADR 0007 Phase 2B-lite): reuse the MCP-side canonical
+    # allowlist chain (MCP_ALLOWED_DIRECTORIES > OL_MCP_ALLOWED_DIRS >
+    # OL_ALLOWED_DIRECTORIES, os.pathsep + comma aware) instead of the
+    # hand-rolled comma-only split with a silent [cwd, /tmp] fail-open
+    # fallback. With nothing configured the command now fails CLOSED and
+    # names the exact remediation; an explicit --allow-dir still works on
+    # its own (the user's explicit choice is never silent).
+    try:
+        base_dirs: list = list(_get_default_validator().allowed_directories)
+    except _MNCError as exc:
+        if allow_dir:
+            base_dirs = []
+        else:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
     if allow_dir:
         base_dirs.extend(_P(d).resolve() for d in allow_dir if d.strip())
     if not base_dirs:
-        # Fallback: default allowlist (project root + /tmp)
-        base_dirs = [_P.cwd().resolve(), _P("/tmp").resolve()]
+        typer.echo(
+            "Error: no allowed directories configured; pass --allow-dir "
+            "(can be repeated) or set OL_MCP_ALLOWED_DIRS.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
     validator = _PV(allowed_directories=base_dirs)
 
     vresult = validator.validate_path(path)
