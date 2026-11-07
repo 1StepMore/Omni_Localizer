@@ -7,7 +7,7 @@
 
 | Document | Lines |
 |---|---:|
-| AGENTS.md | 192 |
+| AGENTS.md | 202 |
 | README.md | 552 |
 | docs/API.md | 466 |
 | docs/ARCHITECTURE.md | 395 |
