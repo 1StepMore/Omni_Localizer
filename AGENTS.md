@@ -1,13 +1,9 @@
 # AGENTS.md — Omni_Localizer (OL)
 
-Developer + agent context for the **OL** sub-repo. The suite-level
-[suite-level AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md) covers cross-module
-orchestration (OPP → OL → ORF); this file is for working **inside**
-OL.
-
-> OL is the translation step of the Omni Suite pipeline. OPP
-> produces MD + XLIFF, OL translates them via LLM, ORF backfills into
-> the target format.
+Developer + agent context for the **OL** sub-repo (translation step of the Omni
+Suite pipeline: OPP produces MD + XLIFF, OL translates via LLM, ORF backfills).
+The [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
+covers cross-module orchestration; this file is for working **inside** OL.
 
 This file is an **index + invariants** file (≤200 lines, #162): detail
 lives in `docs/dev/*.md` and `docs/API.md`, not here.
@@ -34,7 +30,7 @@ ol translate-xliff doc.xlf -s en -t zh -o ./translated/
 # MCP server (stdio)
 ol-mcp            # or: python -m ol_mcp
 
-# Tests (must set OMNI_TEST_FAKE_LLM=1 to avoid real LLM calls)
+# Tests (OMNI_TEST_FAKE_LLM=1 set automatically by make test)
 make test
 ```
 
@@ -52,8 +48,7 @@ src/
 └── …                        # buses, batch, terminology, restoration, tm, style…
 ```
 
-Full annotated tree: `docs/dev/source-layout.md` (regenerate motivation:
-see `git log --follow src/` for anything not covered here).
+Full annotated tree: `docs/dev/source-layout.md`.
 
 ## CLI reference
 
@@ -149,11 +144,8 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 
 ## Pointers to the suite-level docs
 
-- Cross-module orchestration: [AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
-- MCP tool full parameter reference: [`docs/API.md`](docs/API.md)
-- Pre-commit hooks: [.pre-commit-config.yaml](https://github.com/1StepMore/e2e-test-suite/blob/main/.pre-commit-config.yaml)
-- Compatibility matrix: [COMPATIBILITY.md](https://github.com/1StepMore/e2e-test-suite/blob/main/COMPATIBILITY.md)
-- User-facing guide (not developer): `AGENT_USAGE.md` in this repo
+- Cross-module orchestration + pre-commit hooks + compatibility matrix: [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
+- MCP tool full parameter reference: [`docs/API.md`](docs/API.md); user-facing guide: `AGENT_USAGE.md` (this repo)
 
 ## Issue conventions
 
@@ -200,3 +192,9 @@ repo. Per-repo validation delivery (run_meta, report card, delivery
 package): `suite:docs/dev/per-repo-validation-delivery.md`. OL scenario fixes
 now live HERE (in `scenarios/`); OL product-code fixes go through the
 normal fix cycle in this repo.
+
+## Role routing (A2 pointer model, 2026-11-08)
+
+角色契约唯一事实源 = 套件根仓 `.agents/roles/`（coder/maintainer/tester/user，各 ≤30 行），本仓不设本地副本。
+进入本仓的 agent：先读套件根 `AGENTS.md` 的 §0 安全与优先级 + 角色路由表，再按指派角色读对应契约；
+期望映射层 = 套件根 `.agents/expectations/`，期望唯一事实源 = `scenarios/STANDARDS.md`（均 Owner 门禁）；standalone clone 按本仓 `docs/` 工作、边界按 §0 类推。
