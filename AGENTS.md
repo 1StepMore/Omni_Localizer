@@ -155,6 +155,16 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 - Compatibility matrix: [COMPATIBILITY.md](https://github.com/1StepMore/e2e-test-suite/blob/main/COMPATIBILITY.md)
 - User-facing guide (not developer): `AGENT_USAGE.md` in this repo
 
+## Issue conventions
+
+- **`pinned` = 常开索引件, not a to-do.** A pinned issue stays open as a
+  roadmap pointer; do not close it, and do not consume it as a work item.
+- **Cross-repo reference check.** `scripts/doc_inventory.py` verifies
+  backticked paths in `README.md` / `AGENTS.md`. Write another repo's path
+  with a `suite:` / `opp:` / `ol:` / `orf:` prefix; an unprefixed path must
+  exist in this repo. The checker's shared block is byte-identical across the
+  three module repos — change rule: `suite:docs/dev/doc-inventory-copies.md`.
+
 ## How to validate this module
 
 OL ships its own validation scenario library **in this repo** at
@@ -185,8 +195,8 @@ python scripts/validation/coverage_audit.py   # ol row must show 21/21, 0 missin
 The standards bar is `scenarios/STANDARDS.md` (AGENT-SURFACE family for
 the tool scenarios; HUMAN-QUALITY family — lqa-threshold, para-ratio,
 cjk-density, punct-hygiene — for the pipeline scenarios). Director loop +
-10-minute checklist: `docs/dev/validation-director-loop.md` in the suite
+10-minute checklist: `suite:docs/dev/validation-director-loop.md` in the suite
 repo. Per-repo validation delivery (run_meta, report card, delivery
-package): `docs/dev/per-repo-validation-delivery.md`. OL scenario fixes
+package): `suite:docs/dev/per-repo-validation-delivery.md`. OL scenario fixes
 now live HERE (in `scenarios/`); OL product-code fixes go through the
 normal fix cycle in this repo.
