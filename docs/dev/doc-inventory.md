@@ -17,6 +17,7 @@
 | docs/adr/0001-doc-inventory-gate.md | 50 |
 | docs/adr/README.md | 18 |
 | docs/adr/TEMPLATE.md | 29 |
+| docs/dev/agent-era-doc-architecture.md | 300 |
 | docs/dev/cli-reference.md | 34 |
 | docs/dev/gotchas.md | 101 |
 | docs/dev/llm-pool.md | 62 |
