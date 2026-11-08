@@ -127,8 +127,7 @@ OMNI_TEST_FAKE_LLM=1 pytest tests/test_e2e_77_math_shield.py   # one regression
 
 Coverage target ≥90%. Key regression files (E2E-74 context handling,
 E2E-77 math shield, E2E-78 html shield/unshield, E2E-83 large content):
-see `tests/test_e2e_*.py`; the full key-file list lives in
-[`docs/dev/gotchas.md`](docs/dev/gotchas.md).
+see `tests/test_e2e_*.py`; the full list lives in [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
 
 ## Known issues / gotchas
 
@@ -145,6 +144,7 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 ## Pointers to the suite-level docs
 
 - Cross-module orchestration + pre-commit hooks + compatibility matrix: [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
+- Doc architecture playbook (six-repo synced copy, hash-pinned; e2e-test-suite#254): [`docs/dev/agent-era-doc-architecture.md`](docs/dev/agent-era-doc-architecture.md)
 - MCP tool full parameter reference: [`docs/API.md`](docs/API.md); user-facing guide: `AGENT_USAGE.md` (this repo)
 
 ## Issue conventions
