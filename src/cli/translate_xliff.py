@@ -56,6 +56,19 @@ from ol_xliff.pipeline import XLIFFRepairPipeline
 logger = get_logger("cli")
 
 
+class _XliffText(str):
+    """Output path carrying per-unit translation counts (mirrors ``_MdText``).
+
+    The CLI needs the untranslated/total counts to fail closed when every
+    unit fell back to the OPP source (e.g. all providers exhausted their
+    429 retry chain). Keeping the return shape a ``str`` preserves the
+    existing test fakes, which may return a plain path.
+    """
+
+    untranslated_units: int = 0
+    total_units: int = 0
+
+
 async def _translate_xliff_pipelined(
     units: list,
     pool: 'ModelPool',
@@ -415,6 +428,14 @@ async def _translate_xliff_async(
             styleguide=styleguide,
         )
 
+    total_units = len(units)
+    untranslated_count = sum(1 for r in results if r.untranslated)
+    if untranslated_count:
+        logger.warning(
+            f"XLIFF translation: {untranslated_count}/{total_units} unit(s) "
+            f"fell back to the source text (LLM failure or rate limit)"
+        )
+
     for unit, r in zip(units, results):
         unit.target_text = r.translated
         if r.warning:
@@ -537,7 +558,10 @@ async def _translate_xliff_async(
     translated_text = _inject_xliff_header(translated_text, header_note)
     output_path_obj.write_text(translated_text, encoding="utf-8")
 
-    return output_file
+    result = _XliffText(output_file)
+    result.untranslated_units = untranslated_count
+    result.total_units = total_units
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -723,12 +747,40 @@ def translate_xliff(
             styleguide_content = None
             logger.info("StyleGuide disabled via --no-styleguide")
 
-        asyncio.run(_translate_xliff_async(
+        _xliff_result = asyncio.run(_translate_xliff_async(
             Path(input), output_path, config_path, src_lang, tgt_lang,
             glossary=loaded_glossary,
             styleguide=styleguide_content,
             polish=polish,
         ))
+
+        _untranslated_units = getattr(_xliff_result, "untranslated_units", 0)
+        _total_units = getattr(_xliff_result, "total_units", 0)
+
+        # Fail closed when every unit fell back to source (OL#179).
+        if _total_units > 0 and _untranslated_units >= _total_units:
+            _failed_output = output_path / Path(input).name
+            try:
+                _failed_output.unlink()
+            except OSError:
+                pass
+            _message = (
+                f"ERROR: all {_total_units} unit(s) were returned untranslated "
+                f"- nothing was translated (LLM calls failed or were "
+                f"rate-limited); removed {_failed_output}."
+            )
+            if json_output:
+                output_json(
+                    False, str(input_path), error=_message,
+                    untranslated_units=_untranslated_units,
+                )
+            else:
+                typer.echo(_message, err=True)
+            logger.error(
+                f"translate_xliff: all {_total_units} unit(s) untranslated "
+                f"- nothing was translated"
+            )
+            raise typer.Exit(code=ExitCode.PIPELINE_ERROR)
 
         # A12.4: post-translate restoration runs after asyncio.run so
         # test fakes for ``_translate_xliff_async`` still observe it.
@@ -796,9 +848,23 @@ def translate_xliff(
 
         output_file = output_path / Path(input).name
         if json_output:
-            output_json(True, str(input_path), str(output_file), src_lang, tgt_lang)
+            output_json(
+                True, str(input_path), str(output_file), src_lang, tgt_lang,
+                untranslated_units=_untranslated_units,
+            )
         else:
-            typer.echo(f"Translated: {input_path.name} -> {output_file} ({src_lang} -> {tgt_lang})")
+            typer.echo(
+                f"Translated: {input_path.name} -> {output_file} "
+                f"({src_lang} -> {tgt_lang}) "
+                f"[untranslated: {_untranslated_units}/{_total_units}]"
+            )
+            if _untranslated_units > 0:
+                typer.echo(
+                    f"WARNING: {_untranslated_units} of {_total_units} unit(s) "
+                    f"were returned untranslated; those units carry the "
+                    f"source text verbatim.",
+                    err=True,
+                )
         logger.info(f"Completed: translate_xliff {input}")
         raise typer.Exit(code=ExitCode.SUCCESS)
 
