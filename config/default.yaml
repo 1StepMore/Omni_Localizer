@@ -8,36 +8,54 @@ lqa_threshold: 7.0
 lqa_max_retries: 2
 llm_pool:
   translation:
+  # suite#282: spark-x2.6 (iFlytek MaaS) is the primary channel; AMD and
+  # ZHIPU stay as same-role degradation targets (intra-group retries).
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    max_parallel_requests: 16
+    priority: 1
+    role: translation
   - provider: openai
     model: DeepSeek-V4.1-Flash
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
     max_parallel_requests: 16
-    priority: 1
+    priority: 2
     role: translation
   - provider: openai
     model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
-    priority: 2
+    priority: 3
     role: translation
   judging:
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    max_parallel_requests: 16
+    priority: 1
+    role: judging
   - provider: openai
     model: DeepSeek-V4.1-Flash
     api_key: ${AMD_API_KEY}
     base_url: https://developer.amd.com.cn/radeon/api/v1
     timeout: 120.0
     max_parallel_requests: 16
-    priority: 1
+    priority: 2
     role: judging
   - provider: openai
     model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
-    priority: 2
+    priority: 3
     role: judging
   restoration:
   - provider: openai
