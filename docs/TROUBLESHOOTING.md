@@ -62,12 +62,12 @@ export ZHIPU_API_KEY=sk-your-key
 export OMNI_TEST_FAKE_LLM=1
 ```
 
-The same applies to `AMD_API_KEY`. The default config uses AMD/Zhipu; replace the pool if you want a different provider.
+The default config uses Zhipu only (OL#183); replace the pool if you want a different provider.
 
 **CLI pre-check variant.** `ol translate-md` / `ol translate-xliff` run an earlier, faster key check (`precheck_api_keys`) before the config is even loaded. It passes when **at least one** provider key referenced by the config is set — one key is enough (BYOK). With **zero** keys it still fails closed, and its message distinguishes the two mistakes:
 
-- **Nothing configured** — no provider key is set at all; export one of the pool's keys (`AMD_API_KEY` or `ZHIPU_API_KEY`).
-- **Configured but not matching this pool** — keys are set, but none matches a `${VAR}` the pool references (e.g. `OPENAI_API_KEY` is exported while the pool expects `AMD_API_KEY` / `ZHIPU_API_KEY`); export a key the config actually uses, or edit the pool.
+- **Nothing configured** — no provider key is set at all; export the pool's key (`ZHIPU_API_KEY`).
+- **Configured but not matching this pool** — keys are set, but none matches a `${VAR}` the pool references (e.g. `OPENAI_API_KEY` is exported while the pool expects `ZHIPU_API_KEY`); export a key the config actually uses, or edit the pool.
 
 `OMNI_RUN_REAL_LLM=1` skips this pre-check — an escape hatch, not a switch that enables real calls: it does **not** enable real LLM calls (`OMNI_TEST_FAKE_LLM=1` disables them). See `docs/real_llm_runbook.md`.
 
@@ -112,19 +112,19 @@ for 1305 is to lengthen the retry interval, which is what OL's 10/20/40 s
 
 So, matching the knob to the error:
 
-- **Account-level concurrency** (AMD `model_concurrency_rate_limit_exceeded`,
-  Zhipu `1302`) — set `max_parallel_requests` in `config/default.yaml`:
+- **Account-level concurrency** (Zhipu `1302`) — set `max_parallel_requests`
+  in `config/default.yaml`:
 
   ```yaml
   - provider: "openai"
-    model: "DeepSeek-V4.1-Flash"
-    base_url: https://developer.amd.com.cn/radeon/api/v1
+    model: "glm-4.7-flash"
+    base_url: https://open.bigmodel.cn/api/paas/v4
     max_parallel_requests: 16   # enforced via a per-deployment semaphore
   ```
 
 - **Platform overload** (Zhipu `1305`) — no local knob exists. Rely on the
-  retry backoff plus fallback to the other provider. If both providers fail
-  this way at once (as the 2026-10-06…11 nightlies did), no configuration
+  retry backoff plus fallback to the other ZHIPU model. If both models fail
+  this way at once (as the 2026-10-06…11 runs did), no configuration
   change rescues the run; only waiting does.
 
 - **Rate** — the provider caps requests *per minute*. Set `requests_per_minute`:
@@ -268,12 +268,12 @@ The LLM occasionally eats placeholders. The `--no-restoration` flag, or a missin
   llm_pool:
     restoration:
       - provider: "openai"
-        model: "DeepSeek-V4.1-Flash"
-        priority: 1
-        api_key: "${AMD_API_KEY}"
-        base_url: "https://developer.amd.com.cn/radeon/api/v1"
-      - provider: "openai"
         model: "glm-4.7-flash"
+        priority: 1
+        api_key: "${ZHIPU_API_KEY}"
+        base_url: "https://open.bigmodel.cn/api/paas/v4"
+      - provider: "openai"
+        model: "glm-4-flash"
         priority: 2
         api_key: "${ZHIPU_API_KEY}"
         base_url: "https://open.bigmodel.cn/api/paas/v4"
@@ -330,7 +330,7 @@ Translation retried 2 times but score stayed below 7.0; emitting best attempt.
 **Fix**
 
 - Lower the threshold: `lqa_threshold: 6.0` in your config.
-- Add a better `judging` model — `DeepSeek-V4.1-Flash` is the primary judge; `glm-4.7-flash` is the fallback.
+- Add a better `judging` model — `glm-4.7-flash` is the primary judge; `glm-4-flash` is the fallback.
 - Disable for one-off runs: pass `--no-lqa` (or set `enable_lqa: false` in the config you're using).
 
 The retry is bounded by `lqa_max_retries`; you will not loop forever.

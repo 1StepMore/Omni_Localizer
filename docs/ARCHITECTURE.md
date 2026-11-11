@@ -218,7 +218,7 @@ judging / restoration / profiling
        │
        │  role's own models fail / 429 / 5xx
        ▼
-translation priority=1 (DeepSeek-V4.1-Flash)
+translation priority=1 (glm-4.7-flash)
        │
        │  fail / 429 / 5xx
        ▼
@@ -251,7 +251,7 @@ Two independent ceilings exist, and they are not interchangeable.
 
 **`max_parallel_requests`** (default unset) reaches LiteLLM as `litellm_params['max_parallel_requests']` and **is** enforced, by a per-deployment semaphore — no Router flag needed. Unset means no client-side cap; the key is omitted rather than defaulted.
 
-Use rpm for rate-capped providers. Use `max_parallel_requests` only when the cap is **yours to hold** — an account ceiling. The canonical pool sets it on AMD Radeon alone (`model_concurrency_rate_limit_exceeded`, account ceiling 16) and leaves Zhipu uncapped: Zhipu classifies its `code 1305 该模型当前访问量过大` as *platform* overload, not an account rate limit, so a local cap would only make OL slower. TROUBLESHOOTING has the 1302/1305 split.
+Use rpm for rate-capped providers. Use `max_parallel_requests` only when the cap is **yours to hold** — an account ceiling. The canonical pool leaves Zhipu uncapped: Zhipu classifies its `code 1305 该模型当前访问量过大` as *platform* overload, not an account rate limit, so a local cap would only make OL slower. If a provider exposes an account concurrency ceiling, set `max_parallel_requests` on that deployment. TROUBLESHOOTING has the 1302/1305 split.
 
 ### 3.3 Cross-role safety net
 

@@ -68,9 +68,9 @@ class LLMModelConfig(BaseModel):
             "to litellm_params['max_parallel_requests'] and enforced by a "
             "per-deployment semaphore. Leave unset (the default) to impose no "
             "client-side concurrency cap. Set it when the provider's real "
-            "ceiling is concurrency rather than rate: AMD Radeon returns 429 "
-            "'model_concurrency_rate_limit_exceeded' naming a concurrency "
-            "number, Zhipu returns 'code 1305 该模型当前访问量过大'. requests_per_minute "
+            "ceiling is concurrency rather than rate: some providers return "
+            "429 naming a concurrency number, Zhipu returns "
+            "'code 1305 该模型当前访问量过大'. requests_per_minute "
             "cannot prevent either."
         ),
     )

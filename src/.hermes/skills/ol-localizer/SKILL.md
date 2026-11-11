@@ -60,7 +60,7 @@ and the suite-level [Pipeline Selection Strategy](https://github.com/1StepMore/O
 
 ## Configuration
 Canonical pool providers (the pool in `config/default.yaml`; BYOK — set at least one):
-- `AMD_API_KEY` - AMD Radeon (`DeepSeek-V4.1-Flash`, priority-1 primary)
+- `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash` primary, `glm-4-flash` fallback)
 - `ZHIPU_API_KEY` - Zhipu AI (`glm-4.7-flash`, priority-2 fallback)
 
 Run `ol init` to generate `config/local.yaml` with this pool.
@@ -68,7 +68,7 @@ Run `ol init` to generate `config/local.yaml` with this pool.
 **Env gate is OR, not AND:** at least one provider key is enough; zero keys fails closed (the error distinguishes "nothing configured" from "configured but not matching this pool"). `OMNI_RUN_REAL_LLM=1` skips the CLI key pre-check — an escape hatch, not a switch that enables real calls (`OMNI_TEST_FAKE_LLM=1` disables them).
 
 ## Pitfalls
-- **API keys not set**: Set at least one provider key (`AMD_API_KEY` or `ZHIPU_API_KEY`); zero keys fails closed (the error distinguishes "nothing configured" from "configured but not matching this pool")
+- **API keys not set**: Set `ZHIPU_API_KEY`; zero keys fails closed (the error distinguishes "nothing configured" from "configured but not matching this pool")
 - **Input file too large**: Recommend files under 100KB for optimal performance
 - **Rate limiting**: If seeing rate limit errors, add retry with exponential backoff
 - **Supported formats**: Both Markdown (.md) and XLIFF (.xlf, .xliff) are supported

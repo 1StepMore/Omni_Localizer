@@ -1,9 +1,10 @@
 """ol init — Bootstrap a local OL config (config/local.yaml).
 
-Generates a YAML config with the unified 2-provider LLM pool that mirrors
+Generates a YAML config with the Zhipu-only pool that mirrors
 ``config/default.yaml`` (the single source of truth), in priority order:
-DeepSeek-V4.1-Flash (AMD Radeon) + glm-4.7-flash (Zhipu). Every
-api_key/base_url is a ${ENV_VAR} reference — literal keys are never written.
+glm-4.7-flash (primary) + glm-4-flash (fallback). AMD and Spark are absent:
+the Spark key is owner-local and AMD is dead (OL#183). Every api_key/base_url
+is a ${ENV_VAR} reference — literal keys are never written.
 """
 from __future__ import annotations
 
@@ -17,8 +18,8 @@ from cli._shared import ExitCode
 # timeout 120.0, all api_key/base_url as ${ENV_VAR} refs. Parity is locked by
 # tests/test_model_pool_config_parity.py — keep the two in sync.
 _POOL_MODELS: tuple[tuple[str, str, str], ...] = (
-    ("DeepSeek-V4.1-Flash", "${AMD_API_KEY}", "https://developer.amd.com.cn/radeon/api/v1"),
     ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
+    ("glm-4-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
 )
 
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
@@ -40,7 +41,6 @@ UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
 # Env vars the generated config references (for the export hint). Order is
 # presentation-only (parity compares sets) but must track _POOL_MODELS.
 PRESET_ENV_VARS: tuple[str, ...] = (
-    "AMD_API_KEY",
     "ZHIPU_API_KEY",
 )
 

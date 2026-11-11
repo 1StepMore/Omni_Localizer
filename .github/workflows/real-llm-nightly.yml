@@ -1,8 +1,11 @@
 name: Real-LLM Nightly
 
-# A11 — slim-pipeline-hardening. Nightly cron runs the real-LLM E2E
-# suite against the canonical pool in config/local.yaml, in priority order
-# (DeepSeek-V4.1-Flash / glm-4.7-flash). Cost is bounded
+# A11 — slim-pipeline-hardening. The real-LLM E2E suite runs against the
+# canonical pool in config/local.yaml, in priority order
+# (glm-4.7-flash / glm-4-flash). Scheduled runs are DISABLED (OL#183):
+# the only usable Spark key is owner-local, AMD is dead, and ZHIPU is
+# rate-limited. Real-LLM validation runs on the owner's local 02:00 timer;
+# this workflow remains for an explicit manual dispatch with keys. Cost is bounded
 # at ~$0.08/month by the per-test pre-call cost gate in
 # tests/real_llm/cost_estimator.py
 # (budget_usd=5.0 per test, ~$0.005/test observed); rates come from
@@ -15,11 +18,7 @@ name: Real-LLM Nightly
 # Useful when validating a model swap or config change.
 
 on:
-  schedule:
-    # 0 2 * * * = nightly at 02:00 UTC. User authorized nightly cadence
-    # in PR15 (E.2 calibration prep + nightly promotion). See
-    # docs/real_llm_runbook.md for rollback procedure.
-    - cron: "0 2 * * *"
+  # Scheduled runs are disabled (OL#183). Manual dispatch only.
   workflow_dispatch:
 
 env:
@@ -55,10 +54,9 @@ jobs:
           # Canonical pool (config/default.yaml; `ol init` mirrors it into
           # config/local.yaml). ModelPool drops models whose ${VAR} is unset
           # and only fails when a whole role has no usable model.
-          AMD_API_KEY: ${{ secrets.AMD_API_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           # Explicit per-1M-token USD rates for the cost gate, as JSON:
-          #   {"DeepSeek-V4.1-Flash": [in, out], "glm-4.7-flash": [...]}
+          #   {"glm-4.7-flash": [in, out], "glm-4-flash": [in, out]}
           # A repo *variable* (not a secret). Unset -> the gate fails closed
           # on the first estimate rather than guessing a price. See
           # docs/real_llm_runbook.md §Cost discipline.

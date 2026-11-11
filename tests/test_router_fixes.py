@@ -151,39 +151,49 @@ class TestModelPoolSilentFailure:
 class TestModelPoolInitError:
     """New tests for the ModelPoolInitError exception class."""
 
-    def test_missing_env_var_degrades_pool_instead_of_failing_init(self, monkeypatch):
+    def test_missing_env_var_degrades_pool_instead_of_failing_init(self, monkeypatch, tmp_path):
         """Real-world scenario: one provider's API-key env var is unset.
 
         OL#99: the pool must degrade to the remaining priorities, not fail.
         Only a role that loses EVERY model to unconfigured keys is a hard
-        error. Provider-agnostic: variable names are read from
-        config/default.yaml's llm_pool instead of hardcoding a provider key.
+        error. Uses a synthetic two-provider pool because the shipped
+        config/default.yaml is now Zhipu-only (OL#183); a single provider
+        cannot demonstrate cross-provider degradation.
         """
-        import yaml
-        from pathlib import Path
-
         from ol_pool.router import ModelPool
         from ol_pool.router import _pool_cache
         import ol_config.loader as loader_mod
 
-        config_path = (
-            Path(__file__).resolve().parents[1] / "config" / "default.yaml"
+        config_path = tmp_path / "two-provider.yaml"
+        entries = []
+        for role in ("translation", "judging", "restoration"):
+            entries.append(
+                f"  {role}:\n"
+                f"  - provider: openai\n"
+                f"    model: {role}-primary\n"
+                f"    api_key: ${{TEST_PRIMARY_KEY}}\n"
+                f"    base_url: https://primary.example/v1\n"
+                f"    timeout: 120.0\n"
+                f"    priority: 1\n"
+                f"    role: {role}\n"
+                f"  - provider: openai\n"
+                f"    model: {role}-fallback\n"
+                f"    api_key: ${{TEST_FALLBACK_KEY}}\n"
+                f"    base_url: https://fallback.example/v1\n"
+                f"    timeout: 120.0\n"
+                f"    priority: 2\n"
+                f"    role: {role}\n"
+            )
+        config_path.write_text(
+            "project_id: test\nsource_lang: en\ntarget_lang: zh\nllm_pool:\n"
+            + "".join(entries),
+            encoding="utf-8",
         )
-        pool = yaml.safe_load(config_path.read_text(encoding="utf-8"))["llm_pool"]
-        first_role = next(iter(pool))
-        entries = pool[first_role]
-        api_key_ref = entries[0]["api_key"]
-        assert (
-            isinstance(api_key_ref, str)
-            and api_key_ref.startswith("${")
-            and api_key_ref.endswith("}")
-        ), f"first pool entry must use a ${{ENV_VAR}} reference, got {api_key_ref!r}"
-        env_var = api_key_ref.strip()[2:-1]
-        assert len(entries) > 1, "need a lower-priority model to degrade onto"
 
         # Ensure FAKE_LLM is NOT set (otherwise __init__ short-circuits).
         monkeypatch.delenv("OMNI_TEST_FAKE_LLM", raising=False)
-        monkeypatch.delenv(env_var, raising=False)
+        monkeypatch.delenv("TEST_PRIMARY_KEY", raising=False)
+        monkeypatch.setenv("TEST_FALLBACK_KEY", "sk-test-fallback")
         # Neutralize loader._load_env_file: it loads Omni_Localizer/.env via a
         # FIXED path (loader.py) and would re-introduce the popped var through
         # os.environ.setdefault, masking the missing-var path.
@@ -193,9 +203,11 @@ class TestModelPoolInitError:
         try:
             with patch("ol_pool.router.Router", MagicMock()):
                 built = ModelPool(str(config_path))
-            kept = [m.model for m in built._usable_by_role[first_role]]
-            assert entries[0]["model"] not in kept
-            assert kept, f"{first_role} must keep its configured fallbacks"
+            kept = [m.model for m in built._usable_by_role["translation"]]
+            assert "translation-primary" not in kept
+            assert "translation-fallback" in kept, (
+                "translation must keep its configured fallback"
+            )
         finally:
             _pool_cache.clear()
 

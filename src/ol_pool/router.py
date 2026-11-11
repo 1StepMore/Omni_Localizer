@@ -628,9 +628,9 @@ class ModelPool:
                 # comes from the provider's HTTP 429, handled by the
                 # translate() backoff loop instead of an in-process bucket.
                 #
-                # Do not try to tune 429s via rpm: AMD Radeon answers with
-                # `model_concurrency_rate_limit_exceeded` (a CONCURRENCY
-                # number) and Zhipu with `code 1305 该模型当前访问量过大`, so
+                # Do not try to tune 429s via rpm: some providers answer with
+                # a CONCURRENCY number and Zhipu with
+                # `code 1305 该模型当前访问量过大`, so
                 # for both the ceiling is simultaneous requests, not
                 # requests-per-minute. Set `max_parallel_requests` on such a
                 # model instead — it maps to

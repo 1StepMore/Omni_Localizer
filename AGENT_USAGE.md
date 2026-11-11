@@ -18,10 +18,9 @@ Omni-Localizer is an AI-native localization pipeline that translates Markdown do
 
 2. **Read the SKILL.md** for instructions on how to invoke
 
-3. **Configure at least one API key** in environment:
+3. **Configure the Zhipu API key** in environment:
    ```
-   export AMD_API_KEY=...        # AMD Radeon (priority-1 primary)
-   export ZHIPU_API_KEY=...      # Zhipu AI (priority-2 fallback)
+   export ZHIPU_API_KEY=...      # Zhipu AI (glm-4.7-flash primary, glm-4-flash fallback)
    ```
 
 4. **Invoke via CLI**:
@@ -78,9 +77,8 @@ On error:
 ### Environment Variables
 Set in shell before running:
 ```bash
-# BYOK: set at least one provider key; the second is an optional fallback.
-export AMD_API_KEY=your-amd-key        # AMD Radeon (priority-1 primary)
-export ZHIPU_API_KEY=your-zhipu-key    # Zhipu AI (priority-2 fallback)
+# Zhipu is the only live provider; two models give failover.
+export ZHIPU_API_KEY=your-zhipu-key    # Zhipu AI (glm-4.7-flash primary, glm-4-flash fallback)
 ```
 
 **BYOK gate is OR, not AND:** at least one provider key is enough — the CLI pre-check (`ol translate-md` / `ol translate-xliff`) passes when any referenced provider key is set. With zero keys it fails closed, distinguishing "no provider key configured" from "keys configured but none referenced by this pool". `OMNI_RUN_REAL_LLM=1` is an **escape hatch** that skips this pre-check; despite the name it does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them). See `docs/real_llm_runbook.md`.
@@ -93,52 +91,52 @@ target_lang: "zh"
 llm_pool:
   translation:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "translation"
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "translation"
   judging:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "judging"
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "judging"
   restoration:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "restoration"
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "restoration"
   profiling:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       role: "profiling"
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       api_key: "${ZHIPU_API_KEY}"
       base_url: "https://open.bigmodel.cn/api/paas/v4"
@@ -229,7 +227,6 @@ ls src/.hermes/skills/ol-localizer/SKILL.md
 1. Read SKILL.md Configuration section
 2. Set required environment variables:
 ```bash
-export AMD_API_KEY=your-amd-key
 export ZHIPU_API_KEY=your-zhipu-key
 ```
 
@@ -242,7 +239,7 @@ python -m ol_cli translate-md input.md -c config/default.yaml -s en -t zh -o out
 ```
 
 2. Common fixes:
-   - Missing API key → Set at least one provider key (`AMD_API_KEY` or `ZHIPU_API_KEY`); zero keys fails closed, with a message distinguishing "nothing configured" from "configured but not matching this pool"
+   - Missing API key → Set `ZHIPU_API_KEY`; zero keys fails closed, with a message distinguishing "nothing configured" from "configured but not matching this pool"
    - Invalid config → Check `config/default.yaml` exists
    - File not found → Verify input path
    - Rate limit → Wait and retry
