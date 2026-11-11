@@ -20,9 +20,9 @@
 | docs/dev/agent-era-doc-architecture.md | 300 |
 | docs/dev/cli-reference.md | 34 |
 | docs/dev/gotchas.md | 101 |
-| docs/dev/llm-pool.md | 62 |
+| docs/dev/llm-pool.md | 64 |
 | docs/dev/pipeline.md | 143 |
 | docs/dev/production-matrix.md | 56 |
 | docs/dev/source-layout.md | 58 |
 | docs/glossary_format.md | 230 |
-| docs/real_llm_runbook.md | 195 |
+| docs/real_llm_runbook.md | 191 |

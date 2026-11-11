@@ -19,8 +19,8 @@ AI-native localization pipeline that translates documents through intelligent LL
 
 CI runs on the upstream [1StepMore](https://github.com/1StepMore) repo and is
 currently green, driven by `.github/workflows/test.yml` (tests),
-`.github/workflows/publish.yml` (release), and
-`.github/workflows/real-llm-nightly.yml` (nightly real-LLM regression). The
+`.github/workflows/publish.yml` (release). The real-LLM run is
+manual/local-only; scheduled CI is hermetic (OL#183). The
 `renanzai40` backup mirrors still do not run GitHub Actions, so this badge
 reflects the upstream repo only.
 
@@ -45,10 +45,9 @@ pip install -e .
 
 ### 2. Configure API Keys
 
-Set at least one provider key in your shell (BYOK — the second is an optional fallback):
+Set the Zhipu key in your shell (the only live provider; two ZHIPU models give failover):
 
 ```bash
-export AMD_API_KEY=your_amd_api_key
 export ZHIPU_API_KEY=your_zhipu_api_key
 export PYTHONPATH=src
 ```
@@ -75,27 +74,29 @@ providers you actually use.
 
 Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
-**BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** provider key referenced in the config is set — you do not need every provider, which is exactly what "providers you actually use" above means. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys are configured but none is referenced by this pool" (e.g. `OPENAI_API_KEY` exported while the pool expects `AMD_API_KEY` / `ZHIPU_API_KEY`). `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**.
+**BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** provider key referenced in the config is set — you do not need every provider, which is exactly what "providers you actually use" above means. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys are configured but none is referenced by this pool" (e.g. `OPENAI_API_KEY` exported while the pool expects `ZHIPU_API_KEY`). `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**.
 
 **Getting started:**
-1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool. `config/local.yaml` is a **gitignored operator override** of `config/default.yaml` (2 tiers × 4 roles), not a byte-for-byte mirror: it may legitimately differ in tier count, rate limits, and timeouts.
-2. Export the printed keys (AMD_API_KEY, ZHIPU_API_KEY).
+1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool. `config/local.yaml` is a **gitignored operator override** of `config/default.yaml` (2 ZHIPU models × 4 roles), not a byte-for-byte mirror: it may legitimately differ in tier count, rate limits, and timeouts.
+2. Export the printed key (ZHIPU_API_KEY).
 3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, every role has at least one usable (keyed) model).
 
-`config/default.yaml` — canonical unified LLM pool (the required roles; `ol init` also writes the optional `profiling:` role with the same two models):
+`config/default.yaml` — canonical unified LLM pool
+
+CI never runs this pool for real LLM (OL#183); it is for explicit local use. (the required roles; `ol init` also writes the optional `profiling:` role with the same two models):
 
 ```yaml
 llm_pool:
   translation:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"    # AMD Radeon — priority-1 primary
+      model: "glm-4.7-flash"          # Zhipu — priority-1 primary
       priority: 1
       role: "translation"
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "glm-4.7-flash"          # Zhipu — priority-2 fallback
+      model: "glm-4-flash"            # Zhipu — priority-2 fallback
       priority: 2
       role: "translation"
       api_key: "${ZHIPU_API_KEY}"
@@ -104,14 +105,14 @@ llm_pool:
 
   judging:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
       role: "judging"
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       role: "judging"
       api_key: "${ZHIPU_API_KEY}"
@@ -120,14 +121,14 @@ llm_pool:
 
   restoration:
     - provider: "openai"
-      model: "DeepSeek-V4.1-Flash"
+      model: "glm-4.7-flash"
       priority: 1
       role: "restoration"
-      api_key: "${AMD_API_KEY}"
-      base_url: "https://developer.amd.com.cn/radeon/api/v1"
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
       timeout: 120.0
     - provider: "openai"
-      model: "glm-4.7-flash"
+      model: "glm-4-flash"
       priority: 2
       role: "restoration"
       api_key: "${ZHIPU_API_KEY}"
@@ -469,8 +470,7 @@ Configure your LLM provider API keys and quality gate overrides in your shell en
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `AMD_API_KEY` | (at least one required) | API key for AMD Radeon (DeepSeek-V4.1-Flash), priority-1 primary |
-| `ZHIPU_API_KEY` | (fallback) | API key for Zhipu AI (glm-4.7-flash), priority-2 fallback |
+| `ZHIPU_API_KEY` | (required for real calls) | API key for Zhipu AI (glm-4.7-flash primary, glm-4-flash fallback). CI never uses it implicitly (OL#183) |
 | `OMNI_TEST_FAKE_LLM` | unset | Set to `1` to bypass real LLM calls (mock responses) |
 | `OMNI_RUN_REAL_LLM` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Override config file path |

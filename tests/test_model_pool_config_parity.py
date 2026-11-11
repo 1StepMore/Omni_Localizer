@@ -143,7 +143,7 @@ class TestEnvExampleParity:
         # Guard against silent pool churn: if the pool gains a provider, the
         # env/scenario/init surfaces must be updated in the same change.
         assert _canonical_env_vars() == {
-            "AMD_API_KEY", "ZHIPU_API_KEY",
+            "ZHIPU_API_KEY",
         }
 
 

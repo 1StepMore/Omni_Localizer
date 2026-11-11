@@ -114,7 +114,7 @@ Full tables: [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
   server refuses to serve. Recovery = set the env var, never loosen the
   request.
 - **BYOK gate is OR, not AND**: the CLI pre-check passes when at least
-  one referenced provider key is set (`AMD_API_KEY` / `ZHIPU_API_KEY`).
+  one referenced provider key is set (`ZHIPU_API_KEY`).
 - Provider/rate-limit semantics and the two-layer `${VAR}` resolution:
   [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
 
@@ -159,12 +159,12 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 
 ## How to validate this module
 
-OL ships its own validation scenario library **in this repo** at
-`scenarios/` — 5 tier-2 `ol-translation` scenarios with their own
-`scenarios/STANDARDS.md` + `scenarios/_fixtures/`. They need real LLM
-keys (`requires_env`: the 2 canonical provider vars `AMD_API_KEY` /
-`ZHIPU_API_KEY`) and report `unconfigured` without them — never a fake
-green. The suite validation engine runs them via `--repo ol`.
+OL ships 5 tier-2 `ol-translation` scenarios in `scenarios/` (with
+`STANDARDS.md` + `_fixtures/`). They need `ZHIPU_API_KEY` and report
+`unconfigured` without it — never a fake green.
+
+**CI has no real-LLM channel** (`SPARK_API_KEY` is owner-local; AMD dead;
+ZHIPU rate-limited): scheduled CI is hermetic (OL#183); real-LLM runs locally at 02:00. The suite validation engine runs them via `--repo ol`.
 
 ```bash
 # From the Omni Suite root (clone: https://github.com/1StepMore/e2e-test-suite)

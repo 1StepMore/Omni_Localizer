@@ -2,10 +2,8 @@
 
 `requests_per_minute` is a routing weight only — E2E-83 removed
 `enforce_model_rate_limits` from the Router, so nothing rejects a request
-locally on rpm any more. Both providers in the canonical pool are capped by
-CONCURRENT requests instead: AMD Radeon answers 429
-`model_concurrency_rate_limit_exceeded` naming a concurrency number, Zhipu
-answers `code 1305 该模型当前访问量过大`.
+locally on rpm any more. Zhipu answers `code 1305 该模型当前访问量过大` on
+concurrent load; `max_parallel_requests` is the knob for that shape of limit.
 
 `max_parallel_requests` is the knob for that shape of limit. It lands in the
 same `litellm_params` dict as rpm (both are `updateLiteLLMParams` fields),
@@ -62,8 +60,8 @@ class TestMaxParallelRequestsWiring:
         target = f"{pool.translation[0].provider}/{pool.translation[0].model}"
 
         model_list = _build(pool)
-        # Both providers share the model id `openai/DeepSeek-V4.1-Flash` in
-        # different roles, so match on the role too.
+        # The provider-qualified model can repeat across roles, so match on
+        # the role too.
         capped = [
             e for e in model_list
             if e["litellm_params"]["model"] == target
@@ -93,17 +91,13 @@ class TestMaxParallelRequestsWiring:
         }
 
         changed = [k for k in before if before[k] != after[k]]
-        assert changed == [("judging", "openai/DeepSeek-V4.1-Flash")], (
+        assert changed == [("judging", "openai/glm-4.7-flash")], (
             f"only the targeted deployment should change, got {changed}"
         )
-        assert after[("judging", "openai/DeepSeek-V4.1-Flash")] == 3
+        assert after[("judging", "openai/glm-4.7-flash")] == 3
 
-    def test_canonical_pool_caps_only_the_account_limited_provider(self):
-        """AMD is capped at its account limit; Zhipu is left uncapped on purpose.
-
-        AMD Radeon answers 429 `model_concurrency_rate_limit_exceeded` naming
-        a concurrency number — an ACCOUNT-level ceiling that
-        max_parallel_requests can hold us under.
+    def test_canonical_pool_leaves_zhipu_uncapped(self):
+        """Zhipu is left uncapped on purpose.
 
         Zhipu answers `code 1305 该模型当前访问量过大`, which its own docs
         classify as platform overload ("模型在当前时段整体访问压力较高，平台
@@ -115,13 +109,7 @@ class TestMaxParallelRequestsWiring:
 
         for role in ("translation", "judging", "restoration", "profiling"):
             for model in getattr(pool, role, []):
-                is_amd = "amd.com.cn" in (model.base_url or "")
-                if is_amd:
-                    assert model.max_parallel_requests == 16, (
-                        f"{role}/{model.model}: AMD is account-capped and "
-                        f"must declare its ceiling"
-                    )
-                elif "bigmodel.cn" in (model.base_url or ""):
+                if "bigmodel.cn" in (model.base_url or ""):
                     assert model.max_parallel_requests is None, (
                         f"{role}/{model.model}: Zhipu 1305 is platform "
                         f"overload, not an account cap — do not declare one"

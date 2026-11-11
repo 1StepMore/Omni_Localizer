@@ -362,7 +362,7 @@ llm_pool:
       max_parallel_requests: null   # enforced cap on concurrent in-flight requests
 ```
 
-Provider strings map 1:1 to LiteLLM. `config/default.yaml` uses `provider: "openai"` for both entries — AMD Radeon and Zhipu are reached as OpenAI-compatible endpoints (`nvidia_nim` was retired with its `minimaxai/minimax-m3` model). Pool validity rules:
+Provider strings map 1:1 to LiteLLM. `config/default.yaml` uses `provider: "openai"` for both Zhipu entries (`glm-4.7-flash` / `glm-4-flash`); Zhipu is reached as an OpenAI-compatible endpoint (`nvidia_nim` and AMD were retired). Pool validity rules:
 
 - **At least 2 models per role** (`translation`, `judging`, `restoration`) — `LLMPoolConfig.check_min_models_per_role` in `src/ol_config/schema.py` raises `ValueError` otherwise.
 - `priority: 1` is tried first; on failure, the model is opened in the per-role circuit breaker (5 consecutive failures → 60 s open).
@@ -455,7 +455,7 @@ Source/target language is stored on the `TMXFile` instance and emitted as `xml:l
 | `OMNI_TEST_FAKE_LLM=1` | Skip real LLM calls; `ModelPool` returns placeholders. Required for hermetic tests. |
 | `OL_CONFIG_PATH=path` | Override default LLM config for the MCP server. |
 | `OMNI_CACHE_DIR=path` | Override the cache root (default `~/.omni_cache`); OL stores entries under `<root>/ol/`. |
-| `AMD_API_KEY`, `ZHIPU_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
+| `ZHIPU_API_KEY` | Resolved at config-load time when referenced as `${VAR}`. |
 | `OL_COMMANDCODE_API_KEY` | Key for the optional third (free `stealth/cat-jam:free`) tier present in an operator's gitignored `config/local.yaml`. |
 | `MCP_SHARED_SECRET=…` | Enable shared-secret auth on the MCP server; every tool must then pass `shared_secret`. |
 

@@ -4,26 +4,27 @@
 **Audience**: on-call engineer, monthly cost reviewer, anyone rotating the API key.
 **Last reviewed**: 2026-06-07 (PR14 merge — A11 of slim-pipeline-hardening).
 
-This runbook covers the **real-LLM CI infrastructure** that lives in
+This runbook covers the **real-LLM test infrastructure** that lives in
 `tests/real_llm/` and `.github/workflows/real-llm-nightly.yml`. The
 harness is defensive: in normal CI it is a no-op (all 4 real-LLM tests
-skip), and in nightly CI it is cost-gated at ~$5/month. Real LLM calls
-require explicit user authorization for ongoing spend.
+skip), and local runs are cost-gated at $5/test. Scheduled real-LLM is
+disabled (OL#183). Real LLM calls require explicit user authorization for
+ongoing spend.
 
 ## What runs where
 
 | Environment | Trigger | What happens |
 |---|---|---|
 | Normal CI (`.github/workflows/test.yml`) | every PR, every push to main | `OMNI_RUN_REAL_LLM` is unset → all 4 real-LLM tests SKIP. The 2 cost-estimator unit tests RUN (pure stdlib, no LLM). |
-| Nightly workflow (`.github/workflows/real-llm-nightly.yml`) | weekly cron `0 2 * * 0` (Sundays 02:00 UTC) + manual dispatch | `OMNI_RUN_REAL_LLM=1` + `AMD_API_KEY` / `ZHIPU_API_KEY` set → 4 real-LLM tests RUN against the real model pool. |
-| Local dev (you) | `OMNI_RUN_REAL_LLM=1 AMD_API_KEY=… ZHIPU_API_KEY=… pytest tests/real_llm/ -v` | Same as nightly. Useful for reproducing a nightly failure. |
+| Real-LLM workflow (`.github/workflows/real-llm-nightly.yml`) | manual dispatch only (scheduled runs disabled, OL#183) | `OMNI_RUN_REAL_LLM=1` + `ZHIPU_API_KEY` set → 4 real-LLM tests RUN against the Zhipu pool. |
+| Local dev (you) | `OMNI_RUN_REAL_LLM=1 ZHIPU_API_KEY=… pytest tests/real_llm/ -v` | Same as the manual workflow; the owner's 02:00 timer is the normal real-LLM channel. |
 
 **What `OMNI_RUN_REAL_LLM` actually does**: in the CLI it **skips the API-key pre-check** (`precheck_api_keys`, which guards `ol translate-md` / `ol translate-xliff`), and in `tests/real_llm/` it is the conftest switch that lets the real-LLM tests run. Naming trap: it does **not** enable real LLM calls — real calls are the production default (`OMNI_TEST_FAKE_LLM=1` disables them) — the variable only *bypasses a fail-fast check*. The provider keys must still be set for the calls to succeed.
 
-**Promote weekly → nightly** after 1 month of stable green runs (per
-plan A11 risk register). The cadence change is a one-line edit in
-`.github/workflows/real-llm-nightly.yml` (`cron: "0 2 * * 0"` →
-`"0 2 * *"`). Do not promote on speculation; wait for evidence.
+**Scheduled real-LLM is disabled** (OL#183, owner 2026-11-11): the only
+usable Spark key is owner-local, AMD is dead, and ZHIPU is rate-limited.
+Do not re-add a cron until a CI-usable key exists; the owner's local 02:00
+timer is the real-LLM channel.
 
 ## Cost discipline
 
@@ -42,16 +43,16 @@ The harness has a **two-layer cost gate**:
    guessing. Rates are refreshed **quarterly** — see "Recalibration cadence"
    below.
 
-Expected spend at 4 tests × ~$0.005/test ≈ **$0.02/night** (weekly
-cadence) → **$0.08/month** for 4 weekly runs. The plan's $5-15/month
-estimate is conservative and assumes the corpus grows; current spend
-is well below the budget.
+Expected spend for a manual/local run: 4 tests × ~$0.005/test ≈
+**$0.02/run**, capped at $5/test. There is no scheduled spend: the CI
+cron is disabled (OL#183). The plan's $5-15/month estimate assumed a
+nightly cadence and is no longer the operating model.
 
 ## API key rotation
 
-**Cadence**: quarterly. The AMD Radeon and Zhipu API keys (the
-providers in the canonical pool) must be rotated every 90 days. Set a calendar
-reminder when you rotate.
+**Cadence**: quarterly. The Zhipu API key (the only provider in the
+canonical pool) must be rotated every 90 days. Set a calendar reminder
+when you rotate.
 
 **Owner**: whoever has GitHub repo write access. As of 2026-06-07, the
 sole owner is `@1StepMore`. When that changes, update this section
@@ -59,13 +60,11 @@ and the calendar reminder.
 
 ### How to rotate
 
-1. Generate a new key in the provider's console:
-   - AMD Radeon: provider dashboard → API keys → "Create new"
-   - Zhipu AI: provider dashboard → API keys → "Create new"
-2. Update the GitHub secrets:
+1. Generate a new key in the Zhipu console: provider dashboard → API keys → "Create new".
+2. Update the GitHub secret:
    - Repo → Settings → Secrets and variables → Actions
-   - `AMD_API_KEY` / `ZHIPU_API_KEY` → "Update secret" → paste the new values
-3. Trigger a manual nightly run to verify the new key works:
+   - `ZHIPU_API_KEY` → "Update secret" → paste the new value
+3. Trigger a manual dispatch run to verify the new key works:
    ```bash
    gh workflow run "Real-LLM Nightly" --repo <org>/Omni_Localizer
    ```
@@ -95,12 +94,11 @@ is the signal — see "When the nightly job fails" below.
      a patch, re-run.
    - **Provider degradation**: judge scores dropped, brand names
      mistranslated, output language leaked. This is exactly what the
-     nightly is FOR. Open an issue, decide whether to roll back the
+     real-LLM run is FOR. Open an issue, decide whether to roll back the
      provider or wait for the issue to clear.
      - **API key expired / auth error**: rotate the key (see above).
-      If rotation doesn't fix it, check `secrets.AMD_API_KEY` /
-      `secrets.ZHIPU_API_KEY` are still
-      set in repo settings.
+       If rotation doesn't fix it, check that `secrets.ZHIPU_API_KEY` is
+       still set in repo settings.
    - **Cost overrun**: the pre-call gate should have prevented this.
      If it didn't, recalibrate the rates in `cost_estimator.py` (see
      "Recalibration cadence" below).
@@ -117,7 +115,7 @@ is the signal — see "When the nightly job fails" below.
 
 **Quarterly** (with the API key rotation). Refresh the `OL_REAL_LLM_RATES`
 JSON for every model in your `config/local.yaml` pool (canonical:
-`DeepSeek-V4.1-Flash`, `glm-4.7-flash`).
+`glm-4.7-flash`, `glm-4-flash`).
 
 The harness ships no hardcoded prices: `cost_estimator.py` fails closed
 (`KeyError`) when a model has no rate, so a stale or missing entry stops the
@@ -125,17 +123,16 @@ run instead of mis-billing.
 
 To recalibrate:
 
-1. Check each provider's published rate card (AMD Radeon, Zhipu
-   pricing pages).
+1. Check Zhipu's published rate card.
 2. Set `OL_REAL_LLM_RATES` to the JSON object (USD per 1M tokens,
    `[input, output]` per model), e.g.:
    ```json
-   {"DeepSeek-V4.1-Flash": [<in>, <out>],
-    "glm-4.7-flash": [<in>, <out>]}
+   {"glm-4.7-flash": [<in>, <out>],
+    "glm-4-flash": [<in>, <out>]}
    ```
-   Locally, `export` it in your shell. In GitHub Actions, set it as a repo
-   *variable* (Settings → Secrets and variables → Actions → Variables); the
-   nightly workflow maps it to `OL_REAL_LLM_RATES`. Values are intentionally
+   Locally, `export` it in your shell. For a manual dispatch, set it as a
+   repo *variable* (Settings → Secrets and variables → Actions → Variables);
+   the workflow maps it to `OL_REAL_LLM_RATES`. Values are intentionally
    not committed.
 3. Re-run the cost-estimator unit tests to confirm the parsing + gate
    contract:
@@ -153,9 +150,8 @@ in this runbook too.
 ```bash
 cd Omni_Localizer
 export OMNI_RUN_REAL_LLM=1
-export AMD_API_KEY=…        # your own key
 export ZHIPU_API_KEY=…      # your own key
-export OL_REAL_LLM_RATES='{"DeepSeek-V4.1-Flash": [<in>, <out>], "glm-4.7-flash": [<in>, <out>]}'
+export OL_REAL_LLM_RATES='{"glm-4.7-flash": [<in>, <out>], "glm-4-flash": [<in>, <out>]}'
 export PYTHONPATH=src
 pytest tests/real_llm/ -v --tb=long --durations=10
 ```
@@ -166,7 +162,7 @@ LLM's actual response — useful for diagnosing provider degradation.
 
 **Do not commit your real API key** to the repo. The `.env` file (if
 you use one) is gitignored at the repo root, and GitHub secrets
-(`${{ secrets.AMD_API_KEY }}` / `${{ secrets.ZHIPU_API_KEY }}`)
+(`${{ secrets.ZHIPU_API_KEY }}`)
 are the only path the workflow uses. See `.gitignore` for the full list.
 
 ## Adding a new real-LLM test
@@ -191,5 +187,5 @@ are the only path the workflow uses. See `.gitignore` for the full list.
 - **Conftest**: `tests/real_llm/conftest.py` — fixtures and marker
   → skipif wiring.
 - **Workflow**: `.github/workflows/real-llm-nightly.yml`.
-- **Provider pricing**: AMD Radeon, Zhipu pricing pages
+- **Provider pricing**: Zhipu pricing page
   (re-verify quarterly).

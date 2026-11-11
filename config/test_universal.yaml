@@ -1,14 +1,17 @@
+# CI nightly real-LLM is intentionally disabled: the only usable key
+# (SPARK_API_KEY) is owner-local and never a repo secret (OL#183, 2026-11-11).
+# The ZHIPU provider is an explicit-use fallback, not the nightly channel.
 llm_pool:
   translation:
   - provider: openai
-    model: DeepSeek-V4.1-Flash
-    api_key: ${AMD_API_KEY}
-    base_url: https://developer.amd.com.cn/radeon/api/v1
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: translation
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
@@ -16,14 +19,14 @@ llm_pool:
     role: translation
   judging:
   - provider: openai
-    model: DeepSeek-V4.1-Flash
-    api_key: ${AMD_API_KEY}
-    base_url: https://developer.amd.com.cn/radeon/api/v1
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: judging
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
@@ -31,14 +34,14 @@ llm_pool:
     role: judging
   restoration:
   - provider: openai
-    model: DeepSeek-V4.1-Flash
-    api_key: ${AMD_API_KEY}
-    base_url: https://developer.amd.com.cn/radeon/api/v1
+    model: glm-4.7-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: restoration
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0

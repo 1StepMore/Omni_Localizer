@@ -15,14 +15,16 @@ Each model has:
 - `max_parallel_requests` (default unset) — enforced cap on simultaneous in-flight requests; use it when the provider 429s on concurrency (AMD `model_concurrency_rate_limit_exceeded`, Zhipu `code 1305`)
 
 **Unified pool (canonical)** — `config/default.yaml` is the committed source of
-truth (2 tiers × 4 roles); `ol init` writes `config/local.yaml`. `local.yaml` is
+truth (2 ZHIPU models × 4 roles); `ol init` writes `config/local.yaml`. `local.yaml` is
 a **gitignored operator override**, not a byte-for-byte mirror: it may legitimately
-differ in tier count, rate limits, and timeouts (the operator config on this
-machine adds a third free `stealth/cat-jam:free` tier per role, keyed by
-`OL_COMMANDCODE_API_KEY`).
+differ in tier count, rate limits, and timeouts.
 
-- **DeepSeek-V4.1-Flash** → AMD Radeon (`AMD_API_KEY`, `https://developer.amd.com.cn/radeon/api/v1`) — priority-1 primary for translation/judging/restoration/profiling
-- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-2 fallback
+- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-1 primary for translation/judging/restoration/profiling
+- **glm-4-flash** → Zhipu (`ZHIPU_API_KEY`, same endpoint) — priority-2 fallback
+
+CI never runs this pool for real LLM (OL#183): the only usable Spark key is
+owner-local, AMD is dead, and ZHIPU is rate-limited. Scheduled CI is hermetic;
+real-LLM validation runs on the owner's local 02:00 timer.
 
 Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
 never written. Each of `translation`, `judging`, and `restoration` must
@@ -39,7 +41,7 @@ the next model in priority is tried.
 | `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
 | `OMNI_RUN_REAL_LLM=1` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `AMD_API_KEY` / `ZHIPU_API_KEY` | (none) | LLM provider API keys (DeepSeek-V4.1-Flash / glm-4.7-flash). |
+| `ZHIPU_API_KEY` | (none) | Zhipu API key (glm-4.7-flash primary / glm-4-flash fallback). |
 | `OL_COMMANDCODE_API_KEY` | (none) | Key for the optional third tier (`stealth/cat-jam:free`) in an operator's gitignored `config/local.yaml`. |
 | `OMNI_CACHE_DIR` | `~/.omni_cache` | Cache root; OL stores content-addressed entries under `<root>/ol/`. Read at call-time. |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |

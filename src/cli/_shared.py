@@ -150,7 +150,7 @@ def precheck_api_keys(config_path: str | None) -> None:
       (a) no ``*_API_KEY``-shaped var is set at all → nothing is
           configured; list the refs this config needs + point at docs.
       (b) key-like vars ARE set but none is referenced by this config
-          (e.g. an ``OPENAI_API_KEY`` against an AMD/Zhipu pool) →
+          (e.g. an ``OPENAI_API_KEY`` against a Zhipu-only pool) →
           configured-but-mismatched; name both sides.
 
     The pre-check is intentionally a lightweight regex scan on the
@@ -215,7 +215,7 @@ def precheck_api_keys(config_path: str | None) -> None:
         typer.echo(
             "Error: no provider API key is configured. "
             f"This config references: {expected}. "
-            "Set at least one of them (e.g. `export AMD_API_KEY=...`).",
+            "Set at least one of them (e.g. `export ZHIPU_API_KEY=...`).",
             err=True,
         )
         typer.echo(
@@ -233,7 +233,7 @@ def precheck_api_keys(config_path: str | None) -> None:
         )
         typer.echo(
             "Hint: export one of the pool's vars (e.g. "
-            "`export AMD_API_KEY=...`), or point --config at a pool that "
+            "`export ZHIPU_API_KEY=...`), or point --config at a pool that "
             "uses the key you already have.",
             err=True,
         )
