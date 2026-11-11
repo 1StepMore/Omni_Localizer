@@ -1239,6 +1239,9 @@ def translate_md(
         typer.echo(f"Error: Cannot create output directory: {e}", err=True)
         raise typer.Exit(code=ExitCode.CLI_USAGE_ERROR)
 
+    # Load .env to get ZHIPU_API_KEY etc. before the key preflight reads
+    # the environment (mirrors translate_xliff.py's call before LLM work).
+    _load_env_for_cli()
     precheck_api_keys(config)
 
     logger.info(f"Command: translate_md {input}")
