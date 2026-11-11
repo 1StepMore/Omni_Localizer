@@ -608,6 +608,12 @@ class ModelPool:
                     config.llm_pool, usable=self._usable_by_role,
                 ),
                 routing_strategy="simple-shuffle",
+                # OL#184: 只靠 429 的 _intra_role_failover 不够 —— 主档硬故障
+                # （连接失败 / 超时 / 5xx）时组内重试仍可能抽回同一个坏 deployment，
+                # 备份档永远接不上。litellm 的 enable_weighted_failover 让「可重试失败」
+                # 在同一 model group 内重新抽签（本池一个 role = 一个 group），
+                # 这是备份档在硬故障下真正生效的路径。仅 async 生效，本仓调用全是 async。
+                enable_weighted_failover=True,
                 num_retries=2,
                 timeout=120.0,
                 fallbacks=self._build_fallbacks(
