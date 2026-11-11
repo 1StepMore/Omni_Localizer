@@ -5,6 +5,7 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -479,6 +480,56 @@ def _hard_failure_exclude_ids(
     return set()
 
 
+# ---------------------------------------------------------------------------
+# OL#191: process-level dead-model memory (TTL tombstones).
+#
+# After a hard failure (timeout / retryable transport error) steps to the
+# next priority tier, the failing deployment is remembered with a TTL so
+# FOLLOW-UP translate() calls in the same process skip it instead of burning
+# the full Router timeout on it again (serial / low-concurrency long
+# documents used to pay N x timeout for N units). The pool is process-cached
+# (``ModelPool.get_instance``), so the per-instance state lives for the
+# process; nothing is persisted across processes. Marks are keyed by
+# (role, "<provider>/<model>") — the same deployment id the per-call
+# exclude set uses. The 429 path never marks anything (rate limits are
+# transient). ``OL_POOL_DEAD_MODEL_TTL`` (seconds) overrides the TTL;
+# ``<= 0`` disables the memory entirely (reverse-evidence knob).
+# ---------------------------------------------------------------------------
+_DEAD_MODEL_TTL_DEFAULT_SECONDS = 120.0  # same order as the Router timeout
+
+
+def _dead_model_ttl() -> float:
+    """TTL for dead-model marks (seconds); ``<= 0`` disables the memory."""
+    raw = os.getenv("OL_POOL_DEAD_MODEL_TTL")
+    if not raw:
+        return _DEAD_MODEL_TTL_DEFAULT_SECONDS
+    try:
+        return float(raw)
+    except ValueError:
+        return _DEAD_MODEL_TTL_DEFAULT_SECONDS
+
+
+def _dead_memory_exc(model_ids: set[str]) -> Timeout:
+    """Synthetic Timeout for the dead-memory bypass path (OL#191).
+
+    Keeps the exception type the skipped deployment would have raised, so
+    downstream handling and the fail-closed re-raise stay type-compatible.
+    """
+    joined = ", ".join(sorted(model_ids))
+    try:
+        return Timeout(
+            "dead-model memory TTL", model=joined,
+            llm_provider="dead-model-memory",
+        )
+    except TypeError:  # OMNI_TEST_FAKE_LLM stub: plain Exception
+        return Timeout("dead-model memory TTL")
+
+
+# Guards lazy per-instance init: some test doubles build ModelPool via
+# ``__new__`` and skip ``__init__``, so the state must be created on demand.
+_dead_model_state_guard = threading.Lock()
+
+
 def _parse_retry_after_value(value: Any) -> float | None:
     """Parse a ``Retry-After`` header value (delta-seconds or HTTP-date)."""
     if value is None:
@@ -646,6 +697,11 @@ class ModelPool:
         # 2026-06-17 round 5 (FIX-#18): per-process rate-limit hit counter
         # (lightweight dict; no Prometheus dep — CLI/test env).
         self._rate_limit_hits: dict[str, int] = {}
+        # OL#191: dead-model memory — (role, "<provider>/<model>") ->
+        # monotonic deadline. The pool is process-cached, so this lives for
+        # the process; never persisted. See _mark_dead_models.
+        self._dead_model_marks: dict[tuple[str, str], float] = {}
+        self._dead_model_marks_lock = threading.Lock()
         # 2026-06-18 round 16 Phase B1: one circuit breaker per role.
         # 5 consecutive failures -> open, reset after 60s.
         self._breakers: dict[str, pybreaker.CircuitBreaker] = {
@@ -781,6 +837,65 @@ class ModelPool:
         except pybreaker.CircuitBreakerError:
             pass
         return result
+
+    def _dead_marks_state(self) -> tuple[dict, threading.Lock]:
+        """Lazily create the dead-model memory state (OL#191).
+
+        Some test doubles construct ModelPool via ``__new__`` without
+        running ``__init__``, so the attributes may not exist yet.
+        """
+        marks = getattr(self, "_dead_model_marks", None)
+        if marks is not None:
+            return marks, self._dead_model_marks_lock
+        with _dead_model_state_guard:
+            marks = getattr(self, "_dead_model_marks", None)
+            if marks is None:
+                marks = {}
+                self._dead_model_marks = marks
+                self._dead_model_marks_lock = threading.Lock()
+        return marks, self._dead_model_marks_lock
+
+    def _mark_dead_models(self, role: str, model_ids: set[str]) -> None:
+        """Remember hard-failed deployments as dead for the TTL (OL#191)."""
+        ttl = _dead_model_ttl()
+        if ttl <= 0 or not model_ids:
+            return
+        marks, lock = self._dead_marks_state()
+        deadline = time.monotonic() + ttl
+        with lock:
+            for model_id in model_ids:
+                marks[(role, model_id)] = deadline
+        _logger.warning(
+            "dead-model memory (OL#191): marking %s in role %r dead for "
+            "%.0fs (hard failure); follow-up calls skip it until expiry",
+            ", ".join(sorted(model_ids)), role, ttl,
+        )
+
+    def _active_dead_model_ids(self, role: str) -> set[str]:
+        """Dead deployment ids whose TTL is still running; prunes expired."""
+        if _dead_model_ttl() <= 0:
+            return set()
+        marks, lock = self._dead_marks_state()
+        now = time.monotonic()
+        expired: list[tuple[str, str]] = []
+        with lock:
+            active: set[str] = set()
+            for key, deadline in marks.items():
+                if key[0] != role:
+                    continue
+                if deadline > now:
+                    active.add(key[1])
+                else:
+                    expired.append(key)
+            for key in expired:
+                del marks[key]
+        for _role, model_id in expired:
+            _logger.warning(
+                "dead-model memory (OL#191): TTL expired for %s in role %r; "
+                "dialing it again (the peer may have recovered)",
+                model_id, role,
+            )
+        return active
 
     def _build_model_list(
         self,
@@ -1292,6 +1407,35 @@ class ModelPool:
         model_str = "translation"  # role passed to acompletion; key for hit counter
         backoff_cfg = self._rate_limit_backoff
         max_attempts = backoff_cfg.max_attempts_per_model
+        # OL#191: a deployment marked dead by a PREVIOUS call's hard failure
+        # is skipped without re-dialing — the group call below would
+        # otherwise burn the full Router timeout on it again (serial units
+        # each paid 1 x timeout). When every model of the role is marked,
+        # the memory is ignored so stale marks can never starve the role.
+        # Defensive getattr: some test doubles skip __init__ entirely.
+        role_models = getattr(self, "_usable_by_role", {}).get(model_str) or []
+        dead_ids = self._active_dead_model_ids(model_str) & {
+            f"{m.provider}/{m.model}" for m in role_models
+        }
+        if dead_ids and len(dead_ids) < len(role_models):
+            _logger.warning(
+                "dead-model memory (OL#191): skipping %s in role %r "
+                "without re-dialing (TTL %.0fs)",
+                ", ".join(sorted(dead_ids)), model_str, _dead_model_ttl(),
+            )
+            return await self._intra_role_failover(
+                role=model_str,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=4096,
+                text=text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                cache_key=cache_key,
+                original_exc=_dead_memory_exc(dead_ids),
+                exclude_model_ids=set(dead_ids),
+                backoff=False,
+            )
         for attempt in range(max_attempts):  # 1 initial + (max_attempts-1) retries
             try:
                 response = await self._call_with_breaker(
@@ -1320,6 +1464,11 @@ class ModelPool:
                     "priority tier without a same-tier retry",
                     model_str, attempt + 1, max_attempts,
                 )
+                # OL#191: persist the hard-failed deployment across calls.
+                hard_failed = _hard_failure_exclude_ids(
+                    self._usable_by_role.get(model_str), e,
+                )
+                self._mark_dead_models(model_str, hard_failed)
                 return await self._intra_role_failover(
                         role=model_str,
                         messages=messages,
@@ -1330,9 +1479,7 @@ class ModelPool:
                         target_lang=target_lang,
                         cache_key=cache_key,
                         original_exc=e,
-                        exclude_model_ids=_hard_failure_exclude_ids(
-                            self._usable_by_role.get(model_str), e,
-                        ),
+                        exclude_model_ids=hard_failed,
                         backoff=False,
                     )
             except (RateLimitError, RouterRateLimitError) as e:
@@ -1389,6 +1536,11 @@ class ModelPool:
                     "stepping to the next priority tier",
                     model_str, type(e).__name__, e,
                 )
+                # OL#191: persist the hard-failed deployment across calls.
+                hard_failed = _hard_failure_exclude_ids(
+                    self._usable_by_role.get(model_str), e,
+                )
+                self._mark_dead_models(model_str, hard_failed)
                 return await self._intra_role_failover(
                     role=model_str,
                     messages=messages,
@@ -1399,9 +1551,7 @@ class ModelPool:
                     target_lang=target_lang,
                     cache_key=cache_key,
                     original_exc=e,
-                    exclude_model_ids=_hard_failure_exclude_ids(
-                        self._usable_by_role.get(model_str), e,
-                    ),
+                    exclude_model_ids=hard_failed,
                     backoff=False,
                 )
 
