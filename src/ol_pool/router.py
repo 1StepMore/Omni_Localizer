@@ -158,9 +158,28 @@ class _StubRouterRateLimitError(_StubLitellmError):
     pass
 
 
+class _StubAPIConnectionError(_StubLitellmError):
+    pass
+
+
+class _StubInternalServerError(_StubLitellmError):
+    pass
+
+
+class _StubServiceUnavailableError(_StubLitellmError):
+    pass
+
+
 if os.environ.get("OMNI_TEST_FAKE_LLM") != "1":
     import litellm  # noqa: E402
-    from litellm.exceptions import AuthenticationError, RateLimitError, Timeout  # noqa: E402
+    from litellm.exceptions import (  # noqa: E402
+        APIConnectionError,
+        AuthenticationError,
+        InternalServerError,
+        RateLimitError,
+        ServiceUnavailableError,
+        Timeout,
+    )
     from litellm.types.router import RouterRateLimitError  # noqa: E402
     # Must be set before Router init — prevents litellm from lowercasing model names
     # (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
@@ -176,6 +195,9 @@ else:
     RateLimitError = _StubRateLimitError
     Timeout = _StubTimeout
     RouterRateLimitError = _StubRouterRateLimitError
+    APIConnectionError = _StubAPIConnectionError
+    InternalServerError = _StubInternalServerError
+    ServiceUnavailableError = _StubServiceUnavailableError
     Router = None  # type: ignore[assignment,misc]
     # Direct-call seam for intra-role 429 failover (_direct_acompletion).
     # Tests replace this module attribute with a fake exposing acompletion().
@@ -393,6 +415,70 @@ def _rate_limited_model_label(exc: BaseException, role: str) -> str:
     return role
 
 
+_TRANSPORT_ERROR_NAMES = frozenset({
+    "APIConnectionError",
+    "APITimeoutError",
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "Timeout",
+})
+
+
+def _is_retryable_transport_error(exc: BaseException) -> bool:
+    """True for failures where retrying on the SAME deployment is pointless
+    but stepping to the next priority tier is right (OL#187).
+
+    Deliberately excludes AuthenticationError (config is broken — fail fast)
+    and BadRequest/ContextWindow (request is broken — fail fast).
+    """
+    if isinstance(
+        exc,
+        (APIConnectionError, ServiceUnavailableError, InternalServerError, Timeout),
+    ):
+        return True
+    # FAKE_LLM mode and cross-module exception instances may not be the
+    # classes imported above, so fall back to the class name.
+    if type(exc).__name__ in _TRANSPORT_ERROR_NAMES:
+        return True
+    for attr in ("status_code", "code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int) and value >= 500:
+            return True
+    return False
+
+
+def _hard_failure_exclude_ids(
+    models: list[LLMModelConfig] | None,
+    exc: BaseException,
+) -> set[str]:
+    """Deployment ids to skip after a hard failure (OL#187).
+
+    Connection/timeout errors do not reliably carry the failing deployment
+    (``.model`` may hold the role/group name), so an unusable label falls
+    back to the highest-priority tier the Router would have picked first.
+    """
+    ordered = sorted(
+        models or [], key=lambda m: (m.priority, m.provider, m.model)
+    )
+    ids = {f"{m.provider}/{m.model}" for m in ordered}
+    bare_to_ids: dict[str, set[str]] = {}
+    for model in ordered:
+        bare_to_ids.setdefault(model.model, set()).add(
+            f"{model.provider}/{model.model}"
+        )
+    value = getattr(exc, "model", None)
+    if isinstance(value, str) and value and value != "test":
+        if value in ids:
+            return {value}
+        if value in bare_to_ids:
+            return bare_to_ids[value]
+    if ordered:
+        return {f"{ordered[0].provider}/{ordered[0].model}"}
+    return set()
+
+
 def _parse_retry_after_value(value: Any) -> float | None:
     """Parse a ``Retry-After`` header value (delta-seconds or HTTP-date)."""
     if value is None:
@@ -608,7 +694,12 @@ class ModelPool:
                     config.llm_pool, usable=self._usable_by_role,
                 ),
                 routing_strategy="simple-shuffle",
-                num_retries=2,
+                # OL#187: 0 = no hidden retries inside the Router. OL's own
+                # translate() loop + _intra_role_failover own the retry/failover
+                # policy; Router-level retries only multiplied the wait before a
+                # hard failure could step to the next priority tier (measured:
+                # num_retries=2 -> ~395s to fail over on a dead p1).
+                num_retries=0,
                 timeout=120.0,
                 fallbacks=self._build_fallbacks(
                     config.llm_pool, usable=self._usable_by_role,
@@ -998,21 +1089,29 @@ class ModelPool:
         target_lang: str,
         cache_key: tuple,
         original_exc: BaseException,
+        exclude_model_ids: set[str] | None = None,
+        backoff: bool = True,
     ) -> str:
-        """Step through a role's remaining models after a 429.
+        """Step through a role's remaining models after a 429 or a retryable
+        transport failure (OL#187).
 
         Models are ordered by ``priority`` and drawn ONLY from
         ``self._usable_by_role[role]``. Cross-role downgrade is deliberately
         not attempted: a judging/restoration/profiling model must never answer
-        a translation request. If every same-role model is rate limited, the
-        original exception is re-raised (fail-closed).
+        a translation request. If every same-role model fails, the original
+        exception is re-raised (fail-closed).
+
+        ``exclude_model_ids`` marks deployments as already attempted without
+        trusting the exception's (often missing) model label. ``backoff=False``
+        skips the 429 wait for hard failures — the same deployment would fail
+        again immediately, so waiting only adds latency.
         """
         models = sorted(
             self._usable_by_role.get(role) or [],
             key=lambda m: (m.priority, m.provider, m.model),
         )
         hit_label = _rate_limited_model_label(original_exc, role)
-        attempted: set[str] = set()
+        attempted: set[str] = set(exclude_model_ids or ())
         for model in models:
             model_id = f"{model.provider}/{model.model}"
             if hit_label in (model_id, model.model):
@@ -1027,19 +1126,33 @@ class ModelPool:
                 continue
             attempted.add(model_id)
             switches += 1
-            retry_after = _extract_retry_after(wait_exc)
-            wait = compute_rate_limit_backoff(switches - 1, wait_exc, backoff_cfg)
+            if backoff:
+                retry_after = _extract_retry_after(wait_exc)
+                wait = compute_rate_limit_backoff(
+                    switches - 1, wait_exc, backoff_cfg
+                )
+            else:
+                retry_after = None
+                wait = 0
             await asyncio.sleep(wait)
-            _logger.warning(
-                "rate-limited on %s (attempt %d/%d): waiting %.1fs "
-                "(retry_after=%s, remaining same-role models=%d); "
-                "switching to %s (tier %d/%d)",
-                hit_label, switches, backoff_cfg.max_attempts_per_model,
-                wait,
-                f"{retry_after:g}" if retry_after is not None else "none",
-                max(len(models) - tier, 0),
-                model_id, tier, len(models),
-            )
+            if backoff:
+                _logger.warning(
+                    "rate-limited on %s (attempt %d/%d): waiting %.1fs "
+                    "(retry_after=%s, remaining same-role models=%d); "
+                    "switching to %s (tier %d/%d)",
+                    hit_label, switches, backoff_cfg.max_attempts_per_model,
+                    wait,
+                    f"{retry_after:g}" if retry_after is not None else "none",
+                    max(len(models) - tier, 0),
+                    model_id, tier, len(models),
+                )
+            else:
+                _logger.warning(
+                    "hard failure on %s (attempt %d/%d): no backoff; "
+                    "switching to %s (tier %d/%d)",
+                    hit_label, switches, backoff_cfg.max_attempts_per_model,
+                    model_id, tier, len(models),
+                )
             try:
                 response = await self._direct_acompletion(
                     model, messages, temperature, max_tokens,
@@ -1057,7 +1170,7 @@ class ModelPool:
             return translated
 
         _logger.error(
-            "Translation failed: every %s-tier model was rate limited", role,
+            "Translation failed: every %s-tier model failed", role,
         )
         raise original_exc
 
@@ -1197,13 +1310,31 @@ class ModelPool:
                     self._cache.put(cache_key, translated)
                 return translated
             except Timeout as e:
-                if attempt < max_attempts - 1:
-                    wait = 2 ** attempt * 5
-                    _logger.warning(f"Timeout, retrying in {wait}s (attempt {attempt + 1}/{max_attempts})")
-                    await asyncio.sleep(wait)
-                else:
-                    _logger.error(f"Translation failed after {max_attempts} attempts: {e}")
-                    raise
+                # OL#187: a timeout means the deployment did not answer inside
+                # its own timeout budget. Retrying the SAME deployment here
+                # multiplied the wait by max_attempts_per_model (measured:
+                # 4 x 120s) before any failover could happen. Step to the next
+                # priority tier right away instead.
+                _logger.warning(
+                    "Timeout on %s (attempt %d/%d): stepping to the next "
+                    "priority tier without a same-tier retry",
+                    model_str, attempt + 1, max_attempts,
+                )
+                return await self._intra_role_failover(
+                        role=model_str,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=4096,
+                        text=text,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
+                        cache_key=cache_key,
+                        original_exc=e,
+                        exclude_model_ids=_hard_failure_exclude_ids(
+                            self._usable_by_role.get(model_str), e,
+                        ),
+                        backoff=False,
+                    )
             except (RateLimitError, RouterRateLimitError) as e:
                 # 2026-06-17 round 5 (FIX-#18): increment per-model hit counter
                 self._rate_limit_hits[model_str] = self._rate_limit_hits.get(model_str, 0) + 1
@@ -1250,8 +1381,29 @@ class ModelPool:
                     _logger.error(f"Translation failed after {max_attempts} attempts due to source language residual: {e}")
                     raise
             except Exception as e:
-                _logger.error(f"Translation failed: {e}")
-                raise
+                if not _is_retryable_transport_error(e):
+                    _logger.error(f"Translation failed: {e}")
+                    raise
+                _logger.warning(
+                    "transport failure on %s (hard, no same-tier retry): %s: %s; "
+                    "stepping to the next priority tier",
+                    model_str, type(e).__name__, e,
+                )
+                return await self._intra_role_failover(
+                    role=model_str,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=4096,
+                    text=text,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    cache_key=cache_key,
+                    original_exc=e,
+                    exclude_model_ids=_hard_failure_exclude_ids(
+                        self._usable_by_role.get(model_str), e,
+                    ),
+                    backoff=False,
+                )
 
     async def judge(
         self, source: str, target: str, source_lang: str, target_lang: str,

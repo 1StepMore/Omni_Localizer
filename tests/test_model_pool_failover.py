@@ -66,7 +66,9 @@ class TestModelPool:
             mock_router_class.assert_called_once()
             call_kwargs = mock_router_class.call_args.kwargs
             assert call_kwargs["routing_strategy"] == "simple-shuffle"
-            assert call_kwargs["num_retries"] == 2
+            # OL#187: Router-level retries are disabled — OL's own translate()
+            # loop + _intra_role_failover own the retry/failover policy.
+            assert call_kwargs["num_retries"] == 0
             assert call_kwargs["timeout"] == 120.0
             assert "fallbacks" in call_kwargs
         finally:
