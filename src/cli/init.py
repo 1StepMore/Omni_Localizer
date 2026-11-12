@@ -17,9 +17,11 @@ from cli._shared import ExitCode
 # Mirrors config/default.yaml (the source of truth): provider "openai",
 # timeout 120.0, all api_key/base_url as ${ENV_VAR} refs. Parity is locked by
 # tests/test_model_pool_config_parity.py — keep the two in sync.
+# Order mirrors config/default.yaml (OL#193, 2026-11-12 real-traffic
+# measurement): glm-4-flash takes priority 1, glm-4.7-flash drops to last.
 _POOL_MODELS: tuple[tuple[str, str, str], ...] = (
-    ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
     ("glm-4-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
+    ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
 )
 
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {

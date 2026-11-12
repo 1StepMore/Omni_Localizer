@@ -91,10 +91,10 @@ class TestMaxParallelRequestsWiring:
         }
 
         changed = [k for k in before if before[k] != after[k]]
-        assert changed == [("judging", "openai/glm-4.7-flash")], (
+        assert changed == [("judging", "openai/glm-4-flash")], (
             f"only the targeted deployment should change, got {changed}"
         )
-        assert after[("judging", "openai/glm-4.7-flash")] == 3
+        assert after[("judging", "openai/glm-4-flash")] == 3
 
     def test_canonical_pool_leaves_zhipu_uncapped(self):
         """Zhipu is left uncapped on purpose.
