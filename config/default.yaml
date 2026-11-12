@@ -9,17 +9,22 @@ lqa_max_retries: 2
 # CI nightly real-LLM is intentionally disabled: the only usable key
 # (SPARK_API_KEY) is owner-local and never a repo secret (OL#183, 2026-11-11).
 # The ZHIPU provider is an explicit-use fallback, not the nightly channel.
+# 2026-11-12 real-traffic measurement (OL#193): glm-4.7-flash hit 429 on
+# ~70-80% of free-tier calls (p50 ~114s on the lucky one) and long inputs came
+# back with empty content after finish_reason=length, while glm-4-flash was
+# 6/6 translation, 4/4 parseable judge JSON, p50 2.5s — so glm-4-flash takes
+# priority 1 on every role and glm-4.7-flash drops to the last tier.
 llm_pool:
   translation:
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: translation
   - provider: openai
-    model: glm-4-flash
+    model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
@@ -27,14 +32,14 @@ llm_pool:
     role: translation
   judging:
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: judging
   - provider: openai
-    model: glm-4-flash
+    model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
@@ -42,14 +47,14 @@ llm_pool:
     role: judging
   restoration:
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: restoration
   - provider: openai
-    model: glm-4-flash
+    model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
@@ -57,14 +62,14 @@ llm_pool:
     role: restoration
   profiling:
   - provider: openai
-    model: glm-4.7-flash
+    model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 1
     role: profiling
   - provider: openai
-    model: glm-4-flash
+    model: glm-4.7-flash
     api_key: ${ZHIPU_API_KEY}
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
