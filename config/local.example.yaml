@@ -1,121 +1,75 @@
-# =============================================================================
-# Omni-Localizer 模型池模板 —— config/local.example.yaml (OL#195)
-# =============================================================================
-# 真身 `config/local.yaml` 被 .gitignore 排除、永不入库；换机器/新部署时
-# 复制本模板为 `config/local.yaml`（或跑 `ol init`），再把占位符换成自己的值。
-# 本文件是唯一入库的模板，CI 会校验它能被 LLMPoolConfig 解析且每角色 ≥2 档
-# （防止 example 随 schema 漂移）。所有 api_key 一律 ${ENV} 引用——仓库里
-# 不许出现真 key。
-#
-# 必填环境变量：
-#   SPARK_API_KEY     主通道（四角色 P1：spark-x2.6，讯飞 OpenAI 兼容 MaaS）
-#   FALLBACK_API_KEY  跨厂商备份档（四角色 P2；变量名可自定，模板统一用它）
-#
-# ---- 踩坑沉淀（改动前先读完这几条）----------------------------------------
-# 1. 每角色 ≥2 档是 LLMPoolConfig 硬约束：translation / judging / restoration
-#    少于 2 档，配置直接拒绝加载。profiling 虽无硬校验，模板仍配满 2 档保持同构。
-# 2. requests_per_minute 在本 router 里只是 simple-shuffle 的抽签权重，
-#    不是硬限流；要限并发请用 max_parallel_requests（见 docs/dev/llm-pool.md）。
-# 3. 备份档给 1 ≈ 5% 日常流量（P1 20 : P2 1 的抽签比），真兜底不靠抽签，
-#    靠 priority 逐档 failover：P1 连续失败/硬错误后整档让位给 P2。
-# 4. spark-x2.6 是 thinking 模型：不关思考时 content 常为空、
-#    finish_reason=length（max_tokens 被隐藏思考吃光）。所以 P1 的
-#    extra_body.enable_thinking=false 不能省。
-# 5. priority 2 必须是【不同厂商】的凭据：同源同 key 只能兜瞬时 429/5xx，
-#    兜不住内容政策拒答——同一把 key 换个模型，同样的拒答还是会来。
-# 6. deepseek 类推理模型要给 max_tokens ≥ 8192，否则思考吃光预算、正文空。
-#
-# 本机做法示例（owner 机器，仅作参考）：P2 也可指向本机起的 OpenAI 兼容
-# 代理再转发上游（owner 机器是 opencode zen/go 网关）。单机 loopback /
-# 私网监听地址一律不写进本文件——字段值放它，别人 clone 下来必然全挂；
-# 注释里也不放具体地址。
-# =============================================================================
-
 llm_pool:
   translation:
-    - provider: openai          # OpenAI 兼容协议（讯飞 MaaS 走 openai 协议，provider 字段填 openai）
-      model: spark-x2.6
-      api_key: ${SPARK_API_KEY}
-      base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
-      timeout: 120.0
-      priority: 1
-      requests_per_minute: 20
-      role: translation
-      extra_body:
-        enable_thinking: false  # 坑 4：spark-x2.6 不关思考会吐空 content
-    - provider: openai
-      model: deepseek-flash     # 占位模型名：换成你选的跨厂商备份模型
-      api_key: ${FALLBACK_API_KEY}
-      base_url: https://your-fallback-provider.example.com/v1  # 占位端点：换成备份厂商的 OpenAI 兼容地址
-      timeout: 120.0
-      priority: 2
-      requests_per_minute: 1    # 坑 3：备份档 ≈5% 日常流量
-      max_parallel_requests: 4
-      max_tokens: 8192          # 坑 6：推理模型的思考预算
-      role: translation
-
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    priority: 1
+    requests_per_minute: 20
+    role: translation
+    extra_body:
+      enable_thinking: false
   judging:
-    - provider: openai
-      model: spark-x2.6
-      api_key: ${SPARK_API_KEY}
-      base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
-      timeout: 120.0
-      priority: 1
-      requests_per_minute: 20
-      role: judging
-      extra_body:
-        enable_thinking: false
-    - provider: openai
-      model: deepseek-flash
-      api_key: ${FALLBACK_API_KEY}
-      base_url: https://your-fallback-provider.example.com/v1
-      timeout: 120.0
-      priority: 2
-      requests_per_minute: 1
-      max_parallel_requests: 4
-      max_tokens: 8192
-      role: judging
-
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    priority: 1
+    requests_per_minute: 20
+    role: judging
+    extra_body:
+      enable_thinking: false
+  - provider: openai
+    model: deepseek-flash
+    api_key: ${FALLBACK_API_KEY}
+    base_url: https://your-fallback-provider.example.com/v1
+    timeout: 120.0
+    priority: 2
+    requests_per_minute: 1
+    max_parallel_requests: 4
+    max_tokens: 8192
+    role: judging
   restoration:
-    - provider: openai
-      model: spark-x2.6
-      api_key: ${SPARK_API_KEY}
-      base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
-      timeout: 120.0
-      priority: 1
-      requests_per_minute: 20
-      role: restoration
-      extra_body:
-        enable_thinking: false
-    - provider: openai
-      model: deepseek-flash
-      api_key: ${FALLBACK_API_KEY}
-      base_url: https://your-fallback-provider.example.com/v1
-      timeout: 120.0
-      priority: 2
-      requests_per_minute: 1
-      max_parallel_requests: 4
-      max_tokens: 8192
-      role: restoration
-
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    priority: 1
+    requests_per_minute: 20
+    role: restoration
+    extra_body:
+      enable_thinking: false
+  - provider: openai
+    model: deepseek-flash
+    api_key: ${FALLBACK_API_KEY}
+    base_url: https://your-fallback-provider.example.com/v1
+    timeout: 120.0
+    priority: 2
+    requests_per_minute: 1
+    max_parallel_requests: 4
+    max_tokens: 8192
+    role: restoration
   profiling:
-    - provider: openai
-      model: spark-x2.6
-      api_key: ${SPARK_API_KEY}
-      base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
-      timeout: 120.0
-      priority: 1
-      requests_per_minute: 20
-      role: profiling
-      extra_body:
-        enable_thinking: false
-    - provider: openai
-      model: deepseek-flash
-      api_key: ${FALLBACK_API_KEY}
-      base_url: https://your-fallback-provider.example.com/v1
-      timeout: 120.0
-      priority: 2
-      requests_per_minute: 1
-      max_parallel_requests: 4
-      max_tokens: 8192
-      role: profiling
+  - provider: openai
+    model: spark-x2.6
+    api_key: ${SPARK_API_KEY}
+    base_url: https://maas-api.cn-huabei-1.xf-yun.com/v2
+    timeout: 120.0
+    priority: 1
+    requests_per_minute: 20
+    role: profiling
+    extra_body:
+      enable_thinking: false
+  - provider: openai
+    model: deepseek-flash
+    api_key: ${FALLBACK_API_KEY}
+    base_url: https://your-fallback-provider.example.com/v1
+    timeout: 120.0
+    priority: 2
+    requests_per_minute: 1
+    max_parallel_requests: 4
+    max_tokens: 8192
+    role: profiling
