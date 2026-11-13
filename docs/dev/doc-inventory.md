@@ -8,7 +8,7 @@
 | Document | Lines |
 |---|---:|
 | AGENTS.md | 200 |
-| README.md | 552 |
+| README.md | 581 |
 | docs/API.md | 466 |
 | docs/ARCHITECTURE.md | 395 |
 | docs/MCP-CONNECTION-TEMPLATE.md | 642 |
@@ -20,7 +20,7 @@
 | docs/dev/agent-era-doc-architecture.md | 300 |
 | docs/dev/cli-reference.md | 34 |
 | docs/dev/gotchas.md | 101 |
-| docs/dev/llm-pool.md | 64 |
+| docs/dev/llm-pool.md | 67 |
 | docs/dev/pipeline.md | 143 |
 | docs/dev/production-matrix.md | 56 |
 | docs/dev/source-layout.md | 58 |

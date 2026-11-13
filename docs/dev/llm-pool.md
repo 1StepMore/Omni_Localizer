@@ -17,7 +17,10 @@ Each model has:
 **Unified pool (canonical)** — `config/default.yaml` is the committed source of
 truth (2 ZHIPU models × 4 roles); `ol init` writes `config/local.yaml`. `local.yaml` is
 a **gitignored operator override**, not a byte-for-byte mirror: it may legitimately
-differ in tier count, rate limits, and timeouts.
+differ in tier count, rate limits, and timeouts. The only other tracked config is
+`config/local.example.yaml` (OL#195) — the on-repo TEMPLATE for a new machine's
+`local.yaml` (spark-x2.6 P1 + cross-vendor P2, `${SPARK_API_KEY}` / `${FALLBACK_API_KEY}`);
+CI pins it to LLMPoolConfig via `scripts/check_local_example.py`.
 
 - **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-1 primary for translation/judging/restoration/profiling
 - **glm-4-flash** → Zhipu (`ZHIPU_API_KEY`, same endpoint) — priority-2 fallback
@@ -51,7 +54,7 @@ the next model in priority is tried.
 | `OL_LENGTH_RATIO_MAX` | 3.0 | Maximum acceptable translated/source length ratio (quality gates). |
 | `OL_TARGET_LOCALE` | (unset) | Target locale override for locale-specific quality gates (e.g. `en-US`, `en-GB`, `fr-FR`). Falls back to `locale.target_locale` in config. |
 | `MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) | (none) | **REQUIRED for the MCP server** (`ol-mcp`). Comma-separated allowlist of directories the MCP may read/write. **Fail-CLOSED:** if all of `MCP_ALLOWED_DIRECTORIES` / `OL_MCP_ALLOWED_DIRS` / `OL_ALLOWED_DIRECTORIES` are unset, `get_default_validator()` raises `MCPNotConfiguredError` (error code `OL_MCP_NOT_CONFIGURED`; a `ValueError` subclass) — the server refuses to serve (no silent `cwd` + `/tmp` default). The MCP error envelope reports `OL_MCP_NOT_CONFIGURED` with recovery strategy `configure_environment`, NOT `OL_INVALID_INPUT`/`fix_input`. `OL_ALLOWED_DIRECTORIES` is a deprecated fallback. |
-| `${VAR}` patterns in config | Per-provider | Env var references in `config/default.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset; (2) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. **BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** referenced provider key is set — you do not need every provider. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys configured but none referenced by this pool". `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**. |
+| `${VAR}` patterns in config | Per-provider | Env var references in `config/*.yaml` using `${VAR}` syntax. **Two-layer behavior:** (1) `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset or empty; (2) `router.py`'s partition filter (OL#195) treats an unset **or empty** var as unusable — the tier is skipped at pool load with a warning naming the variable (never its value), and a role left with no usable tier fails fast (`ModelPoolInitError`); (3) `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked. An empty api_key sent to the provider surfaces as `401` / `api key not found`. Set `OMNI_TEST_FAKE_LLM=1` to bypass for testing. Only set env vars for providers you use. **BYOK gate is OR, not AND:** the CLI pre-check passes when **at least one** referenced provider key is set — you do not need every provider. With **zero** keys it still fails closed, and the error distinguishes "no provider key configured at all" from "keys configured but none referenced by this pool". `ol doctor`'s env check mirrors the router's real rule: the pool is usable when **every role has at least one usable model**. |
 
 The MCP server is configured separately in `src/ol_mcp/config.py` —
 OL's MCP server is `ol-mcp` (no `-server` suffix, **different** from

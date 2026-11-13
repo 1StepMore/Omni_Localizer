@@ -54,6 +54,34 @@ export PYTHONPATH=src
 
 See `.env.example` for the full list of supported provider keys.
 
+#### Model-pool template and required env vars (OL#195)
+
+The model pool's single source of truth is `config/local.yaml`, which is
+**gitignored — the real file never enters the repo**, so every new machine
+must create its own (`ol init`, or copy the tracked template
+`config/local.example.yaml` and fill in the placeholders).
+
+Required env vars for the tracked template:
+
+| Env var | Tier |
+|---|---|
+| `SPARK_API_KEY` | Primary channel — four roles P1 (`spark-x2.6`, iFlytek OpenAI-compatible MaaS) |
+| `FALLBACK_API_KEY` | Cross-vendor backup — four roles P2 (`config/default.yaml`'s ZHIPU pool needs `ZHIPU_API_KEY` instead) |
+
+What a missing or empty key looks like:
+
+- A `${VAR}` referenced by the config that is **unset or set to the empty
+  string** is caught at pool load: that tier is skipped with a warning naming
+  the variable (values are never printed), and a role left with **no usable
+  tier** fails startup outright (`ModelPoolInitError` lists the names).
+- A request that nevertheless reaches a provider with an empty key fails with
+  `401` / `api key not found` — if you see that, check the variable is
+  actually non-empty first.
+
+CI keeps the template from drifting: `config/local.example.yaml` must parse
+through `LLMPoolConfig` with ≥2 tiers per role
+(`scripts/check_local_example.py`, wired into the `test-full` job).
+
 ### 3. Run
 
 ```bash
@@ -69,8 +97,9 @@ fields using `${ENV_VAR}` syntax. You only need to set env vars for
 providers you actually use.
 
 **Two-layer behavior:**
-1. `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset
-2. `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked
+1. `schema.py:_check_env_vars()` WARNS at startup if a `${VAR}` is unset or empty
+2. `router.py`'s partition filter (OL#195) treats an unset **or empty** var as unusable: the tier is skipped at pool load with a warning naming the variable (never its value), and a role left with no usable tier fails fast (`ModelPoolInitError`)
+3. `router.py:_resolve_env_vars()` **raises `ValueError`** at runtime if a model with an unset var is actually invoked
 
 Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 

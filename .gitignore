@@ -65,6 +65,8 @@ logs/
 # Use `local.yaml` and pass `--config Omni_Localizer/config/local.yaml` to CLI.
 config/local.yaml
 config/local.*.yaml
+# The on-repo template (OL#195) must stay tracked despite the glob above.
+!config/local.example.yaml
 config/secret.yaml
 config/production.yaml
 # Per-project book configs (added after May 2026 leak; these were the source
