@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **OL#195 — `config/local.example.yaml`, the on-repo model-pool template** (`config/local.example.yaml`): the pool's single source of truth (`config/local.yaml`) is gitignored (`.gitignore:66`) and had no committed example, so a new machine could only copy another machine's file — two owner machines ran completely different pools (spark-x2.6 P1 at seconds per call vs AMD P1 at 50–58s + 429s) and validation conclusions stopped being reproducible. The template ships four roles × 2 tiers (the `LLMPoolConfig` hard minimum for translation/judging/restoration, profiling kept homogeneous), P1 `spark-x2.6` with `extra_body: {enable_thinking: false}`, P2 a cross-vendor placeholder (`${FALLBACK_API_KEY}` + `example.com` endpoint placeholder), all `api_key`s as `${ENV}` references, and the hard-won semantic comments (per-role ≥2 tiers is a hard constraint; `requests_per_minute` is the simple-shuffle routing weight, not a cap; the backup tier's weight 1 ≈ 5% of daily traffic with real failover done by priority stepping; spark-x2.6 is a thinking model — without `enable_thinking: false` content comes back empty with `finish_reason=length`; priority 2 must be a DIFFERENT vendor's credentials since same-origin keys only survive transient 429/5xx, not content-policy refusals; reasoning models like deepseek need `max_tokens ≥ 8192` or thinking eats the budget). The `.gitignore` `config/local.*.yaml` glob gained a `!config/local.example.yaml` negation so the template stays tracked.
+
+- **OL#195 — config-template CI gate** (`scripts/check_local_example.py`, wired as a named step in the existing `test-full` job of `.github/workflows/test.yml` — no new job): `config/local.example.yaml` must parse through the real loader (`ol_config.loader.load_config` — pydantic schema + hardcoded-key SecurityError scan), every role must have ≥2 tiers, and every `api_key` must be exactly one `${ENV}` reference. Break evidence: deleting one role's P2 tier exits 1 and turns the step red. Locked hermetically by `tests/test_local_example_config.py` (which also asserts no single-machine/loopback address appears anywhere in the template).
+
+### Changed
+
+- **OL#195 — an env var set to the empty string is now treated as unusable, same as unset** (`src/ol_config/schema.py:_check_env_vars`, `src/ol_pool/router.py:_unresolved_env_vars`): the router's partition filter previously compared `os.environ.get(name) is None`, so a var present-but-empty survived the filter and its empty `api_key` was sent to the provider as-is — 401 / `api key not found` with no startup hint (the failure shape behind two owner machines silently running different pools). The falsy-get now matches `cli.doctor._unresolved_refs` and `cli._shared.precheck_api_keys`, which always treated `""` as absent: the empty-key tier is skipped at pool load with a warning naming the variable (never its value), and a role left with no usable tier raises `ModelPoolInitError` listing the names. Regression tests in `tests/test_router_fixes.py::TestEmptyEnvVarResolution`.
 
 ## [0.7.1] — 2026-10-18
 

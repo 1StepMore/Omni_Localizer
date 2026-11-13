@@ -27,9 +27,13 @@ def _check_env_vars(value: str | None, field_name: str = "api_key") -> None:
         return
     env_vars = re.findall(r'\$\{([^}]+)\}', value)
     for var in env_vars:
-        if var not in os.environ:
+        # OL#195: a var set to the empty string is just as unusable as an
+        # unset one (an empty api_key reaches the provider as-is and comes
+        # back as 401 / "api key not found"), so both count as unresolved.
+        # This mirrors router._unresolved_env_vars / cli.doctor.
+        if not os.environ.get(var):
             logging.warning(
-                "Environment variable '%s' referenced in %s but not set. "
+                "Environment variable '%s' referenced in %s but not set or empty. "
                 "This model config may fail at runtime if used.",
                 var, field_name,
             )

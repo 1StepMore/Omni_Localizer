@@ -351,11 +351,16 @@ def _resolve_env_vars(value: str | None) -> str | None:
 
 
 def _unresolved_env_vars(model: LLMModelConfig) -> list[str]:
-    """Names of ``${VAR}`` refs in a model's api_key/base_url that are unset.
+    """Names of ``${VAR}`` refs in a model's api_key/base_url that are unusable.
 
-    Mirrors :func:`_resolve_env_vars`' parsing without raising, so it can be
+    A ref is unusable when its var is UNSET **or set to the empty string**
+    (OL#195): an empty api_key resolves to ``""`` and would be sent to the
+    provider as-is (401 / "api key not found"). Mirrors
+    :func:`_resolve_env_vars`' parsing without raising, so it can be
     used as a pre-filter. ``_resolve_env_vars`` still runs on every model that
-    survives, so the resolved value stays fail-closed.
+    survives, so the resolved value stays fail-closed. The falsy-get here
+    also matches ``cli.doctor._unresolved_refs`` and
+    ``cli._shared.precheck_api_keys``, which always treated "" as absent.
     """
     missing: list[str] = []
     for value in (model.api_key, model.base_url):
@@ -366,7 +371,7 @@ def _unresolved_env_vars(model: LLMModelConfig) -> list[str]:
             if close_idx == -1:
                 continue
             name = part[:close_idx]
-            if name and name not in missing and os.environ.get(name) is None:
+            if name and name not in missing and not os.environ.get(name):
                 missing.append(name)
     return missing
 
@@ -721,9 +726,10 @@ class ModelPool:
         self._usable_by_role, _skipped = partition_usable_models(config.llm_pool)
         for role, model, missing in _skipped:
             _logger.warning(
-                "Skipping %s/%s for role %r: %s not set. "
-                "Set it to use this model; the pool continues with the "
-                "remaining priorities.",
+                "Skipping %s/%s for role %r: %s not set or empty "
+                "(OL#195 startup self-check; variable names only, values are "
+                "never printed). Set it to use this model; the pool continues "
+                "with the remaining priorities.",
                 model.provider, model.model, role, ", ".join(missing),
             )
         starved = sorted({
@@ -739,7 +745,7 @@ class ModelPool:
             })
             raise ModelPoolInitError(
                 f"No usable model for role(s) {', '.join(starved)}: every "
-                f"configured model references unset env var(s) "
+                f"configured model references unset or empty env var(s) "
                 f"{', '.join(unconfigured)}. "
                 f"Set them, set OMNI_TEST_FAKE_LLM=1 for fake mode, "
                 f"or fix the config file."

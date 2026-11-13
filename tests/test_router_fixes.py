@@ -330,3 +330,108 @@ class TestModelPoolRateLimiting:
         finally:
             if original is not None:
                 os.environ["OMNI_TEST_FAKE_LLM"] = original
+
+
+# ============================================================================
+# OL#195: an env var set to the EMPTY string is unusable, same as unset.
+# Previously `router._unresolved_env_vars` used `os.environ.get(name) is
+# None`, so a var present-but-empty survived the partition filter and its
+# empty api_key was sent to the provider as-is (401 / "api key not found"
+# with no startup hint). doctor/precheck already treated "" as absent.
+# ============================================================================
+
+
+class TestEmptyEnvVarResolution:
+    """OL#195: empty-string ${VAR} resolution must fail loudly at pool load."""
+
+    def _entry(self, api_key: str, priority: int, var_suffix: str):
+        from ol_config.schema import LLMModelConfig
+
+        return LLMModelConfig(
+            provider="openai",
+            model=f"m{priority}-{var_suffix}",
+            priority=priority,
+            api_key=api_key,
+            base_url="https://pool-unittest.invalid/v1",
+            role="translation",
+        )
+
+    def test_unresolved_env_vars_treats_empty_as_missing(self, monkeypatch):
+        from ol_pool.router import _unresolved_env_vars
+
+        monkeypatch.setenv("OL195_EMPTY_KEY", "")
+        monkeypatch.delenv("OL195_UNSET_KEY", raising=False)
+        entry = self._entry("${OL195_EMPTY_KEY}", 1, "empty")
+
+        assert _unresolved_env_vars(entry) == ["OL195_EMPTY_KEY"]
+
+    def test_partition_skips_empty_key_model_but_keeps_healthy_one(
+        self, monkeypatch,
+    ):
+        from ol_config.schema import LLMPoolConfig
+        from ol_pool.router import partition_usable_models
+
+        monkeypatch.setenv("OL195_EMPTY_KEY", "")
+        monkeypatch.setenv("OL195_HEALTHY_KEY", "sk-healthy-not-a-real-key")
+        pool = LLMPoolConfig(
+            translation=[
+                self._entry("${OL195_HEALTHY_KEY}", 1, "healthy"),
+                self._entry("${OL195_EMPTY_KEY}", 2, "empty"),
+            ],
+            judging=[
+                self._entry("${OL195_HEALTHY_KEY}", 1, "healthy"),
+                self._entry("${OL195_EMPTY_KEY}", 2, "empty"),
+            ],
+            restoration=[
+                self._entry("${OL195_HEALTHY_KEY}", 1, "healthy"),
+                self._entry("${OL195_EMPTY_KEY}", 2, "empty"),
+            ],
+        )
+
+        usable, skipped = partition_usable_models(pool)
+
+        # The healthy priority-1 tier survives in every role; the empty-key
+        # tier is skipped WITH its variable name (never its value).
+        for role in ("translation", "judging", "restoration"):
+            assert [m.model for m in usable[role]] == ["m1-healthy"]
+        skipped_vars = {var for _r, _m, missing in skipped for var in missing}
+        assert skipped_vars == {"OL195_EMPTY_KEY"}
+        assert all(m.model == "m2-empty" for _r, m, _missing in skipped)
+
+    def test_pool_init_fails_loudly_when_every_tier_is_empty_or_unset(
+        self, tmp_path, monkeypatch,
+    ):
+        # FAKE_LLM short-circuits before load_config, so unset it to exercise
+        # the real pool-load path (restored by monkeypatch afterwards).
+        monkeypatch.delenv("OMNI_TEST_FAKE_LLM", raising=False)
+        monkeypatch.setenv("OL195_EMPTY_KEY", "")
+        monkeypatch.delenv("OL195_UNSET_KEY", raising=False)
+
+        entry_tpl = (
+            "    - provider: openai\n"
+            "      model: {model}\n"
+            "      api_key: '{api_key}'\n"
+            "      base_url: https://pool-unittest.invalid/v1\n"
+            "      priority: {priority}\n"
+            "      role: {role}\n"
+        )
+        roles = {}
+        for role in ("translation", "judging", "restoration"):
+            roles[role] = (
+                entry_tpl.format(model="a", api_key="${OL195_EMPTY_KEY}", priority=1, role=role)
+                + entry_tpl.format(model="b", api_key="${OL195_UNSET_KEY}", priority=2, role=role)
+            )
+        config_text = "llm_pool:\n" + "".join(
+            f"  {role}:\n{entries}" for role, entries in roles.items()
+        )
+        config_file = tmp_path / "pool_empty_keys.yaml"
+        config_file.write_text(config_text, encoding="utf-8")
+
+        from ol_pool.router import ModelPool, ModelPoolInitError
+
+        with pytest.raises(ModelPoolInitError) as excinfo:
+            ModelPool(config_path=str(config_file))
+
+        # Both variable NAMES appear in the startup error; no values printed.
+        assert "OL195_EMPTY_KEY" in str(excinfo.value)
+        assert "OL195_UNSET_KEY" in str(excinfo.value)

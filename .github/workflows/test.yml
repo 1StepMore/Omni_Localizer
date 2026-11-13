@@ -103,6 +103,18 @@ jobs:
       - name: Coverage matrix (--check)
         run: python scripts/coverage_matrix.py --check
 
+      # Config-template gate (OL#195): config/local.example.yaml is the only
+      # on-repo copy of the model pool (local.yaml is gitignored), so it must
+      # not drift from LLMPoolConfig. Sits with the other structural --check
+      # gates of this job (doc inventory, coverage matrix) — no new job.
+      # Break evidence (OL#195): delete one role's P2 tier -> exit 1 -> red.
+      # Dummy non-secret values keep schema's unset-var warnings quiet.
+      - name: local.example.yaml parses via LLMPoolConfig (>=2 tiers per role)
+        env:
+          SPARK_API_KEY: ci-dummy-not-a-secret
+          FALLBACK_API_KEY: ci-dummy-not-a-secret
+        run: python scripts/check_local_example.py
+
   # Suite validation: OL's own scenarios (tool-ol-* + pipeline quality bar)
   # via the Omni Suite validation framework's per-module filter.
   # Hermetic tier-1 (no LLM keys) — the pipeline quality bar is tier 2 and
