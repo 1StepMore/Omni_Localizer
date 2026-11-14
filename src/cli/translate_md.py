@@ -500,7 +500,7 @@ async def _translate_one_unit(
     # the extractor so only the value is translated. Re-attach the preserved
     # structural prefix here; a line-count mismatch means the model mangled
     # the structured block, which must stay fail-closed (not silently green).
-    prefixes = (unit.metadata or {}).get("json_field_prefixes")
+    prefixes = (getattr(unit, "metadata", None) or {}).get("json_field_prefixes")
     if prefixes:
         translated_lines = repaired.rstrip("\n").split("\n")
         if len(translated_lines) != len(prefixes):
