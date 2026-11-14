@@ -48,7 +48,7 @@ from cli._shared import (
 from ol_config.resolver import resolve_config_path
 from ol_logging.core import get_logger
 from ol_md.pipeline import MDRepairPipeline
-from ol_md.shield import shield_markdown, unshield_markdown
+from ol_md.shield import unshield_markdown
 from ol_xliff.pipeline import XLIFFRepairPipeline
 from ol_core.dataclass import TranslationUnit
 from ol_lqa.quality_gates import check_source_copy, run_quality_gates
@@ -496,6 +496,27 @@ async def _translate_one_unit(
         elif "SOURCE_COPY" not in warning:
             warning = f"{warning}; {copy_note}"
 
+    # OPP JSON-derived MD: ``json_field:<path> = <value>`` lines are split in
+    # the extractor so only the value is translated. Re-attach the preserved
+    # structural prefix here; a line-count mismatch means the model mangled
+    # the structured block, which must stay fail-closed (not silently green).
+    prefixes = (getattr(unit, "metadata", None) or {}).get("json_field_prefixes")
+    if prefixes:
+        translated_lines = repaired.rstrip("\n").split("\n")
+        if len(translated_lines) != len(prefixes):
+            untranslated = True
+            mismatch = (
+                "OL_WARN: STRUCTURED_LINE_MISMATCH — model returned "
+                f"{len(translated_lines)} line(s) for {len(prefixes)} "
+                "json_field line(s); keeping the source text"
+            )
+            warning = f"{warning}; {mismatch}" if warning else mismatch
+            translated_lines = unit.source_text.split("\n")
+        repaired = "\n".join(
+            prefix + value
+            for prefix, value in zip(prefixes, translated_lines, strict=True)
+        )
+
     return _UnitTranslationResult(
         unit_id=unit.unit_id,
         translated=repaired,
@@ -670,96 +691,31 @@ async def _translate_md_async(
             pass_threshold=cfg.lqa_threshold,
         )
 
-    if max_concurrent > 1:
-        from ol_concurrency.scheduler import ConcurrencyLimiter
-        limiter = ConcurrencyLimiter(max_translation=max_concurrent)
-        _conc_result = await _translate_md_units_concurrent(
-            original_text, pool, judge, retry_mgr,
-            src_lang, tgt_lang, limiter.md_semaphore, cfg,
-            glossary=glossary,
-            styleguide=styleguide,
-            polish=polish,
-        )
-        repaired = _conc_result
-        untranslated_count = getattr(_conc_result, "untranslated_units", 0)
-        total_units = getattr(_conc_result, "total_units", 0)
-    else:
-        shielded, shield_map = shield_markdown(original_text)
-        sequential_fallback = False
-
-        styleguide_context: str | None = None
-        if styleguide:
-            from ol_terminology.rag_injector import build_translate_prompt
-            styleguide_context = build_translate_prompt(
-                text=shielded, src_lang=src_lang, tgt_lang=tgt_lang,
-                style_guide=styleguide,
-            )
-
-        if cfg.enable_lqa:
-
-            async def translate_fn():
-                return await pool.translate(
-                    shielded, src_lang, tgt_lang,
-                    context=styleguide_context, glossary=glossary,
-                )
-
-            async def judge_fn(source, translation, unit_id):
-                return await judge.judge(
-                    source, translation, unit_id,
-                    source_lang=src_lang, target_lang=tgt_lang,
-                )
-
-            try:
-                retry_result = await retry_mgr.execute_with_retry(
-                    "md_main", shielded, translate_fn, judge_fn,
-                )
-                translated = retry_result.best_translation
-                if retry_result.warning:
-                    logger.warning(f"LQA auto-retry: {retry_result.warning}")
-            except Exception as translate_err:
-                logger.warning(
-                    f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
-                    f"Falling back to source text."
-                )
-                translated = original_text
-                sequential_fallback = True
-        else:
-            try:
-                translated = await pool.translate(
-                    shielded, src_lang, tgt_lang,
-                    context=styleguide_context, glossary=glossary,
-                )
-            except Exception as translate_err:
-                logger.warning(
-                    f"MD translation error: {type(translate_err).__name__}: {translate_err}. "
-                    f"Falling back to source text."
-                )
-                translated = original_text
-                sequential_fallback = True
-
-        if shield_map:
-            # #244：先 unshield 还原标记，再 repair —— 与 pipeline.is_complete
-            # 的判据文档及 _translate_md_by_paragraph 的既有顺序一致。
-            # 旧顺序（repair 在 unshield 之前）下 is_complete 对标记形态失明，
-            # 恒判不完整并升级 level4 把原值追加一遍（CI 夜跑 src=2 out=4）。
-            unshielded = unshield_markdown(translated, shield_map)
-            repaired = MDRepairPipeline().repair(unshielded, original_text, shield_map)
-        else:
-            repaired = translated
+    # Both concurrency settings share the unit-based path: fenced code and
+    # other non-translatable blocks are never sent to the LLM, and
+    # ``untranslated_units`` counts only real translatable units. The serial
+    # setting (max_md_concurrent=1, used by the nightly validation workflow)
+    # used to translate the whole document as one ``md_main`` unit, so a
+    # JSON-derived MD (mostly a fenced JSON block) echoed back as "source
+    # copy" and failed closed even though there was nothing to translate
+    # (OL#199). Serializing the per-unit calls keeps the rate-limit shape.
+    from ol_concurrency.scheduler import ConcurrencyLimiter
+    limiter = ConcurrencyLimiter(max_translation=max_concurrent)
+    repaired = await _translate_md_units_concurrent(
+        original_text, pool, judge, retry_mgr,
+        src_lang, tgt_lang, limiter.md_semaphore, cfg,
+        glossary=glossary,
+        styleguide=styleguide,
+        # Polish once, below, on the rebuilt document — running it inside
+        # the per-unit helper too (as the old max>1 branch did) polished twice.
+        polish=False,
+    )
+    untranslated_count = getattr(repaired, "untranslated_units", 0)
+    total_units = getattr(repaired, "total_units", 0)
 
     if polish:
         from ol_xliff.polish import polish_md_text
         repaired = await polish_md_text(repaired, src_lang, tgt_lang, pool)
-
-    if max_concurrent <= 1:
-        total_units = 1
-        untranslated_count = (
-            1 if (
-                sequential_fallback
-                or check_source_copy(original_text, repaired, src_lang)
-            )
-            else 0
-        )
 
     if add_frontmatter and not repaired.strip().startswith("---"):
         safe_src_lang = _validate_lang_code(src_lang)

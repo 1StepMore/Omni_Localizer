@@ -1,6 +1,42 @@
+import re
 from collections.abc import Iterator
 
 from ol_core.dataclass import TranslationUnit
+
+
+# OPP's JSON extractor emits ``json_field:<path> = <value>`` lines next to a
+# fenced JSON block. The path is a structural anchor that ORF's md2json maps
+# back onto the JSON skeleton, so it must survive translation verbatim; only
+# the value is natural-language content. Splitting here keeps the path out of
+# the LLM prompt and out of the SOURCE_COPY (untranslated) decision.
+_JSON_FIELD_LINE_RE = re.compile(r"^(json_field:[^=\n]*=\s*)(.*)$")
+
+
+def _split_json_field_content(content: str) -> tuple[str, list[str]] | None:
+    """Split a block of ``json_field:`` lines into values + preserved prefixes.
+
+    Returns ``(value_text, prefixes)`` when every non-empty line is an OPP
+    json_field line, otherwise ``None`` (the content is normal prose).
+    ``value_text`` keeps one line per field so the rebuilt line count matches
+    ``prefixes`` 1:1.
+    """
+    prefixes: list[str] = []
+    values: list[str] = []
+    saw_field = False
+    for line in content.split("\n"):
+        match = _JSON_FIELD_LINE_RE.match(line)
+        if match is None:
+            if line.strip():
+                return None
+            prefixes.append("")
+            values.append(line)
+            continue
+        saw_field = True
+        prefixes.append(match.group(1))
+        values.append(match.group(2))
+    if not saw_field:
+        return None
+    return "\n".join(values), prefixes
 
 
 def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[TranslationUnit]:
@@ -52,13 +88,24 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
         if hasattr(token, 'content') and token.content:
             content = token.content.strip()
             if content:
-                yield TranslationUnit(
-                    unit_id=f'md_{current_unit_id}',
-                    source_text=content,
-                    shield_map={},
-                    metadata={'token_type': token_type},
-                )
-                current_unit_id += 1
+                structured = _split_json_field_content(content)
+                if structured is not None:
+                    source_text, prefixes = structured
+                    metadata = {
+                        'token_type': token_type,
+                        'json_field_prefixes': prefixes,
+                    }
+                else:
+                    source_text = content
+                    metadata = {'token_type': token_type}
+                if source_text.strip():
+                    yield TranslationUnit(
+                        unit_id=f'md_{current_unit_id}',
+                        source_text=source_text,
+                        shield_map={},
+                        metadata=metadata,
+                    )
+                    current_unit_id += 1
         elif token_type not in known_types:
             # Warn on unknown token type but don't crash
             warnings.warn(f"Unknown token type: {token_type}", RuntimeWarning)
