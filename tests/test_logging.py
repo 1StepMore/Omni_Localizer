@@ -5,7 +5,50 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+import structlog
+
 from ol_logging.constants import DEBUG, INFO, LOG_LEVEL_ENV, MAX_BYTES, WARNING
+
+
+def _release_log_handles():
+    """Close every log-file handle product code keeps open, deterministically.
+
+    ``init_logger()`` opens two OS-level handles on the log file for the
+    process lifetime — the RotatingFileHandler attached to the ``ol`` logger,
+    and the plain file object ``configure_structlog()`` hands to the structlog
+    PrintLoggerFactory — and never closes either. On POSIX an open file is
+    unlinked freely, so the historical suite never noticed; NTFS refuses to
+    delete an open file (WinError 32) and every ``TemporaryDirectory``
+    cleanup crashed instead. Tests that init the logger must call this
+    BEFORE their tmpdir ``with`` block exits (cleanup runs inside the test
+    body, before any fixture teardown). No sleep/retry: closing the handles
+    releases them immediately.
+    """
+    from ol_logging import core
+
+    factory = structlog.get_config().get("logger_factory")
+    factory_file = getattr(factory, "file", None)
+    if factory_file is not None and not factory_file.closed:
+        factory_file.close()
+    ol_logger = logging.getLogger("ol")
+    for handler in list(ol_logger.handlers):
+        ol_logger.removeHandler(handler)
+        handler.close()
+    logging.shutdown()
+    core._initialized = False
+
+
+@pytest.fixture(autouse=True)
+def _release_log_handles_after_test():
+    """Belt-and-braces: release handles if a test failed mid-body.
+
+    The happy path calls ``_release_log_handles()`` inside the test (before
+    tmpdir cleanup); this teardown catches the failure path so a leaked
+    handle never poisons later tests via the process-global ``ol`` logger.
+    """
+    yield
+    _release_log_handles()
 
 
 class TestLogFileCreation:
@@ -21,9 +64,13 @@ class TestLogFileCreation:
             from ol_logging.handlers import get_file_handler
 
             handler = get_file_handler(log_dir, INFO)
-
-            assert log_dir.exists()
-            assert log_dir.is_dir()
+            try:
+                assert log_dir.exists()
+                assert log_dir.is_dir()
+            finally:
+                # Not attached to any logger, so the autouse teardown cannot
+                # see it; the open stream would block NTFS deletion.
+                handler.close()
 
     def test_log_file_has_correct_name_pattern(self):
         """Test log file follows naming pattern with date."""
@@ -32,9 +79,11 @@ class TestLogFileCreation:
             from ol_logging.handlers import get_file_handler
 
             handler = get_file_handler(log_dir, INFO)
-
-            files = list(log_dir.glob("ol-*.log"))
-            assert len(files) == 1
+            try:
+                files = list(log_dir.glob("ol-*.log"))
+                assert len(files) == 1
+            finally:
+                handler.close()
 
 
 class TestLogRotation:
@@ -52,21 +101,24 @@ class TestLogRotation:
             handler = get_file_handler(log_dir, INFO)
             log_file = log_dir / LOG_FILE_PATTERN.format(date=date.today().isoformat())
 
-            # Write until we exceed MAX_BYTES
-            large_content = b"x" * (MAX_BYTES + 1000)
-            handler.emit(logging.LogRecord(
-                name="test",
-                level=INFO,
-                pathname="",
-                lineno=0,
-                msg=large_content.decode(),
-                args=(),
-                exc_info=None,
-            ))
+            try:
+                # Write until we exceed MAX_BYTES
+                large_content = b"x" * (MAX_BYTES + 1000)
+                handler.emit(logging.LogRecord(
+                    name="test",
+                    level=INFO,
+                    pathname="",
+                    lineno=0,
+                    msg=large_content.decode(),
+                    args=(),
+                    exc_info=None,
+                ))
 
-            # Should have rotated to .1
-            rotated_files = list(log_dir.glob("ol-*.log.*"))
-            assert len(rotated_files) >= 1
+                # Should have rotated to .1
+                rotated_files = list(log_dir.glob("ol-*.log.*"))
+                assert len(rotated_files) >= 1
+            finally:
+                handler.close()
 
     def test_backup_count_limit(self):
         """Test BACKUP_COUNT limits number of rotated files."""
@@ -78,21 +130,24 @@ class TestLogRotation:
 
             handler = get_file_handler(log_dir, INFO)
 
-            # Write enough to create many rotations
-            for i in range(BACKUP_COUNT + 3):
-                large_content = b"y" * MAX_BYTES
-                handler.emit(logging.LogRecord(
-                    name="test",
-                    level=INFO,
-                    pathname="",
-                    lineno=0,
-                    msg=large_content.decode(),
-                    args=(),
-                    exc_info=None,
-                ))
+            try:
+                # Write enough to create many rotations
+                for i in range(BACKUP_COUNT + 3):
+                    large_content = b"y" * MAX_BYTES
+                    handler.emit(logging.LogRecord(
+                        name="test",
+                        level=INFO,
+                        pathname="",
+                        lineno=0,
+                        msg=large_content.decode(),
+                        args=(),
+                        exc_info=None,
+                    ))
 
-            rotated_files = list(log_dir.glob("ol-*.log.*"))
-            assert len(rotated_files) <= BACKUP_COUNT
+                rotated_files = list(log_dir.glob("ol-*.log.*"))
+                assert len(rotated_files) <= BACKUP_COUNT
+            finally:
+                handler.close()
 
 
 class TestGetLogger:
@@ -135,6 +190,8 @@ class TestInitLogger:
             root_logger = logging.getLogger("ol")
             assert root_logger.level == WARNING
 
+            _release_log_handles()
+
     def test_init_logger_idempotent(self):
         """Test init_logger can be called multiple times safely."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -151,6 +208,8 @@ class TestInitLogger:
 
             assert initial_handler_count == second_handler_count
 
+            _release_log_handles()
+
     def test_init_logger_creates_file_handler(self):
         """Test init_logger adds file handler."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,6 +225,8 @@ class TestInitLogger:
                 for h in root_logger.handlers
             )
             assert has_file_handler
+
+            _release_log_handles()
 
 
 class TestLogLevelEnv:
@@ -232,6 +293,8 @@ class TestIsInitialized:
 
             assert is_initialized() is True
 
+            _release_log_handles()
+
 
 class TestConsoleHandler:
     """Test console handler functionality."""
@@ -255,6 +318,8 @@ class TestConsoleHandler:
                     for h in root_logger.handlers
                 )
                 assert has_console
+
+                _release_log_handles()
 
     def test_console_handler_not_added_by_default(self):
         """Test console handler is NOT added when OL_LOG_CONSOLE not set."""

@@ -10,6 +10,14 @@ from pathlib import Path
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_GLOSSARY = FIXTURES_DIR / "glossary_爱上海尔.json"
 
+# Pin the help-render width for every subprocess below. With stdout piped,
+# typer/rich falls back to 80 columns and wraps long option names mid-token
+# ("--report-" / "coverage"), so the rendered text no longer contains the
+# literal option string even though the option exists. COLUMNS is honoured
+# by both Click's and rich's width resolution; a piped child has no real
+# terminal, so this pins rendering deterministically on every platform.
+HELP_ENV_WIDTH = "200"
+
 
 class TestReportCoverageFlag:
     """The --report-coverage flag must be accepted by both translate-md and translate-xliff."""
@@ -21,7 +29,8 @@ class TestReportCoverageFlag:
                 sys.executable, "-m", "ol_cli", "translate-md", "--help",
             ],
             capture_output=True, text=True,
-            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src"},
+            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src",
+                 "COLUMNS": HELP_ENV_WIDTH},
             cwd=Path(__file__).parent.parent,
         )
         assert result.returncode == 0
@@ -34,7 +43,8 @@ class TestReportCoverageFlag:
                 sys.executable, "-m", "ol_cli", "translate-md", "--help",
             ],
             capture_output=True, text=True,
-            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src"},
+            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src",
+                 "COLUMNS": HELP_ENV_WIDTH},
             cwd=Path(__file__).parent.parent,
         )
         assert result.returncode == 0
@@ -47,7 +57,8 @@ class TestReportCoverageFlag:
                 sys.executable, "-m", "ol_cli", "translate-xliff", "--help",
             ],
             capture_output=True, text=True,
-            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src"},
+            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src",
+                 "COLUMNS": HELP_ENV_WIDTH},
             cwd=Path(__file__).parent.parent,
         )
         assert result.returncode == 0
@@ -60,7 +71,8 @@ class TestReportCoverageFlag:
                 sys.executable, "-m", "ol_cli", "translate-xliff", "--help",
             ],
             capture_output=True, text=True,
-            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src"},
+            env={**os.environ, "OMNI_TEST_FAKE_LLM": "1", "PYTHONPATH": "src",
+                 "COLUMNS": HELP_ENV_WIDTH},
             cwd=Path(__file__).parent.parent,
         )
         assert result.returncode == 0
