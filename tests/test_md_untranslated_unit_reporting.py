@@ -214,7 +214,14 @@ def test_default_fails_closed_and_removes_output(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_sequential_path_flags_shielded_document_fallback(tmp_path, monkeypatch):
+async def test_serial_path_flags_untranslated_units(tmp_path, monkeypatch):
+    """max_md_concurrent=1 uses the same per-unit path as the concurrent mode.
+
+    OL#199: the old serial path translated the whole document as one
+    ``md_main`` unit, so a JSON-derived MD (mostly a fenced JSON block) was
+    echoed back as "source copy" even when the fence had nothing to
+    translate. Both modes now count only real translatable units.
+    """
     from types import SimpleNamespace
 
     import importlib
@@ -245,5 +252,156 @@ async def test_sequential_path_flags_shielded_document_fallback(tmp_path, monkey
 
     result = await tmd._translate_md_async(src, out, None, "en", "zh")
 
-    assert result.total_units == 1
-    assert result.untranslated_units == 1
+    # Heading + prose = 2 translatable units; both failed → both counted.
+    assert result.total_units == 2
+    assert result.untranslated_units == 2
+
+
+_JSON_MD = (
+    "```json\n"
+    '{\n  "产品": [\n    {\n      "名称": "阿尔法"\n    }\n  ]\n}\n'
+    "```\n\n"
+    "json_field:产品.0.名称 = 阿尔法\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_code_block_only_document_has_no_untranslated_units():
+    """A pure fenced code block is non-translatable → 0 units, not a failure.
+
+    OL#199: the serial path used to send the whole JSON-derived MD to the
+    LLM and flag the unchanged echo as an untranslated ``md_main`` unit.
+    """
+    from cli.translate_md import _translate_md_units_concurrent
+
+    md = "```json\n{\n  \"产品\": 100\n}\n```\n"
+    pool = _pool()
+    rebuilt = await _translate_md_units_concurrent(
+        md, pool, None, None, "zh", "en", asyncio.Semaphore(1), None,
+    )
+
+    assert rebuilt.total_units == 0
+    assert rebuilt.untranslated_units == 0
+    assert rebuilt.strip() == md.strip()
+    pool.translate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_json_field_path_is_preserved_and_only_value_translated():
+    """Only the json_field value goes to the LLM; the ORF anchor is verbatim."""
+    from cli.translate_md import _translate_md_units_concurrent
+
+    seen: list[str] = []
+
+    def translator(text: str) -> str:
+        seen.append(text)
+        return "Alpha"
+
+    rebuilt = await _translate_md_units_concurrent(
+        _JSON_MD, _pool(translator=translator), None, None,
+        "zh", "en", asyncio.Semaphore(1), None,
+    )
+
+    assert seen == ["阿尔法"], "the json_field prefix must not reach the LLM"
+    assert "json_field:产品.0.名称 = Alpha" in rebuilt
+    assert rebuilt.untranslated_units == 0
+    assert rebuilt.total_units == 1
+
+
+@pytest.mark.asyncio
+async def test_json_field_untranslatable_value_is_not_counted():
+    """A path with CJK but an identifier value is not an untranslated unit.
+
+    The value ``ABC-123`` has no source-script character, so a model that
+    correctly leaves it alone must not trip SOURCE_COPY on the Chinese path.
+    """
+    from cli.translate_md import _translate_md_units_concurrent
+
+    md = (
+        "```json\n{\n  \"产品\": [{\"型号\": \"ABC-123\"}]\n}\n```\n\n"
+        "json_field:产品.0.型号 = ABC-123\n"
+    )
+    rebuilt = await _translate_md_units_concurrent(
+        md, _pool(translator=lambda text: text), None, None,
+        "zh", "en", asyncio.Semaphore(1), None,
+    )
+
+    assert "json_field:产品.0.型号 = ABC-123" in rebuilt
+    assert rebuilt.untranslated_units == 0
+
+
+@pytest.mark.asyncio
+async def test_echoing_llm_still_fails_closed_on_json_values():
+    """Reverse evidence: an echo stub still produces untranslated units."""
+    from cli.translate_md import _translate_md_units_concurrent
+
+    rebuilt = await _translate_md_units_concurrent(
+        _JSON_MD, _pool(translator=lambda text: text), None, None,
+        "zh", "en", asyncio.Semaphore(1), None,
+    )
+
+    assert rebuilt.untranslated_units == 1
+    assert rebuilt.total_units == 1
+    assert "json_field:产品.0.名称 = 阿尔法" in rebuilt
+
+
+_SERIAL_POOL = {
+    role: [
+        {
+            "provider": "openai",
+            "model": f"{role}-a",
+            "priority": 1,
+            "role": role,
+            "api_key": "test-key",
+            "base_url": "https://example.invalid/v1",
+        },
+        {
+            "provider": "openai",
+            "model": f"{role}-b",
+            "priority": 2,
+            "role": role,
+            "api_key": "test-key",
+            "base_url": "https://example.invalid/v1",
+        },
+    ]
+    for role in ("translation", "judging", "restoration")
+}
+
+
+def test_echoing_llm_cli_still_exits_nonzero(tmp_path, monkeypatch):
+    """Reverse evidence: end-to-end echo stub ⇒ fail-closed exit + no output."""
+    import yaml
+    from typer.testing import CliRunner
+
+    from ol_cli import app
+    from ol_pool import fake as fake_mod
+
+    async def _echo(self, source, *args, **kwargs):
+        return source
+
+    monkeypatch.setattr(fake_mod._FakeModelPool, "translate", _echo)
+    monkeypatch.setenv("OMNI_TEST_FAKE_LLM", "1")
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({
+        "project_id": "ol199-reverse",
+        "source_lang": "zh",
+        "target_lang": "en",
+        "llm_pool": _SERIAL_POOL,
+        "max_md_concurrent": 1,
+        "enable_lqa": False,
+    }), encoding="utf-8")
+
+    src = tmp_path / "source.md"
+    src.write_text(_JSON_MD, encoding="utf-8")
+    out = tmp_path / "out"
+
+    result = CliRunner().invoke(
+        app,
+        ["translate-md", str(src), "-s", "zh", "-t", "en",
+         "-o", str(out), "-c", str(cfg_path), "--no-cache"],
+    )
+
+    assert result.exit_code != 0, result.output
+    assert "untranslated" in result.output.lower()
+    assert not (out / "source.md").exists()
