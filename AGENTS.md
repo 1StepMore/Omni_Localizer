@@ -6,7 +6,7 @@ The [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGEN
 covers cross-module orchestration; this file is for working **inside** OL.
 
 This file is an **index + invariants** file (≤200 lines, #162): detail
-lives in `docs/dev/*.md` and `docs/API.md`, not here.
+lives in `docs/dev/*.md` and `docs/API.md`, not here. · docs/dev/harness-run-facts.md — 运行环境 / 门禁顺序 / 缺 key 症状 / 已知坑
 
 ## Quick start
 

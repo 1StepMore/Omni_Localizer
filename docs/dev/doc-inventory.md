@@ -20,6 +20,7 @@
 | docs/dev/agent-era-doc-architecture.md | 300 |
 | docs/dev/cli-reference.md | 34 |
 | docs/dev/gotchas.md | 101 |
+| docs/dev/harness-run-facts.md | 17 |
 | docs/dev/llm-pool.md | 67 |
 | docs/dev/pipeline.md | 143 |
 | docs/dev/production-matrix.md | 56 |
