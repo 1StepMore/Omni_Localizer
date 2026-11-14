@@ -1,4 +1,5 @@
 """Tests for BatchProcessor batch translation orchestration."""
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -61,7 +62,23 @@ class TestDiscoverFiles:
             directory = Path(tmpdir)
             (directory / "real.md").touch()
             symlink = directory / "link.md"
-            symlink.symlink_to(directory / "real.md")
+            try:
+                symlink.symlink_to(directory / "real.md")
+            except OSError as e:
+                # Windows: a FILE symlink requires SeCreateSymbolicLinkPrivilege
+                # (admin or Developer Mode); unprivileged creation fails with
+                # WinError 1314. A directory junction is not an equivalent
+                # construction: junctions are directory-only reparse points
+                # (is_symlink() is False on them) and Path.rglob() recurses
+                # through them, so the scanned set differs instead of matching.
+                # With Developer Mode enabled the symlink is created and the
+                # real assertion below runs.
+                pytest.xfail(
+                    f"file symlinks need admin/Developer Mode on Windows "
+                    f"(WinError {getattr(e, 'winerror', 'n/a')}); directory "
+                    f"junctions cannot point at files and rglob() recurses "
+                    f"through them, so no unprivileged equivalent exists"
+                )
 
             results = discover_files(directory, ["*.md"])
             assert len(results) == 1
@@ -96,6 +113,21 @@ class TestValidateDirectory:
         with tempfile.NamedTemporaryFile() as tmpfile:
             assert validate_directory(Path(tmpfile.name)) is False
 
+    @pytest.mark.xfail(
+        sys.platform == "win32",
+        reason="Windows cannot express 'unreadable directory' for "
+               "validate_directory: chmod is a no-op on NTFS, and "
+               "os.access(path, os.R_OK) maps to the CRT _waccess, which "
+               "reports every existing directory readable. Measured on "
+               "win32/py3.13: an explicit icacls deny ACE makes "
+               "os.listdir() raise WinError 5, yet exists(), is_dir() and "
+               "os.access(R_OK) all still pass — so validate_directory's "
+               "'not readable' branch is unreachable and the POSIX-only "
+               "expectation stays POSIX-only. An NTFS deny ACL also denies "
+               "READ_CONTROL, which locks the temp dir against icacls /reset "
+               "and poisons TemporaryDirectory cleanup.",
+        strict=False,
+    )
     def test_not_readable_directory(self):
         """Test validate_directory returns False when dir not readable."""
         with tempfile.TemporaryDirectory() as tmpdir:

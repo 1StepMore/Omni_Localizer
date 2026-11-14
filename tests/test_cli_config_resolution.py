@@ -48,6 +48,18 @@ runner = CliRunner()
 
 ENV = {"OMNI_TEST_FAKE_LLM": "1"}
 
+
+def _normpath(value) -> str:
+    """Platform-neutral path identity: fold separators and case.
+
+    ``LOCAL_CONFIG_RELPATH`` is spelled with forward slashes
+    (``config/local.yaml``), but the product side round-trips the resolver's
+    Path through ``str()``/os.fspath, which on Windows renders backslashes
+    (``config\\local.yaml``). ``normcase`` is the identity on POSIX, so the
+    comparison is unchanged there.
+    """
+    return os.path.normcase(os.path.normpath(str(value)))
+
 # Two models per required role so ProjectConfig's min-models-per-role rule
 # holds; literal non-secret keys so no ${VAR} is involved (a literal that
 # matched a known key pattern would be rejected by loader's secret scan).
@@ -287,7 +299,7 @@ class TestOtherCliCommandsUseTheSameResolver:
             f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
         )
         payload = json.loads(result.stdout)
-        assert payload["config_path"] == LOCAL_CONFIG_RELPATH, (
+        assert _normpath(payload["config_path"]) == _normpath(LOCAL_CONFIG_RELPATH), (
             f"inspect-config resolved {payload['config_path']!r}, "
             f"expected {LOCAL_CONFIG_RELPATH!r}"
         )
@@ -314,7 +326,7 @@ class TestOtherCliCommandsUseTheSameResolver:
         assert result.exit_code == ExitCode.PIPELINE_ERROR, (
             f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
         )
-        assert seen == [LOCAL_CONFIG_RELPATH], (
+        assert [_normpath(p) for p in seen] == [_normpath(LOCAL_CONFIG_RELPATH)], (
             f"judge-text resolved {seen}, expected ['{LOCAL_CONFIG_RELPATH}']"
         )
 
@@ -336,8 +348,8 @@ class TestOtherCliCommandsUseTheSameResolver:
             f"out={translate_result.output!r}"
         )
 
-        resolved = {str(p) for p in doctor_seen} | {str(p) for p in seen}
-        assert resolved == {LOCAL_CONFIG_RELPATH}, (
+        resolved = {_normpath(p) for p in doctor_seen} | {_normpath(p) for p in seen}
+        assert resolved == {_normpath(LOCAL_CONFIG_RELPATH)}, (
             f"doctor and translate-md diverged: doctor={doctor_seen}, "
             f"translate-md={seen}"
         )

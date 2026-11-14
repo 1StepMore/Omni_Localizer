@@ -16,6 +16,7 @@ The test exercises both ``translate-md`` and ``translate-xliff`` entry points
 to prove the cache wiring is uniform across MD and XLIFF channels.
 """
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -293,5 +294,14 @@ def test_ol_cache_directory_created_with_correct_permissions(
     ol_cache = cache_root / "ol"
     assert ol_cache.exists(), f"expected cache dir at {ol_cache}"
     assert ol_cache.is_dir()
-    mode = ol_cache.stat().st_mode & 0o777
-    assert mode == 0o700, f"expected mode 0o700, got {oct(mode)}"
+    if sys.platform == "win32":
+        # POSIX mode bits do not exist on Windows: NTFS synthesizes
+        # st_mode as 0o777 for every directory (measured: mkdir(mode=0o700)
+        # reports 0o777), so the 0o700 contract cannot be observed there.
+        # Assert what the platform does express — the cache dir is usable
+        # (readable/writable) by the owning process.
+        assert os.access(ol_cache, os.R_OK), f"cache dir not readable: {ol_cache}"
+        assert os.access(ol_cache, os.W_OK), f"cache dir not writable: {ol_cache}"
+    else:
+        mode = ol_cache.stat().st_mode & 0o777
+        assert mode == 0o700, f"expected mode 0o700, got {oct(mode)}"
