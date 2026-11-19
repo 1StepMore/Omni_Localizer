@@ -29,7 +29,7 @@ from ol_mcp.security import get_default_validator
 from ol_mcp.task_tracker import TaskStatus
 from ol_md.pipeline import MDRepairPipeline
 from ol_md.shield import shield_markdown, unshield_markdown
-from ol_pool.router import ModelPool
+from ol_mcp._pool import translation_pool
 from ol_lqa.quality_gates import run_quality_gates
 from ol_terminology.glossary import get_relevant_terms as _get_relevant_terms, load_glossary_from_path
 from ol_terminology.rag_injector import build_translate_prompt
@@ -57,7 +57,7 @@ def _dedup_b64_image_refs(text: str) -> str:
     """Remove base64 image lines whose decoded content is already in text as a standard ref."""
     existing_refs = set(_IMG_REF_PATTERN.findall(text))
     def replacer(m: re.Match) -> str:
-        img_num, b64_data, ext = m.group(1), m.group(2), m.group(3)
+        img_num, b64_data, _ext = m.group(1), m.group(2), m.group(3)
         decoded = _try_decode_b64_image(b64_data)
         key = (img_num, decoded.split('](', 1)[1].rstrip(')'))
         already_exists = key in existing_refs or any(
@@ -119,7 +119,7 @@ async def _translate_single(
                 style_guide=styleguide_section,
             )
 
-        pool = ModelPool.get_instance(config_path)
+        pool = translation_pool(config_path)
         translated = await pool.translate(shielded, source_lang, target_lang, context)
 
         if shield_map:
