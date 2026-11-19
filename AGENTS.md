@@ -144,8 +144,8 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 ## Pointers to the suite-level docs
 
 - Cross-module orchestration + pre-commit hooks + compatibility matrix: [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
-- Doc architecture playbook (six-repo synced copy, hash-pinned; e2e-test-suite#254): [`docs/dev/agent-era-doc-architecture.md`](docs/dev/agent-era-doc-architecture.md)
-- MCP tool full parameter reference: [`docs/API.md`](docs/API.md); user-facing guide: `AGENT_USAGE.md` (this repo)
+- Doc architecture playbook (hash-pinned, e2e-test-suite#254): [`docs/dev/agent-era-doc-architecture.md`](docs/dev/agent-era-doc-architecture.md); MCP params: [`docs/API.md`](docs/API.md); user guide: `AGENT_USAGE.md`
+- **交叉审计 + 真假模型（MUST）**：产物要交叉审就必须入库走 git、质量判定必须真模型、没 key 向 owner 要 —— 见 [`docs/dev/cross-audit-evidence.md`](docs/dev/cross-audit-evidence.md)
 
 ## Issue conventions
 
