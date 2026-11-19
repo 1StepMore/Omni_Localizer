@@ -154,7 +154,7 @@ _MINIMAL_XLIFF = """\
         <target/>
       </trans-unit>
       <trans-unit id="unit2">
-        <source>Hello world</source>
+        <source>Hello world, this is a longer second translation unit for the ratio gate.</source>
         <target/>
       </trans-unit>
     </body>
@@ -371,8 +371,10 @@ class TestTranslateXliffQualityGates:
                 f"Expected LENGTH_RATIO warning note in output, got:\n{output_text}"
             )
             # Only unit1 (source "A") should have the warning, not unit2
-            # unit2 has source "Hello world" (11 chars) → target "[zh] Hello world" (16 chars)
-            # ratio ≈ 1.45, within bounds
+            # unit2 has a 74-char source → target "[zh] …" adds the 5-char
+            # prefix → ratio ≈ 1.07, within the tight [0.9, 1.1] bounds.
+            # (Echo semantics — the _FakeModelPool seam, aligned with the OL
+            # CLI; the fixture length keeps unit2 in-bounds under the prefix.)
             unit2_pos = output_text.index("id=\"unit2\"")
             unit2_after = output_text[unit2_pos:]
             assert "OL_WARN" not in unit2_after, (
