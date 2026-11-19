@@ -144,24 +144,8 @@ circuit breaker, FAKE_LLM decision matrix) lives in
 ## Pointers to the suite-level docs
 
 - Cross-module orchestration + pre-commit hooks + compatibility matrix: [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
-- Doc architecture playbook (six-repo synced copy, hash-pinned; e2e-test-suite#254): [`docs/dev/agent-era-doc-architecture.md`](docs/dev/agent-era-doc-architecture.md)
-- MCP tool full parameter reference: [`docs/API.md`](docs/API.md); user-facing guide: `AGENT_USAGE.md` (this repo)
-
-## 交叉审计的产物中转 + 真假模型（MUST · 2026-11-19）
-
-质量通过不能靠口头，必须**产物入库 + git 中转**：两侧机器不共享磁盘，唯一通道是 GitHub 仓库。
-协议真身：workspace 根 `99-Tools/methodology/cross-audit-evidence-protocol.md`；本仓落点与规则：`docs/dev/cross-audit-evidence.md`
-
-- 一次性中间件 ⇒ `.scratch/`（不入库）；**要交叉审的产物 ⇒ `docs/dev/validation-evidence/<矩阵>/<run-date>/` + `manifest.json`，必须 commit**。
-- 大文件（双语对照包/整包）⇒ 只入代理件（抽样页 + 读数）+ sha256 + 复跑命令；本机临时输出目录**不是交付通道**。
-- 自检：`python3 99-Tools/check_evidence_committed.py <repo>`，exit 0 才可宣称质量通过。
-- `quality.verdict=pass` 必须带存在的 `quality.evidence`，否则按 fail 计。
-
-**假模型 vs 真模型**
-
-- 允许 fake：只限链路 / 契约 / 覆盖类验证（路径能跑通、schema 对）——证据里必须写明 fake，**不得**据此判翻译质量通过。
-- 禁止 fake：任何翻译质量矩阵判定（LQA 阈值、未翻译单元、标点卫生等）与对客交付包验收 —— **必须真模型**。
-- 真跑缺 key ⇒ 先查环境，再**向 owner 要（优先免费额度）**，标 `blocked:no-llm-key`；不许用 fake 冒充真跑。
+- Doc architecture playbook (hash-pinned, e2e-test-suite#254): [`docs/dev/agent-era-doc-architecture.md`](docs/dev/agent-era-doc-architecture.md); MCP params: [`docs/API.md`](docs/API.md); user guide: `AGENT_USAGE.md`
+- **交叉审计 + 真假模型（MUST）**：产物要交叉审就必须入库走 git、质量判定必须真模型、没 key 向 owner 要 —— 见 [`docs/dev/cross-audit-evidence.md`](docs/dev/cross-audit-evidence.md)
 
 ## Issue conventions
 

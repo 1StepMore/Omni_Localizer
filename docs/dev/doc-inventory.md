@@ -19,11 +19,13 @@
 | docs/adr/TEMPLATE.md | 29 |
 | docs/dev/agent-era-doc-architecture.md | 300 |
 | docs/dev/cli-reference.md | 34 |
+| docs/dev/cross-audit-evidence.md | 32 |
 | docs/dev/gotchas.md | 101 |
 | docs/dev/harness-run-facts.md | 17 |
 | docs/dev/llm-pool.md | 67 |
 | docs/dev/pipeline.md | 143 |
 | docs/dev/production-matrix.md | 56 |
 | docs/dev/source-layout.md | 58 |
+| docs/dev/validation-evidence/README.md | 37 |
 | docs/glossary_format.md | 230 |
 | docs/real_llm_runbook.md | 191 |
