@@ -172,7 +172,16 @@ class TestTranslateXliffMcpStyleGuide:
             captured_contexts.append(context)
             return f"[{tgt}] {text}"
 
-        with patch("ol_pool.router.ModelPool.translate", new=fake_translate):
+        # Mock the MCP pool seam (ol_mcp/_pool.translation_pool), not
+        # ModelPool.translate: under OMNI_TEST_FAKE_LLM=1 the tool uses the
+        # FAKE seam (ol_mcp/_pool.translation_pool, OL#208), which bypasses
+        # a class-method patch on the real pool.
+        class _StubPool:
+            async def translate(self, text, src, tgt, context=None, **kwargs):
+                captured_contexts.append(context)
+                return f"[{tgt}] {text}"
+
+        with patch("ol_mcp.translate_xliff.translation_pool", return_value=_StubPool()):
             result_str = asyncio.run(mcp_translate_xliff(
                 TranslateXliffInput(
                     input_path=str(input_path),

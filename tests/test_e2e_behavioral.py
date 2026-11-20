@@ -129,11 +129,15 @@ class TestOLTranslateXLIFFWithOPPStyle:
         """
         from unittest.mock import patch
 
-        # Mock the LLM translation to return predictable results
-        def mock_translate(text, src_lang, tgt_lang, context=None):
-            return f"[translated: {text}]"
+        # Mock the MCP pool seam (ol_mcp/_pool.translation_pool), not
+        # ModelPool.translate: under OMNI_TEST_FAKE_LLM=1 the tool uses the
+        # FAKE seam (OL#208), which bypasses a class-method patch on the
+        # real pool.
+        class _StubPool:
+            async def translate(self, text, src_lang, tgt_lang, context=None):
+                return f"[translated: {text}]"
 
-        with patch("ol_pool.router.ModelPool.translate", side_effect=mock_translate):
+        with patch("ol_mcp.translate_xliff.translation_pool", return_value=_StubPool()):
             from ol_mcp.tools import translate_xliff, TranslateXliffInput
 
             output_path = str(temp_dir / "output.xlf")
