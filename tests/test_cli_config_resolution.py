@@ -22,8 +22,9 @@ Every cwd fixture below holds ONLY ``config/local.yaml`` (no
 outright instead of silently loading the wrong file — the same shape as the
 CI failure, where the workspace root has no ``config/`` directory at all.
 
-Levels 2 and 4 are relative paths resolved against the process cwd by the OS;
-this module does not assert anything about running from a foreign cwd.
+Level 2 is a relative path resolved against the process cwd by the OS (the
+documented per-project overlay); level 4 is the ABSOLUTE repo-shipped
+default (OL#210, ``__file__``-anchored) — this module asserts both.
 """
 from __future__ import annotations
 
@@ -270,9 +271,18 @@ class TestTranslateMdResolution:
     def test_falls_through_to_default_when_local_yaml_absent(
         self, isolated_cwd, monkeypatch, _fake_llm_env,
     ):
-        """A missing local.yaml is NOT an error — level 4 still applies."""
+        """A missing local.yaml is NOT an error — level 4 still applies.
+
+        Level 4 is the ABSOLUTE repo-shipped default (OL#210): anchored via
+        ``__file__`` so a foreign cwd resolves the shipped config instead of
+        dying on a cwd-relative miss. A cwd-local ``config/default.yaml`` is
+        deliberately NOT consulted at this level — the fixture still writes
+        one to prove the resolver ignores it.
+        """
+        from ol_config import resolver as resolver_mod
+
         (isolated_cwd / DEFAULT_CONFIG_RELPATH).write_text(
-            yaml.safe_dump(_probe_config("from-default-yaml"), sort_keys=False),
+            yaml.safe_dump(_probe_config("decoy-must-not-be-loaded"), sort_keys=False),
             encoding="utf-8",
         )
         seen = _spy_load_config(monkeypatch)
@@ -282,8 +292,9 @@ class TestTranslateMdResolution:
         assert result.exit_code == ExitCode.SUCCESS, (
             f"exit={result.exit_code}, out={result.output!r}, exc={result.exception!r}"
         )
-        assert [p.resolve() for p in seen] == [(isolated_cwd / DEFAULT_CONFIG_RELPATH).resolve()], (
-            f"expected {DEFAULT_CONFIG_RELPATH}, got {[str(p) for p in seen]}"
+        expected = Path(resolver_mod.__file__).resolve().parents[2] / DEFAULT_CONFIG_RELPATH
+        assert [p.resolve() for p in seen] == [expected], (
+            f"expected repo-shipped {DEFAULT_CONFIG_RELPATH}, got {[str(p) for p in seen]}"
         )
 
 
@@ -375,13 +386,22 @@ class TestResolverUnit:
 
         assert resolve_config_path(None) == Path("/env/config.yaml")
 
-    def test_default_relpath_is_the_last_resort(self, isolated_cwd):
-        assert resolve_config_path(None) == Path(DEFAULT_CONFIG_RELPATH)
+    def test_default_is_the_last_resort_repo_anchored(self, isolated_cwd):
+        """Level 4 = ABSOLUTE repo-shipped default (OL#210), cwd-independent."""
+        from ol_config import resolver as resolver_mod
+
+        expected = Path(resolver_mod.__file__).resolve().parents[2] / DEFAULT_CONFIG_RELPATH
+        resolved = resolve_config_path(None)
+        assert resolved == expected
+        assert resolved.is_absolute(), f"level 4 must be absolute, got {resolved}"
 
     def test_absent_local_yaml_is_optional_not_an_error(self, isolated_cwd):
         """Level 2 must never raise when the file is absent (dir may not exist)."""
+        from ol_config import resolver as resolver_mod
+
         (isolated_cwd / "config").rmdir()
         assert not (isolated_cwd / LOCAL_CONFIG_RELPATH).exists()
         assert not (isolated_cwd / "config").exists()
 
-        assert resolve_config_path(None) == Path(DEFAULT_CONFIG_RELPATH)
+        expected = Path(resolver_mod.__file__).resolve().parents[2] / DEFAULT_CONFIG_RELPATH
+        assert resolve_config_path(None) == expected
