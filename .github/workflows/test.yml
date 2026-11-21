@@ -100,6 +100,18 @@ jobs:
           FALLBACK_API_KEY: ci-dummy-not-a-secret
         run: python scripts/check_local_example.py
 
+      # OL#206: the one agent-facing machine contract, judged by exit code.
+      # CI is keyless by design (the dummies above are job-local env, not
+      # real credentials): with -e ".[ml,mcp,dev]" installed, venv must be
+      # green and the ladder must deterministically report the single
+      # blocker blocked:no-llm-key -> exit 2. Any other exit code means the
+      # CI environment drifted — fail the job.
+      - name: agent-ready contract entry (exit-code judged)
+        run: |
+          python scripts/agent_ready.py --compact \
+            && code=0 || code=$?
+          test "$code" -eq 2
+
       - name: Run full test suite
         env:
           OMNI_TEST_FAKE_LLM: "1"

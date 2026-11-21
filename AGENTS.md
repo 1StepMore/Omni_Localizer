@@ -6,7 +6,7 @@ The [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGEN
 covers cross-module orchestration; this file is for working **inside** OL.
 
 This file is an **index + invariants** file (≤200 lines, #162): detail
-lives in `docs/dev/*.md` and `docs/API.md`, not here. · docs/dev/harness-run-facts.md — 运行环境 / 门禁顺序 / 缺 key 症状 / 已知坑
+lives in `docs/dev/*.md` and `docs/API.md`, not here. · docs/dev/harness-run-facts.md — 运行环境 / 门禁顺序 / 缺 key 症状 / 已知坑 · 动手前先跑 `python scripts/agent_ready.py`（OL#206 唯一接手入口，agent-ready/v1）——按输出 `next_action` 走，退出码 0/2/3/4 即机器判据
 
 ## Quick start
 
