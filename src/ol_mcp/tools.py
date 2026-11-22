@@ -484,10 +484,25 @@ class ProfileDocInput(BaseModel):
 
 
 def _get_config_path(config_path: str | None) -> str:
-    """Resolve config path: explicit param > env var > default."""
+    """Resolve config path: explicit param > env var > resolver default.
+
+    The fallback MUST go through :func:`ol_config.resolver.resolve_config_path`
+    rather than a cwd-relative ``config/default.yaml`` literal. The literal
+    predates OL#210 and quietly re-introduced the cwd-relative default that the
+    resolver's level-4 fix removed, so every ``ol_mcp.tools.*`` call made from
+    outside ``Omni_Localizer/`` (e.g. the suite's tier-2 python steps, cwd =
+    suite root) died with ``Config file not found: config\\default.yaml``.
+    """
     if config_path:
         return config_path
-    return os.environ.get("OL_CONFIG_PATH", "config/default.yaml")
+    env_path = os.environ.get("OL_CONFIG_PATH")
+    if env_path:
+        return env_path
+    # Deferred import: this module must stay free of the pydantic/litellm
+    # heavy imports on the fail-fast path (see ol_config.resolver docstring).
+    from ol_config.resolver import resolve_config_path
+
+    return str(resolve_config_path(None))
 
 
 # ---------------------------------------------------------------------------
