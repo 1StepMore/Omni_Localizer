@@ -63,11 +63,20 @@ _FENCE_RE = re.compile(r"```[\w]*\n[\s\S]*?```")
 # ── Protected inline patterns (preserved verbatim during punctuation norm.) ──
 # Emails, URLs, IP addresses, and version numbers must not have their
 # periods/colons/slashes converted to full-width variants.
+# OL#215: markdown images (inline and reference style) and markdown links
+# are protected verbatim too — the same content the shield keeps out of the
+# LLM must not be re-mangled by this post-pass (Issue #5 precedent).
 _PROTECTED_RE = re.compile(
     r"(?:"
     r"[\w.+-]+@[\w.-]+\.\w{2,}"                           # email
     r"|"
     r"https?://[^\s<>\"'()]+"                              # URL
+    r"|"
+    r"!\[[^\]]*\]\([^)]+\)"                                # inline image ![alt](url)
+    r"|"
+    r"!\[[^\]]*\]\[[^\]]*\]"                               # reference image ![alt][id]
+    r"|"
+    r"(?<!!)\[[^\]]*\]\([^)]+\)"                           # markdown link [text](url)
     r"|"
     r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"                 # IPv4
     r"|"
