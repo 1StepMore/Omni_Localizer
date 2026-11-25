@@ -142,3 +142,48 @@ class TestTranslateMdAsyncWithFakeLlm:
         output_file = output_dir / input_path.name
         assert output_file.exists(), f"output file not created at {output_file}"
         assert output_file.read_text(encoding="utf-8"), "output file is empty"
+
+
+# ============================================================
+# Issue #217: MD channel + image unit must survive MDRepairPipeline.repair()
+# ============================================================
+class TestMdImageUnitRepairShape:
+    @pytest.mark.asyncio
+    async def test_md_image_unit_repair_returns_str_no_unpack_error(
+        self, tmp_path,
+    ):
+        """Issue #217 regression: an MD unit carrying an image reference
+        has a non-empty shield_map, so ``_translate_one_unit`` runs it
+        through ``MDRepairPipeline.repair()``, which returns a bare
+        ``str`` — while ``XLIFFRepairPipeline.repair()`` returns
+        ``(str, list[str])``. The union boundary used to tuple-unpack
+        the MD shape and raised ``ValueError: too many values to unpack
+        (expected 2)``; the gather defense turned that into
+        ``status=exception`` and #189's fail-closed gate then deleted the
+        partial output (CLI rc=1). The boundary must accept both shapes,
+        with the MD path yielding no repair warnings."""
+        from ol_cli import _translate_md_async
+
+        input_path = tmp_path / "in.md"
+        input_path.write_text(
+            "# 用户手册\n\n测试功能说明。\n\n![示意图](sample_images/1.png)\n",
+            encoding="utf-8",
+        )
+        output_dir = tmp_path / "out_dir"
+        output_dir.mkdir()
+
+        result = await _translate_md_async(
+            input_path, output_dir, None, "zh", "en"
+        )
+
+        # No ValueError escaped: nothing was marked untranslated, so the
+        # #189 fail-closed gate does not fire on this document.
+        assert getattr(result, "untranslated_units", 0) == 0
+        assert getattr(result, "untranslated_unit_ids", []) == []
+
+        output_file = output_dir / input_path.name
+        assert output_file.exists(), f"output file not created at {output_file}"
+        text = output_file.read_text(encoding="utf-8")
+        # The image reference survived shield -> translate -> repair ->
+        # unshield intact (not dropped, not doubled by L4 fallback).
+        assert text.count("![示意图](sample_images/1.png)") == 1
