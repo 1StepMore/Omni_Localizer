@@ -3,6 +3,33 @@ from collections.abc import Iterator
 
 from ol_core.dataclass import TranslationUnit
 
+# OL#215: markdown image syntax must never reach the LLM. Inline
+# ``![alt](url)`` and reference-style ``![alt][id]`` images are replaced
+# with the module's standard ``[OL:IMG:NNNN]`` markers (same format
+# ol_md.shield emits, keys ``image_NNNN`` so unshield_markdown restores
+# them byte-identical). Links stay translatable, so the full
+# shield_markdown pass is not used here — only images.
+_MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)|!\[[^\]]*\]\[[^\]]*\]")
+
+
+def _shield_images_in_content(content: str) -> tuple[str, dict[str, str]]:
+    """Replace markdown images in unit content with ``[OL:IMG:NNNN]`` markers.
+
+    Returns ``(shielded_content, shield_map)``; keys restart at
+    ``image_0000`` per unit because each unit is unshielded with its own map.
+    """
+    shield_map: dict[str, str] = {}
+    counter = 0
+
+    def _replace(match: re.Match) -> str:
+        nonlocal counter
+        marker = f"[OL:IMG:{counter:04d}]"
+        shield_map[f"image_{counter:04d}"] = match.group(0)
+        counter += 1
+        return marker
+
+    return _MD_IMAGE_RE.sub(_replace, content), shield_map
+
 
 # OPP's JSON extractor emits ``json_field:<path> = <value>`` lines next to a
 # fenced JSON block. The path is a structural anchor that ORF's md2json maps
@@ -99,10 +126,11 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
                     source_text = content
                     metadata = {'token_type': token_type}
                 if source_text.strip():
+                    source_text, image_map = _shield_images_in_content(source_text)
                     yield TranslationUnit(
                         unit_id=f'md_{current_unit_id}',
                         source_text=source_text,
-                        shield_map={},
+                        shield_map=image_map,
                         metadata=metadata,
                     )
                     current_unit_id += 1
@@ -114,9 +142,10 @@ def extract_translatable_tokens(tokens, skip_urls: bool = True) -> Iterator[Tran
 def extract_and_shield_md_units(md_text: str) -> list[TranslationUnit]:
     """Parse MD text and extract translatable units for concurrent translation.
 
-    Each unit corresponds to an inline token's text content. Shield maps are
-    empty because markdown structure (code fences, images, links) is preserved
-    at the token level — only bare text reaches the LLM.
+    Each unit corresponds to an inline token's text content. Markdown
+    structure (code fences, links, tables) is preserved at the token level —
+    only bare text reaches the LLM, except markdown images (OL#215), which
+    are shielded into ``[OL:IMG:NNNN]`` markers with a per-unit shield_map.
 
     Args:
         md_text: Raw markdown text
