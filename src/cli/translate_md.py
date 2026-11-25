@@ -428,10 +428,17 @@ async def _translate_one_unit(
 
         def _restore_and_repair(text: str) -> tuple[str, list[str]]:
             unshielded = restore_tags(text, unit.shield_map)
-            repaired_text, repair_ws = repair_pipeline.repair(
+            # Issue #217: repair_pipeline is a union and the two shapes
+            # differ — MDRepairPipeline.repair() returns a bare str with
+            # no warnings, XLIFFRepairPipeline.repair() returns
+            # (str, list[str]). Adapt here; do NOT change
+            # MDRepairPipeline.repair()'s return shape.
+            repair_result = repair_pipeline.repair(
                 unshielded, unit.source_text, unit.shield_map,
             )
-            return repaired_text, repair_ws
+            if isinstance(repair_result, tuple):
+                return repair_result
+            return repair_result, []
 
         repaired, repair_warnings = _restore_and_repair(translated)
     else:
@@ -610,7 +617,8 @@ async def _translate_units_concurrent(
                 untranslated=True,
             ))
             logger.error(
-                f"Unit {unit.unit_id} unexpected exception in gather: {result}"
+                f"Unit {unit.unit_id} unexpected exception in gather: {result}",
+                exc_info=result,
             )
             continue
         final.append(result)
@@ -712,6 +720,12 @@ async def _translate_md_async(
     )
     untranslated_count = getattr(repaired, "untranslated_units", 0)
     total_units = getattr(repaired, "total_units", 0)
+    # Issue #217: surface the actual failing unit ids (e.g. ``md_3``), not
+    # the aggregate ``md_main``. Captured before polish() replaces
+    # ``repaired`` with a plain str and drops the attributes.
+    untranslated_unit_ids = list(
+        getattr(repaired, "untranslated_unit_ids", []) or []
+    )
 
     if polish:
         from ol_xliff.polish import polish_md_text
@@ -829,7 +843,9 @@ async def _translate_md_async(
 
     result_path = _MdText(str(output_file))
     result_path.untranslated_units = untranslated_count
-    result_path.untranslated_unit_ids = ["md_main"] if untranslated_count else []
+    result_path.untranslated_unit_ids = (
+        untranslated_unit_ids or (["md_main"] if untranslated_count else [])
+    )
     result_path.total_units = total_units
     return result_path
 
