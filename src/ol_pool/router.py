@@ -171,9 +171,49 @@ class _StubServiceUnavailableError(_StubLitellmError):
     pass
 
 
-if os.environ.get("OMNI_TEST_FAKE_LLM") != "1":
-    import litellm  # noqa: E402
-    from litellm.exceptions import (  # noqa: E402
+# OL#223: litellm is LAZY. Importing it at module top level made the MCP
+# server pay a ~50s litellm import before it could even answer
+# `initialize`/`ping`/`get_capabilities` (import chain
+# ol_mcp.tools -> ol_mcp.judge -> ol_pool.router -> litellm). Instead, the
+# names in _LAZY_LITELLM_NAMES are materialized on first attribute access
+# through the module-level __getattr__ (PEP 562) below: LOAD_GLOBAL misses
+# inside this module's functions (e.g. `except Timeout as e:`) and
+# `from ol_pool.router import X` in other modules both route through
+# __getattr__, so every existing module-level NAME REFERENCE keeps working
+# unchanged — it just imports litellm on first touch.
+_LAZY_LITELLM_NAMES = frozenset({
+    "litellm",
+    "APIConnectionError",
+    "AuthenticationError",
+    "InternalServerError",
+    "RateLimitError",
+    "ServiceUnavailableError",
+    "Timeout",
+    "RouterRateLimitError",
+    "Router",
+})
+
+_litellm_ready = False
+
+
+def _ensure_litellm() -> None:
+    """Import litellm on first use (OL#223 lazy loading). Idempotent.
+
+    In FAKE_LLM mode the stub classes are pre-bound at module level and
+    this never imports litellm. In real mode this performs the import that
+    used to sit at module top level, including
+    ``litellm.disable_model_name_normalization = True`` — which MUST run
+    before Router init so litellm does not lowercase model names
+    (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it).
+    """
+    global _litellm_ready
+    if _litellm_ready:
+        return
+    if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+        _litellm_ready = True  # stubs are pre-bound; nothing to import
+        return
+    import litellm  # noqa: PLC0415
+    from litellm.exceptions import (  # noqa: PLC0415
         APIConnectionError,
         AuthenticationError,
         InternalServerError,
@@ -181,13 +221,27 @@ if os.environ.get("OMNI_TEST_FAKE_LLM") != "1":
         ServiceUnavailableError,
         Timeout,
     )
-    from litellm.types.router import RouterRateLimitError  # noqa: E402
+    from litellm.types.router import RouterRateLimitError  # noqa: PLC0415
     # Must be set before Router init — prevents litellm from lowercasing model names
     # (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it)
     litellm.disable_model_name_normalization = True
-    from litellm import Router  # noqa: E402
-else:
-    # FAKE_LLM mode: skip the 26s `import litellm` and use stub classes.
+    from litellm import Router  # noqa: PLC0415
+    globals().update({
+        "litellm": litellm,
+        "APIConnectionError": APIConnectionError,
+        "AuthenticationError": AuthenticationError,
+        "InternalServerError": InternalServerError,
+        "RateLimitError": RateLimitError,
+        "ServiceUnavailableError": ServiceUnavailableError,
+        "Timeout": Timeout,
+        "RouterRateLimitError": RouterRateLimitError,
+        "Router": Router,
+    })
+    _litellm_ready = True
+
+
+if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
+    # FAKE_LLM mode: skip `import litellm` entirely and use stub classes.
     # `except Timeout as e:` etc. remain valid; the stubs are never actually
     # raised because __init__ returns early with _FakeModelPool.
     # Tests using `with patch("ol_pool.router.Router")` to set _test_mode
@@ -203,6 +257,15 @@ else:
     # Direct-call seam for intra-role 429 failover (_direct_acompletion).
     # Tests replace this module attribute with a fake exposing acompletion().
     litellm = None  # type: ignore[assignment]
+else:
+    # Only installed in real mode. In FAKE mode every name in
+    # _LAZY_LITELLM_NAMES is already a real module attribute, so
+    # __getattr__ is never consulted for them (the stubs keep winning).
+    def __getattr__(name: str) -> Any:
+        if name in _LAZY_LITELLM_NAMES:
+            _ensure_litellm()
+            return globals()[name]
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 from ol_config.loader import load_config
 from ol_config.schema import LLMModelConfig, LLMPoolConfig, RateLimitBackoffConfig
@@ -514,11 +577,14 @@ def _dead_model_ttl() -> float:
         return _DEAD_MODEL_TTL_DEFAULT_SECONDS
 
 
-def _dead_memory_exc(model_ids: set[str]) -> Timeout:
+def _dead_memory_exc(model_ids: set[str]) -> "Timeout":
     """Synthetic Timeout for the dead-memory bypass path (OL#191).
 
     Keeps the exception type the skipped deployment would have raised, so
     downstream handling and the fail-closed re-raise stay type-compatible.
+    (Annotation is a string: OL#223 lazy loading means the ``Timeout``
+    global is only bound after _ensure_litellm(), and def-time annotation
+    evaluation must not import litellm.)
     """
     joined = ", ".join(sorted(model_ids))
     try:
@@ -668,6 +734,17 @@ class ModelPool:
     _rate_limit_backoff: RateLimitBackoffConfig = RateLimitBackoffConfig()
 
     def __init__(self, config_path: str = "config/default.yaml"):
+        # OL#223: materialize the lazy litellm bindings first — the
+        # _test_mode check below reads the `Router` global, and LOAD_GLOBAL
+        # does not route through module __getattr__, so the binding must
+        # exist before anything in this method touches it. In FAKE_LLM mode
+        # this is a no-op (stubs are pre-bound at module level). In real
+        # mode this is where litellm's import cost is actually paid — at
+        # Router construction time, not at MCP-server cold start.
+        #
+        # Must run before Router init: sets
+        # disable_model_name_normalization (see _ensure_litellm).
+        _ensure_litellm()
         # Detect test mode: if the Router class has been replaced with a
         # MagicMock (by @patch in tests), short-circuit translate/judge to
         # return placeholder values instead of attempting real LLM calls.
