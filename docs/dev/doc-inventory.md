@@ -8,7 +8,7 @@
 | Document | Lines |
 |---|---:|
 | AGENTS.md | 200 |
-| README.md | 581 |
+| README.md | 582 |
 | docs/API.md | 466 |
 | docs/ARCHITECTURE.md | 395 |
 | docs/MCP-CONNECTION-TEMPLATE.md | 642 |

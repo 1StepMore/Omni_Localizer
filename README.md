@@ -107,6 +107,7 @@ Set `OMNI_TEST_FAKE_LLM=1` to bypass all env var checks for testing.
 
 **Getting started:**
 1. Run `ol init` to generate `config/local.yaml` with the canonical unified model pool. `config/local.yaml` is a **gitignored operator override** of `config/default.yaml` (2 ZHIPU models × 4 roles), not a byte-for-byte mirror: it may legitimately differ in tier count, rate limits, and timeouts.
+   - `ol init` is an interactive wizard. In a non-interactive context (CI, a coding agent, a shell without a TTY) it stops at the first prompt with `Aborted.`; use `ol init --non-interactive` there, optionally with `--config <path> --preset <name> --force`.
 2. Export the printed key (ZHIPU_API_KEY).
 3. Run `ol doctor` to validate the config (5 checks: file exists, YAML parses, config loads, ≥2 models per role, every role has at least one usable (keyed) model).
 
