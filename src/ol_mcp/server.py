@@ -41,5 +41,17 @@ async def main() -> None:
         )
 
 
+def cli() -> None:
+    """Sync console-script entry point for ``ol-mcp`` / ``ol-mcp-server``.
+
+    A console script calls ``sys.exit(entry())``. While the entry was
+    ``ol_mcp.server:main`` — an ``async def`` — that returned a coroutine:
+    ``sys.exit`` printed it, the process exited 1 and the server never
+    started (OL#221). ``main`` stays async for ``python -m ol_mcp`` and the
+    existing tests; this wrapper is what the scripts must point at.
+    """
+    anyio.run(main)
+
+
 if __name__ == "__main__":
     anyio.run(main)
