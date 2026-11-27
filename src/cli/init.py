@@ -1,10 +1,13 @@
 """ol init — Bootstrap a local OL config (config/local.yaml).
 
-Generates a YAML config with the Zhipu-only pool that mirrors
-``config/default.yaml`` (the single source of truth), in priority order:
-glm-4.7-flash (primary) + glm-4-flash (fallback). AMD and Spark are absent:
-the Spark key is owner-local and AMD is dead (OL#183). Every api_key/base_url
-is a ${ENV_VAR} reference — literal keys are never written.
+Generates a YAML config with the pool that mirrors ``config/default.yaml``
+(the single source of truth), in priority order: glm-4-flash (primary) +
+glm-4.7-flash (fallback) + the generic OpenAI-compatible endpoint triple
+(``LLM_BASE_URL``/``LLM_API_KEY``/``LLM_MODEL``, suite#448) as the
+lowest-priority fallback — skipped while any of the three vars is unset.
+AMD and Spark are absent: the Spark key is owner-local and AMD is dead
+(OL#183). Every api_key/base_url — and the endpoint triple's model name —
+is a ${ENV_VAR} reference; literal keys are never written.
 """
 from __future__ import annotations
 
@@ -19,9 +22,12 @@ from cli._shared import ExitCode
 # tests/test_model_pool_config_parity.py — keep the two in sync.
 # Order mirrors config/default.yaml (OL#193, 2026-11-12 real-traffic
 # measurement): glm-4-flash takes priority 1, glm-4.7-flash drops to last.
+# The trailing triple is the generic OpenAI-compatible endpoint (suite#448)
+# at priority 3 — enumerate() assigns it automatically as the last tier.
 _POOL_MODELS: tuple[tuple[str, str, str], ...] = (
     ("glm-4-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
     ("glm-4.7-flash", "${ZHIPU_API_KEY}", "https://open.bigmodel.cn/api/paas/v4"),
+    ("${LLM_MODEL}", "${LLM_API_KEY}", "${LLM_BASE_URL}"),
 )
 
 UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
@@ -42,8 +48,14 @@ UNIFIED_POOL_PRESET: dict[str, list[dict[str, str | int | float]]] = {
 
 # Env vars the generated config references (for the export hint). Order is
 # presentation-only (parity compares sets) but must track _POOL_MODELS.
+# The LLM_* triple is the optional custom-endpoint path (suite#448): the
+# hint marks it optional because the pool skips those entries while any of
+# the three is unset.
 PRESET_ENV_VARS: tuple[str, ...] = (
     "ZHIPU_API_KEY",
+    "LLM_BASE_URL",
+    "LLM_API_KEY",
+    "LLM_MODEL",
 )
 
 

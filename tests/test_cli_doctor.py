@@ -168,8 +168,11 @@ def test_doctor_pass_single_provider_key(tmp_path, monkeypatch):
 
     monkeypatch.setattr(loader_mod, "_load_env_file", lambda: None)
     refs = _unset_all_pool_env(monkeypatch, cfg)
-    # Exactly one provider key — every other pool var stays unset.
-    monkeypatch.setenv(sorted(refs)[0], "sk-dummy")
+    # Exactly one PROVIDER key — every other pool var stays unset, including
+    # the LLM_* endpoint triple (suite#448). sorted(refs)[0] can no longer be
+    # assumed to be a provider key now that the pool carries the generic
+    # endpoint entries.
+    monkeypatch.setenv("ZHIPU_API_KEY", "sk-dummy")
 
     result = runner.invoke(app, ["doctor", "--config", str(cfg)], env=ENV)
     assert result.exit_code == ExitCode.SUCCESS, (

@@ -465,7 +465,7 @@ def _resolve_env_vars(value: str | None) -> str | None:
 
 
 def _unresolved_env_vars(model: LLMModelConfig) -> list[str]:
-    """Names of ``${VAR}`` refs in a model's api_key/base_url that are unusable.
+    """Names of ``${VAR}`` refs in a model's model/api_key/base_url that are unusable.
 
     A ref is unusable when its var is UNSET **or set to the empty string**
     (OL#195): an empty api_key resolves to ``""`` and would be sent to the
@@ -475,9 +475,15 @@ def _unresolved_env_vars(model: LLMModelConfig) -> list[str]:
     survives, so the resolved value stays fail-closed. The falsy-get here
     also matches ``cli.doctor._unresolved_refs`` and
     ``cli._shared.precheck_api_keys``, which always treated "" as absent.
+
+    The ``model`` name is scanned too (e2e-test-suite#448): the generic
+    OpenAI-compatible endpoint entries in ``config/default.yaml`` carry
+    ``model: ${LLM_MODEL}``, so an endpoint var left unset must skip the
+    entry exactly like an unset key would — never ship a literal
+    ``${LLM_MODEL}`` to litellm as a model id.
     """
     missing: list[str] = []
-    for value in (model.api_key, model.base_url):
+    for value in (model.model, model.api_key, model.base_url):
         if not value:
             continue
         for part in value.split("${")[1:]:
@@ -1053,7 +1059,11 @@ class ModelPool:
             )
             for model in role_models:
                 litellm_params = {
-                    "model": f"{model.provider}/{model.model}",
+                    # Resolve ${VAR} refs in the model name too (#448): the
+                    # generic endpoint entries carry model: ${LLM_MODEL}.
+                    # Safe: role_models are the post-partition usable models,
+                    # so every ref resolves or the entry was skipped.
+                    "model": f"{model.provider}/{_resolve_env_vars(model.model)}",
                 }
                 if model.api_key:
                     litellm_params["api_key"] = _resolve_env_vars(model.api_key)
@@ -1210,7 +1220,10 @@ class ModelPool:
                 "litellm is unavailable; cannot perform intra-role failover"
             )
         params: dict[str, Any] = {
-            "model": f"{model.provider}/{model.model}",
+            # ${VAR} refs in the model name resolve here too (#448) — the
+            # failover path only re-dials a model that already succeeded or
+            # was partitioned usable, so every ref resolves.
+            "model": f"{model.provider}/{_resolve_env_vars(model.model)}",
             "messages": messages,
             "temperature": temperature,
             "max_tokens": (
