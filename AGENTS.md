@@ -2,8 +2,14 @@
 
 Developer + agent context for the **OL** sub-repo (translation step of the Omni
 Suite pipeline: OPP produces MD + XLIFF, OL translates via LLM, ORF backfills).
-The [suite AGENTS.md](https://github.com/1StepMore/e2e-test-suite/blob/main/AGENTS.md)
-covers cross-module orchestration; this file is for working **inside** OL.
+OL is an **independent product** that runs on its own — it does not depend on
+the suite repo to build, run, or test. The suite repo
+([e2e-test-suite](https://github.com/1StepMore/e2e-test-suite)) is the
+orchestration + integration-verification layer and holds the one shared
+artifact between the three modules: the handoff contract
+[CONTRACT.md](https://github.com/1StepMore/e2e-test-suite/blob/main/CONTRACT.md)
+(changing it requires a three-repo sync). Its suite AGENTS.md covers
+cross-module orchestration; this file is for working **inside** OL.
 
 This file is an **index + invariants** file (≤200 lines, #162): detail
 lives in `docs/dev/*.md` and `docs/API.md`, not here. · docs/dev/harness-run-facts.md — 运行环境 / 门禁顺序 / 缺 key 症状 / 已知坑 · 动手前先跑 `python scripts/agent_ready.py`（OL#206 唯一接手入口，agent-ready/v1）——按输出 `next_action` 走，退出码 0/2/3/4 即机器判据
@@ -11,27 +17,16 @@ lives in `docs/dev/*.md` and `docs/API.md`, not here. · docs/dev/harness-run-fa
 ## Quick start
 
 ```bash
-# Install
-bash scripts/setup_dev.sh
+bash scripts/setup_dev.sh              # Install
+ol init && ol doctor                   # Bootstrap config + verify (writes config/local.yaml)
 
-# Bootstrap config + verify (run 'ol init' to generate config/local.yaml, then 'ol doctor' to verify)
-ol init
-ol doctor
+ol translate-md document.md -s en -t zh -o /tmp/out    # CLI: single MD file
+ol translate-batch ./docs/ -s en -t zh -o ./translated/   # CLI: batch a directory
+ol translate-xliff doc.xlf -s en -t zh -o ./translated/   # CLI: XLIFF (advanced)
 
-# CLI: translate a single MD file
-ol translate-md document.md -s en -t zh -o /tmp/out
+ol-mcp                                 # MCP server (stdio); or: python -m ol_mcp
 
-# CLI: batch translate a directory
-ol translate-batch ./docs/ -s en -t zh -o ./translated/
-
-# CLI: translate XLIFF (advanced)
-ol translate-xliff doc.xlf -s en -t zh -o ./translated/
-
-# MCP server (stdio)
-ol-mcp            # or: python -m ol_mcp
-
-# Tests (OMNI_TEST_FAKE_LLM=1 set automatically by make test)
-make test
+make test                              # Tests (OMNI_TEST_FAKE_LLM=1 set automatically)
 ```
 
 ## Source layout
@@ -52,8 +47,7 @@ Full annotated tree: `docs/dev/source-layout.md`.
 
 ## CLI reference
 
-Top commands; the full command + flag table lives in
-[`docs/dev/cli-reference.md`](docs/dev/cli-reference.md).
+Top commands; full command + flag table: [`docs/dev/cli-reference.md`](docs/dev/cli-reference.md).
 
 - `ol translate-md <file> -s <src> -t <tgt> -o <dir>` — single MD file
 - `ol translate-xliff <file> -s <src> -t <tgt>` — XLIFF file
@@ -88,33 +82,39 @@ The Agent-facing surface. The runtime list is `get_capabilities`.
 | `get_capabilities` | Return OL module capabilities: roles, language pairs, available tools. |
 | `ping` | Health check endpoint. |
 
-The translation tools' responses carry a `quality_gates` field
+Translation tools' responses carry a `quality_gates` field
 (`ran` / `not_run` / `skipped`) and non-blocking `warnings`
-(issue #115, `docs/API.md` § 2.1–2.2). The complete per-tool parameter
-reference is [`docs/API.md`](docs/API.md).
+(issue #115, `docs/API.md` § 2.1–2.2). Full per-tool parameters: [`docs/API.md`](docs/API.md).
 
 ## Translation pipeline (MD channel)
 
 6 stages: **shield → translate → repair (4 levels) → unshield → postproc
-→ 8 quality gates**. The stage diagram, prompt-store rules (prompts are
+→ 8 quality gates**. Stage diagram, prompt-store rules (prompts are
 `string.Template` files under `src/ol_pool/prompts/`, fail-loud
 rendering), the E2E regression contracts (E2E-65/14/64/77/78/83) and the
-channel-selection decision table live in
-[`docs/dev/pipeline.md`](docs/dev/pipeline.md).
+channel-selection decision table: [`docs/dev/pipeline.md`](docs/dev/pipeline.md).
 
 ## Model pool + env vars (critical invariants)
 
 Full tables: [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
 
 - **`OMNI_TEST_FAKE_LLM=1` is required for tests** (mock LLM seam); unset
-  it only for real-LLM validation. Decision matrix:
-  [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
+  it only for real-LLM validation. Decision matrix: [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
 - **`MCP_ALLOWED_DIRECTORIES` (or `OL_MCP_ALLOWED_DIRS`) is REQUIRED and
   fail-CLOSED** for `ol-mcp` — unset ⇒ `OL_MCP_NOT_CONFIGURED`, the
-  server refuses to serve. Recovery = set the env var, never loosen the
-  request.
+  server refuses to serve. Recovery = set the env var, never loosen the request.
 - **BYOK gate is OR, not AND**: the CLI pre-check passes when at least
   one referenced provider key is set (`ZHIPU_API_KEY`).
+- **Model ladder when NO key resolves (OL#227 — do not skip steps, never
+  hardcode a vendor)**: ① use the harness's own default model first;
+  ② reuse an existing OpenAI-compatible endpoint (read-only) — set
+  `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`, all three (partial triple
+  = skipped, suite#448; the shipped pool carries the lowest-priority
+  generic entries; provider keys win when both are set), or add pool
+  entries with `${VAR}` refs to `config/local.yaml`; ③ neither ⇒ stop,
+  record `blocked:no-llm-key`, ask the human at the screen for
+  base_url + key + model (cost is their call). Never fake quality
+  evidence. `ol doctor` names the unresolved refs per starved role.
 - Provider/rate-limit semantics and the two-layer `${VAR}` resolution:
   [`docs/dev/llm-pool.md`](docs/dev/llm-pool.md).
 
@@ -125,9 +125,8 @@ make test                            # all tests via uv run pytest tests/ -v
 OMNI_TEST_FAKE_LLM=1 pytest tests/test_e2e_77_math_shield.py   # one regression
 ```
 
-Coverage target ≥90%. Key regression files (E2E-74 context handling,
-E2E-77 math shield, E2E-78 html shield/unshield, E2E-83 large content):
-see `tests/test_e2e_*.py`; the full list lives in [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
+Coverage target ≥90%. Key regressions (E2E-74 context handling, E2E-77 math
+shield, E2E-78 html shield/unshield, E2E-83 large content) in `tests/test_e2e_*.py`; full list: [`docs/dev/gotchas.md`](docs/dev/gotchas.md).
 
 ## Known issues / gotchas
 
@@ -167,6 +166,8 @@ OL ships 5 tier-2 `ol-translation` scenarios in `scenarios/` (with
 ZHIPU rate-limited): scheduled CI is hermetic (OL#183); real-LLM runs locally at 02:00. The suite validation engine runs them via `--repo ol`.
 
 ```bash
+# Standalone (this repo only — own uv.lock): uv run pytest tests/ -q; uv run ol doctor.
+# Scenario-library validation runs are suite-side (engine + STANDARDS.md):
 # From the Omni Suite root (clone: https://github.com/1StepMore/e2e-test-suite)
 source .venv_ol/bin/activate
 
@@ -187,14 +188,12 @@ python scripts/validation/coverage_audit.py   # ol row must show 21/21, 0 missin
 The standards bar is `scenarios/STANDARDS.md` (AGENT-SURFACE family for
 the tool scenarios; HUMAN-QUALITY family — lqa-threshold, para-ratio,
 cjk-density, punct-hygiene — for the pipeline scenarios). Director loop +
-10-minute checklist: `suite:docs/dev/validation-director-loop.md` in the suite
-repo. Per-repo validation delivery (run_meta, report card, delivery
-package): `suite:docs/dev/per-repo-validation-delivery.md`. OL scenario fixes
-now live HERE (in `scenarios/`); OL product-code fixes go through the
-normal fix cycle in this repo.
+10-minute checklist: `suite:docs/dev/validation-director-loop.md`. Per-repo
+validation delivery: `suite:docs/dev/per-repo-validation-delivery.md`. OL
+scenario fixes live HERE (in `scenarios/`); OL product-code fixes go
+through the normal fix cycle in this repo.
 
-## Role routing (A2 pointer model, 2026-11-08)
+## Role routing (契约跟仓走 + 机检防漂移, suite#446 option B, 2026-11-28)
 
-角色契约唯一事实源 = 套件根仓 `.agents/roles/`（coder/maintainer/tester/user，各 ≤30 行），本仓不设本地副本。
-进入本仓的 agent：先读套件根 `AGENTS.md` 的 §0 安全与优先级 + 角色路由表，再按指派角色读对应契约；
-期望映射层 = 套件根 `.agents/expectations/`，期望唯一事实源 = `scenarios/STANDARDS.md`（均 Owner 门禁）；standalone clone 按本仓 `docs/` 工作、边界按 §0 类推。
+角色契约（coder/maintainer/tester/user，57 行）= 本仓 `.agents/roles/`，与套件根母版字节一致——`scripts/doc_inventory.py` 的 `ROLES_SHA256` 钉住校验；改版 = 改套件根母版 + 三仓同传 + 同步 bump pin。
+进入本仓的 agent：读本仓 `.agents/roles/` 对应契约 + 套件根 `AGENTS.md` 的 §0 安全与优先级 + 角色路由表；期望映射层 = 套件根 `.agents/expectations/`，期望唯一事实源 = `scenarios/STANDARDS.md`（均 Owner 门禁）；standalone clone 按本仓 `docs/` 工作、边界按 §0 类推。
