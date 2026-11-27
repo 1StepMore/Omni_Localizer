@@ -11,7 +11,7 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pybreaker
@@ -195,22 +195,71 @@ _LAZY_LITELLM_NAMES = frozenset({
 
 _litellm_ready = False
 
+#: Static-only declarations: the names in _LAZY_LITELLM_NAMES are materialized
+#: lazily by __getattr__ (real mode) or by _bind_stub_names() (fake mode), so
+#: they must not exist as attributes at import time.  The TYPE_CHECKING import
+#: keeps ruff/mypy/pyright happy without binding anything at runtime.
+if TYPE_CHECKING:  # pragma: no cover
+    import litellm
+    from litellm import Router
+    from litellm.exceptions import (
+        APIConnectionError,
+        AuthenticationError,
+        InternalServerError,
+        RateLimitError,
+        ServiceUnavailableError,
+        Timeout,
+    )
+    from litellm.types.router import RouterRateLimitError
+
+#: Sentinel for "name not bound yet" (a plain ``None`` is a legitimate stub
+#: value, so ``globals().get(name)`` alone cannot tell them apart).
+_MISSING: Any = object()
+
+
+def _bind_stub_names() -> None:
+    """Bind the FAKE_LLM stub classes into the module globals. Idempotent.
+
+    Shared by the import-time fake branch and by :func:`_ensure_litellm` so
+    the names are always resolvable no matter when the fake mode was turned
+    on (Omni_Localizer#225).
+    """
+    globals().update({
+        "AuthenticationError": _StubAuthenticationError,
+        "RateLimitError": _StubRateLimitError,
+        "Timeout": _StubTimeout,
+        "RouterRateLimitError": _StubRouterRateLimitError,
+        "APIConnectionError": _StubAPIConnectionError,
+        "InternalServerError": _StubInternalServerError,
+        "ServiceUnavailableError": _StubServiceUnavailableError,
+        "Router": None,
+        # Direct-call seam for intra-role 429 failover (_direct_acompletion).
+        # Tests replace this module attribute with a fake exposing acompletion().
+        "litellm": None,
+    })
+
 
 def _ensure_litellm() -> None:
     """Import litellm on first use (OL#223 lazy loading). Idempotent.
 
-    In FAKE_LLM mode the stub classes are pre-bound at module level and
-    this never imports litellm. In real mode this performs the import that
-    used to sit at module top level, including
-    ``litellm.disable_model_name_normalization = True`` — which MUST run
-    before Router init so litellm does not lowercase model names
-    (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API accepts it).
+    In FAKE_LLM mode the stub classes are bound into the module globals and
+    this never imports litellm — the binding has to happen HERE (not only in
+    the import-time branch below) because the module may have been imported
+    in real mode and only later run under ``OMNI_TEST_FAKE_LLM=1``
+    (Omni_Localizer#225: ``__getattr__`` then hit ``KeyError`` because
+    nothing ever put the names into ``globals()``).
+    In real mode this performs the import that used to sit at module top
+    level, including ``litellm.disable_model_name_normalization = True`` —
+    which MUST run before Router init so litellm does not lowercase model
+    names (e.g. "openai/MiniMax-M2.7" stays uppercase so MiniMax API
+    accepts it).
     """
     global _litellm_ready
     if _litellm_ready:
         return
     if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
-        _litellm_ready = True  # stubs are pre-bound; nothing to import
+        _bind_stub_names()
+        _litellm_ready = True
         return
     import litellm  # noqa: PLC0415
     from litellm.exceptions import (  # noqa: PLC0415
@@ -246,17 +295,8 @@ if os.environ.get("OMNI_TEST_FAKE_LLM") == "1":
     # raised because __init__ returns early with _FakeModelPool.
     # Tests using `with patch("ol_pool.router.Router")` to set _test_mode
     # still work because @patch sets the module-level attribute at test time.
-    AuthenticationError = _StubAuthenticationError
-    RateLimitError = _StubRateLimitError
-    Timeout = _StubTimeout
-    RouterRateLimitError = _StubRouterRateLimitError
-    APIConnectionError = _StubAPIConnectionError
-    InternalServerError = _StubInternalServerError
-    ServiceUnavailableError = _StubServiceUnavailableError
-    Router = None  # type: ignore[assignment,misc]
-    # Direct-call seam for intra-role 429 failover (_direct_acompletion).
-    # Tests replace this module attribute with a fake exposing acompletion().
-    litellm = None  # type: ignore[assignment]
+    _bind_stub_names()
+    _litellm_ready = True
 else:
     # Only installed in real mode. In FAKE mode every name in
     # _LAZY_LITELLM_NAMES is already a real module attribute, so
@@ -264,7 +304,18 @@ else:
     def __getattr__(name: str) -> Any:
         if name in _LAZY_LITELLM_NAMES:
             _ensure_litellm()
-            return globals()[name]
+            bound = globals().get(name, _MISSING)
+            if bound is _MISSING:
+                # Late-bound namespace (Omni_Localizer#225): never raise
+                # KeyError out of a module __getattr__ — fall back to the
+                # stub binding, then give up as AttributeError.
+                _bind_stub_names()
+                bound = globals().get(name, _MISSING)
+            if bound is _MISSING:
+                raise AttributeError(
+                    f"module {__name__!r} has no attribute {name!r}"
+                )
+            return bound
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 from ol_config.loader import load_config
