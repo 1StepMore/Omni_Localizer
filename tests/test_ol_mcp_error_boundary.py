@@ -6,6 +6,10 @@ The decorator must:
 - Return a response that does NOT include the original exception message
   or any internal path/exception class info to the client.
 - Include a stable, opaque error_code so clients can react programmatically.
+
+OL's own cases below always run. The mirrored OPP cases (same C12 contract
+on the sibling repo) skip when OPP is unavailable; that cross-repo symmetry
+is checked by e2e-test-suite `make test-contract`.
 """
 
 import asyncio
@@ -15,15 +19,20 @@ import logging
 import sys
 from pathlib import Path
 
-
+import pytest
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _OL_SRC = _REPO_ROOT / "src"
-_OPP_SRC = _REPO_ROOT / "Omni_Pre_Processor" / "src"
 if str(_OL_SRC) not in sys.path:
     sys.path.insert(0, str(_OL_SRC))
-if str(_OPP_SRC) not in sys.path:
-    sys.path.insert(0, str(_OPP_SRC))
+
+# OPP lives in a sibling repo; a single-repo clone of OL must stay green.
+# The OPP-side symmetry is verified cross-repo by e2e-test-suite
+# `make test-contract`, so skip (with a reason) when it is unavailable.
+_OPP_SKIP_REASON = (
+    "needs the OPP package (sibling repo); cross-repo symmetry runs in "
+    "e2e-test-suite `make test-contract`"
+)
 
 
 class TestOLErrorBoundary:
@@ -105,7 +114,8 @@ class TestOPPErrorBoundary:
         # so the decorator should be designed to handle both.
         opp_mcp_dir = _REPO_ROOT / "Omni_Pre_Processor" / "src" / "opp" / "mcp"
         errors_path = opp_mcp_dir / "_errors.py"
-        assert errors_path.exists(), "OPP _errors.py should exist"
+        if not errors_path.exists():
+            pytest.skip(_OPP_SKIP_REASON)
         spec = importlib.util.spec_from_file_location("opp_errors", errors_path)
         module = importlib.util.module_from_spec(spec)
         # Register before exec_module: a @dataclass in the dynamically loaded
@@ -114,6 +124,8 @@ class TestOPPErrorBoundary:
         sys.modules["opp_errors"] = module
         try:
             spec.loader.exec_module(module)
+        except ImportError as exc:  # OPP-only dependency (e.g. chardet) absent
+            pytest.skip(f"{_OPP_SKIP_REASON}: {exc}")
         finally:
             sys.modules.pop("opp_errors", None)
         assert hasattr(module, "mcp_error_boundary")
@@ -122,7 +134,8 @@ class TestOPPErrorBoundary:
     def test_opp_error_boundary_hides_exception_message(self):
         """Apply decorator to a fake OPP-style tool and verify error message
         is opaque (does not contain the original exception text)."""
-        from opp.mcp._errors import mcp_error_boundary
+        opp_errors = pytest.importorskip("opp.mcp._errors", reason=_OPP_SKIP_REASON)
+        mcp_error_boundary = opp_errors.mcp_error_boundary
 
         @mcp_error_boundary
         async def fake_opp_tool(params):
@@ -137,7 +150,8 @@ class TestOPPErrorBoundary:
 
     def test_opp_error_boundary_sync_function(self):
         """OPP also has sync tools (save_skeleton etc). Verify sync path."""
-        from opp.mcp._errors import mcp_error_boundary
+        opp_errors = pytest.importorskip("opp.mcp._errors", reason=_OPP_SKIP_REASON)
+        mcp_error_boundary = opp_errors.mcp_error_boundary
 
         @mcp_error_boundary
         def fake_opp_sync_tool(params):
