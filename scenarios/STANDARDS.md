@@ -21,6 +21,50 @@ OL translation scenarios are **tier 2** (real LLM key required): they are
 `config/default.yaml` (`ZHIPU_API_KEY`), so they report
 `unconfigured` when the keys are absent — never a fake pass.
 
+## Evidence admissibility (cross-cutting bar)
+
+Two rules apply in this repo exactly as they do at suite level: a run that
+cannot produce real evidence must never be reported as GREEN.
+
+### Fallbacks are never evidence {#fallbacks-never-evidence}
+
+Deterministic fallbacks — `OMNI_TEST_FAKE_LLM=1`, `OMNI_TEST_FAKE_PANDOC=1`,
+and every seam in this class (`OMNI_TEST_FAKE_*`, monkey-patched engines,
+stub backends) — are **never admissible as quality (HUMAN-QUALITY)
+evidence**. A fallback emits synthetic, deterministic output: a green run
+under one proves the plumbing ran, not that the result meets the
+human-quality bar.
+
+- A verdict produced while a fallback is active MUST be reported as
+  **`invalid`** — a status that can never be summarised as GREEN — or, when
+  no step executed, as `unconfigured` / `skipped`. Never `passed`.
+- The only escape hatch is **contract-only** (`--allow-fake`, suite side):
+  it re-admits a fallback run only when **every** step of the scenario
+  cites an AGENT-SURFACE anchor. One HUMAN-QUALITY citation, one
+  anchor-less step, or an empty step list makes the scenario ineligible.
+- Any produced artifact carrying the fake-echo signature is `invalid`
+  regardless of the escape hatch.
+
+**How to check:** run the same scenario with and without the fallback env
+var set; the fallback run must not report `passed`. Citable as
+`standard: STANDARDS.md#fallbacks-never-evidence`.
+
+### Env gate semantics {#env-gate-semantics}
+
+Gating is **fail-closed**: `unconfigured` is never `passed`.
+
+- Every listed required variable must resolve; a variable present but
+  **empty counts as missing**.
+- An OR group (`requires_env_any` at suite level) resolves when at least
+  one of its variables resolves; an OR group with none resolving fails
+  **closed** — the scenario reports `unconfigured` and executes no steps,
+  so a keyless user never reaches a real LLM call.
+- Absent or empty group declarations keep the AND-only behaviour.
+
+**How to check:** run a scenario with its key unset; expect
+`unconfigured`, zero executed steps, and no LLM call. Citable as
+`standard: STANDARDS.md#env-gate-semantics`.
+
 ## AGENT-SURFACE
 
 Mission axis 1: validation proves every agent-facing surface — the live
@@ -144,3 +188,51 @@ dropped, never fatal on their own (non-blocking).
 response to carry a `warnings` key (list) alongside `translated`;
 warnings fire as `OL_WARN`-style entries when a gate trips. Citable as
 `standard: STANDARDS.md#quality-gate-warnings`.
+
+### LQA threshold (artifact level) {#lqa-threshold}
+
+OL's own per-unit retry/batch loop passes a unit at
+`pass_threshold = 7.0` (`ol_retry/retry.py:30`, `ol_batch/processor.py:52`).
+At artifact level the suite bar applies: the **average** LLM-judged
+translation quality over the translated artifact must be **>= 4.0/5**
+(0-5 scale), scored by `ol_lqa.judge.JudgeService` over the first <= 50
+scorable trans-units, whitespace-only targets skipped.
+
+**How to check:** per unit — `judge_overall_score >= 7.0`; artifact —
+average rescaled to /5 `>= 4.0` (artifact-level judging is executed in
+`e2e-test-suite`, per the module-scoped-standards decision). Citable as
+`standard: STANDARDS.md#lqa-threshold`.
+
+### Untranslated units {#untranslated-units}
+
+A translated artifact must declare **zero untranslated units**: the
+`translate-md` output frontmatter carries `untranslated_units`
+(`src/cli/_shared.py:86`), and the value must be **absent or `0`**. A value
+`> 0` means part of the document was never translated — and unlike a CJK
+ratio it cannot be diluted by a long document.
+
+**How to check:** read the output `.md` frontmatter; `untranslated_units`
+absent/`0` passes, `> 0` fails naming `N/M unit(s) untranslated`. Citable
+as `standard: STANDARDS.md#untranslated-units`.
+
+### CJK density (English-target output) {#cjk-density}
+
+For an English-target artifact the **CJK character ratio must stay below
+5%** (`[\u4e00-\u9fff]` count / total characters over paragraph text); up
+to 5% is tolerated for brand names and proper nouns kept on purpose.
+5% or more means the translation is incomplete.
+
+**How to check:** `len(re.findall(r"[\u4e00-\u9fff]", out)) / len(out) < 0.05`
+over the output's paragraph text (artifact level, executed in
+`e2e-test-suite`). Citable as `standard: STANDARDS.md#cjk-density`.
+
+### Punctuation hygiene {#punct-hygiene}
+
+Zero foreign-language punctuation in the output: an English-target artifact
+must contain no CJK / full-width punctuation (`，。、；：（）！？“”`) that the
+source paragraph did not already carry.
+
+**How to check:** scan the output for full-width / CJK punctuation not
+present in the corresponding source paragraph; any hit fails (artifact
+level, executed in `e2e-test-suite`). Citable as
+`standard: STANDARDS.md#punct-hygiene`.
