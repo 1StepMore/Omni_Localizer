@@ -59,6 +59,11 @@ _LLM_KEY_MARKERS = {
 _ROLES = ("translation", "judging", "restoration", "profiling")
 _POOL_FIELDS = ("provider", "model", "priority", "role", "api_key", "base_url", "timeout")
 
+# The generic OpenAI-compatible endpoint triple (suite#448 / OL#227): present
+# in the canonical pool as the lowest-priority fallback, but NOT a provider
+# key — excluded from scenario-gate parity (see TestScenarioEnvParity).
+_ENDPOINT_TRIPLE_VARS = {"LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"}
+
 
 def _canonical_pool() -> dict[str, list[dict[str, Any]]]:
     data = yaml.safe_load(_DEFAULT_YAML.read_text(encoding="utf-8"))
@@ -142,8 +147,14 @@ class TestEnvExampleParity:
     def test_canonical_vars_are_exactly_the_expected_set(self):
         # Guard against silent pool churn: if the pool gains a provider, the
         # env/scenario/init surfaces must be updated in the same change.
+        # The LLM_* triple is the generic OpenAI-compatible endpoint
+        # (suite#448 / OL#227) — an optional lowest-priority fallback, not a
+        # provider account.
         assert _canonical_env_vars() == {
             "ZHIPU_API_KEY",
+            "LLM_BASE_URL",
+            "LLM_API_KEY",
+            "LLM_MODEL",
         }
 
 
@@ -160,7 +171,13 @@ class TestScenarioEnvParity:
         assert self._scenario_files(), f"no scenario yaml found in {_SCENARIOS_DIR}"
 
     def test_every_llm_keyed_scenario_declares_canonical_vars(self):
-        canonical = _canonical_env_vars()
+        # Scenario gating stays PROVIDER-KEY based: the engine's
+        # requires_env_any is a flat OR group, which cannot express the
+        # endpoint triple's all-three semantics (suite#448) — admitting the
+        # LLM_* vars here would let a single var (e.g. only LLM_BASE_URL)
+        # satisfy the gate and turn `unconfigured` into a runtime crash.
+        # Revisit when the engine learns AND-groups inside OR.
+        canonical = _canonical_env_vars() - _ENDPOINT_TRIPLE_VARS
         candidates = self._scenario_files()
         offenders: list[str] = []
         examined = 0
@@ -269,7 +286,9 @@ class TestSuiteSurfaceParity:
         return name.startswith("tool-ol-") or name.startswith("tool-omni_mcp-")
 
     def test_suite_ol_scenarios_declare_canonical_vars(self):
-        canonical = _canonical_env_vars()
+        # Provider keys only (see TestScenarioEnvParity): the endpoint triple
+        # (suite#448) cannot ride the flat-OR requires_env_any gate.
+        canonical = _canonical_env_vars() - _ENDPOINT_TRIPLE_VARS
         candidates: list[Path] = []
         for directory in _SUITE_OL_SCENARIOS:
             if not directory.exists():

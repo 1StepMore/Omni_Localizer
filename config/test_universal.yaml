@@ -17,6 +17,17 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: translation
+  # Generic OpenAI-compatible endpoint (suite#448): the omni-suite pipeline
+  # pins OL_CONFIG_PATH to this file, so the generic triple must live here
+  # too for `LLM_BASE_URL`+`LLM_API_KEY`+`LLM_MODEL` to reach the pipeline.
+  # Skipped while any of the three is unset (router.partition_usable_models).
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
+    role: translation
   judging:
   - provider: openai
     model: glm-4.7-flash
@@ -32,6 +43,15 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: judging
+  # Same generic endpoint triple as translation (suite#448): skipped while
+  # any of LLM_BASE_URL / LLM_API_KEY / LLM_MODEL is unset.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
+    role: judging
   restoration:
   - provider: openai
     model: glm-4.7-flash
@@ -46,4 +66,13 @@ llm_pool:
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
+    role: restoration
+  # Same generic endpoint triple as translation (suite#448): skipped while
+  # any of LLM_BASE_URL / LLM_API_KEY / LLM_MODEL is unset.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
     role: restoration

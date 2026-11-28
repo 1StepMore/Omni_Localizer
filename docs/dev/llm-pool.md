@@ -22,16 +22,18 @@ differ in tier count, rate limits, and timeouts. The only other tracked config i
 `local.yaml` (spark-x2.6 P1 + cross-vendor P2, `${SPARK_API_KEY}` / `${FALLBACK_API_KEY}`);
 CI pins it to LLMPoolConfig via `scripts/check_local_example.py`.
 
-- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-1 primary for translation/judging/restoration/profiling
-- **glm-4-flash** → Zhipu (`ZHIPU_API_KEY`, same endpoint) — priority-2 fallback
+- **glm-4-flash** → Zhipu (`ZHIPU_API_KEY`, `https://open.bigmodel.cn/api/paas/v4`) — priority-1 primary for translation/judging/restoration/profiling (OL#193, 2026-11-12 real-traffic measurement)
+- **glm-4.7-flash** → Zhipu (`ZHIPU_API_KEY`, same endpoint) — priority-2 fallback
+- **generic OpenAI-compatible endpoint** (`LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`, all three) — priority-3 lowest tier per role (suite#448 / OL#227): reuses an existing endpoint — company gateway, local Ollama, any third-party compatible host — without a provider key. While any of the three vars is unset the entry is skipped like any other unresolved `${VAR}` ref, so it is never a partial-triple footgun; provider keys still win when both are configured. The `model` name itself may be a `${VAR}` ref (`${LLM_MODEL}`): `router._unresolved_env_vars`, `cli.doctor._unresolved_refs`, and the schema env-check all scan it, and the litellm model id is resolved at call time — a literal `${LLM_MODEL}` can never reach the provider.
 
 CI never runs this pool for real LLM (OL#183): the only usable Spark key is
 owner-local, AMD is dead, and ZHIPU is rate-limited. Scheduled CI is hermetic;
 real-LLM validation runs on the owner's local 02:00 timer.
 
-Every `api_key`/`base_url` is a `${ENV_VAR}` reference; literal keys are
-never written. Each of `translation`, `judging`, and `restoration` must
-have **≥2 models** — `ol doctor` enforces this as one of its 5 checks.
+Every `api_key`/`base_url` — and the endpoint triple's `model` — is a
+`${ENV_VAR}` reference; literal keys are never written. Each of
+`translation`, `judging`, and `restoration` must have **≥2 models** —
+`ol doctor` enforces this as one of its 5 checks.
 
 litellm Router with `routing_strategy="simple-shuffle"` and
 `num_retries=2` picks a model within the role group. If it fails,
@@ -44,7 +46,8 @@ the next model in priority is tried.
 | `OMNI_TEST_FAKE_LLM=1` | unset | **Required** for tests. Mock LLM responses with the `_FakeModelPool` seam. |
 | `OMNI_RUN_REAL_LLM=1` | unset | **Escape hatch — skips the API-key pre-check** (`precheck_api_keys`) that guards `ol translate-md` / `ol translate-xliff`. It does **not** enable real LLM calls (those are the default; `OMNI_TEST_FAKE_LLM=1` disables them) — the name is misleading: it bypasses a fail-fast check, it does not switch on network calls. Home: `docs/real_llm_runbook.md`. |
 | `OL_CONFIG_PATH` | `config/default.yaml` | Config file path override. |
-| `ZHIPU_API_KEY` | (none) | Zhipu API key (glm-4.7-flash primary / glm-4-flash fallback). |
+| `ZHIPU_API_KEY` | (none) | Zhipu API key (glm-4-flash primary / glm-4.7-flash fallback). |
+| `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` | (none) | Generic OpenAI-compatible endpoint triple (suite#448 / OL#227) — the no-new-key path. ALL THREE must be set; while any one is unset the generic pool entries are skipped (lowest priority). Example: a local Ollama at `http://127.0.0.1:11434/v1` with any key placeholder. |
 | `OL_COMMANDCODE_API_KEY` | (none) | Key for the optional third tier (`stealth/cat-jam:free`) in an operator's gitignored `config/local.yaml`. |
 | `OMNI_CACHE_DIR` | `~/.omni_cache` | Cache root; OL stores content-addressed entries under `<root>/ol/`. Read at call-time. |
 | `OMNI_LOG_FORMAT` | `console` | `json` for structured logs. |

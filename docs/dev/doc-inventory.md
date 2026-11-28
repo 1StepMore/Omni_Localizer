@@ -7,7 +7,7 @@
 
 | Document | Lines |
 |---|---:|
-| AGENTS.md | 200 |
+| AGENTS.md | 199 |
 | README.md | 582 |
 | docs/API.md | 466 |
 | docs/ARCHITECTURE.md | 395 |
@@ -22,7 +22,7 @@
 | docs/dev/cross-audit-evidence.md | 32 |
 | docs/dev/gotchas.md | 101 |
 | docs/dev/harness-run-facts.md | 17 |
-| docs/dev/llm-pool.md | 67 |
+| docs/dev/llm-pool.md | 70 |
 | docs/dev/pipeline.md | 143 |
 | docs/dev/production-matrix.md | 56 |
 | docs/dev/source-layout.md | 58 |

@@ -30,6 +30,19 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: translation
+  # Generic OpenAI-compatible endpoint (suite#448 / OL#227): reuses an
+  # existing endpoint (company gateway, local Ollama, any OpenAI-compatible
+  # service) without a dedicated provider key. All three vars must be set;
+  # while any is unset the entry is skipped like any other unresolved
+  # ${VAR} ref (router.partition_usable_models) — lowest priority, so the
+  # provider entries above still win when both are configured.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
+    role: translation
   judging:
   - provider: openai
     model: glm-4-flash
@@ -44,6 +57,15 @@ llm_pool:
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
+    role: judging
+  # Same generic endpoint triple as translation (suite#448): skipped while
+  # any of LLM_BASE_URL / LLM_API_KEY / LLM_MODEL is unset.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
     role: judging
   restoration:
   - provider: openai
@@ -60,6 +82,15 @@ llm_pool:
     timeout: 120.0
     priority: 2
     role: restoration
+  # Same generic endpoint triple as translation (suite#448): skipped while
+  # any of LLM_BASE_URL / LLM_API_KEY / LLM_MODEL is unset.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
+    role: restoration
   profiling:
   - provider: openai
     model: glm-4-flash
@@ -74,6 +105,15 @@ llm_pool:
     base_url: https://open.bigmodel.cn/api/paas/v4
     timeout: 120.0
     priority: 2
+    role: profiling
+  # Same generic endpoint triple as translation (suite#448): skipped while
+  # any of LLM_BASE_URL / LLM_API_KEY / LLM_MODEL is unset.
+  - provider: openai
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+    timeout: 120.0
+    priority: 3
     role: profiling
 
 quality_gates:

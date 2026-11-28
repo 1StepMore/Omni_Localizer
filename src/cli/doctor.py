@@ -43,9 +43,9 @@ _ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
 
 def _unresolved_refs(model) -> list[str]:
-    """Names of ${VAR} refs in a model's api_key/base_url that are unset."""
+    """Names of ${VAR} refs in a model's model/api_key/base_url that are unset."""
     missing: list[str] = []
-    for field in ("api_key", "base_url"):
+    for field in ("model", "api_key", "base_url"):
         value = getattr(model, field, None)
         if not isinstance(value, str):
             continue
@@ -76,7 +76,7 @@ def _missing_env_refs(config) -> list[str]:
         if any(not _unresolved_refs(m) for m in models):
             continue
         for model in models:
-            for field in ("api_key", "base_url"):
+            for field in ("model", "api_key", "base_url"):
                 value = getattr(model, field, None)
                 if not isinstance(value, str):
                     continue

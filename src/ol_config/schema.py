@@ -110,6 +110,9 @@ class LLMModelConfig(BaseModel):
 
     @model_validator(mode='after')
     def validate_env_vars(self) -> 'LLMModelConfig':
+        # The model name is checked too (#448): generic endpoint entries
+        # carry model: ${LLM_MODEL} and must warn when it is unset.
+        _check_env_vars(self.model, "model")
         _check_env_vars(self.api_key, "api_key")
         _check_env_vars(self.base_url, "base_url")
         return self
